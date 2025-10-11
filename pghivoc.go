@@ -31,6 +31,8 @@ func (n *Nanowarp) pghi(stretch float64, out []complex128) {
 
 	G[`phasogram`] = append(G[`phasogram`].([][]float64), make([]float64, len(a.Frame)))
 	G[`origphase`] = append(G[`origphase`].([][]float64), make([]float64, len(a.Frame)))
+	G[`deltaphase`] = append(G[`deltaphase`].([][]float64), make([]float64, len(a.Frame)))
+	G[`sigmaphase`] = append(G[`sigmaphase`].([][]float64), make([]float64, len(a.Frame)))
 
 	for i := range a.X {
 		if mag(a.X[i]) > abstol {
@@ -51,44 +53,25 @@ func (n *Nanowarp) pghi(stretch float64, out []complex128) {
 			a.S2[i] = (princarg(angle(a.X[i+1])-angle(a.X[i])) +
 				princarg(angle(a.X[i])-angle(a.X[i-1]))) / 2
 		}
-
-		{
-			const1 := 2.0 * math.Pi * aana / float64(n.nfft)
-			const2 := 2.0 * math.Pi * asyn / float64(n.nfft)
-			f := func(j int) float64 {
-				return asyn*(princarg(angle(a.F[j+1][i])-angle(a.F[j][i])-const1*float64(i))/(2.0*aana)-
-					princarg(angle(a.F[j][i])-angle(a.F[j-1][i])-const1*float64(i))/(2.0*aana)) + const2*float64(i)
-			}
-
-			a.S3[i] = f(1)
-			a.S4[i] = f(2)
+		const1 := 2.0 * math.Pi * aana / float64(n.nfft)
+		const2 := 2.0 * math.Pi * asyn / float64(n.nfft)
+		f := func(j int) float64 {
+			return asyn*(princarg(angle(a.F[j+1][i])-angle(a.F[j][i])-const1*float64(i))/(2.0*aana)-
+				princarg(angle(a.F[j][i])-angle(a.F[j-1][i])-const1*float64(i))/(2.0*aana)) + const2*float64(i)
 		}
+		a.S3[i] = f(1)
+		a.S4[i] = f(2)
+		// 	return -real(a.Xt[i] / (a.X[i] + eps)) / float64(nbins) * 2 * math.Pi
+
 	}
 	for i := 0; len(n.iset) > 0 && i < n.nbins; i++ {
 		h := heappop(&n.heap)
-		// TODO Time derivative is reassigned frequency correction, frequency derivative is time correction.
-		// dt := func(j int) float64 {
-		// 	// var dts float64 = 1
-		// 	ramp := 2.0 * math.Pi * float64(h.w) / float64(n.nbins)
-		// 	_ = ramp
-		// 	o := 0.0
-		// 	if j == 0 {
-		// 		o = princarg(imag(a.Xd[h.w]/(a.X[h.w]+eps))) / aana * math.Pi
-		// 	} else if j == -1 {
-		// 		o = princarg(imag(a.Pd[h.w]/(a.P[h.w]+eps))) / aana * math.Pi
-		// 	}
-		// 	return float64(n.nfft) * o
-		// }
 		dt := func(j int) float64 {
 			if j == -1 {
 				return a.S3[h.w]
 			}
 			return a.S4[h.w]
 		}
-
-		// df := func(i int) float64 {
-		// 	return -real(a.Xt[i]/(a.X[i]+eps)) / float64(n.nfft) * 4 * math.Pi
-		// }
 		df := func(i int) float64 {
 			return a.S2[i]
 		}

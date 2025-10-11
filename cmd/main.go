@@ -18,9 +18,11 @@ func main() {
 	nanowarp.G = map[string]any{}
 	nanowarp.G[`phasogram`] = make([][]float64, 0)
 	nanowarp.G[`origphase`] = make([][]float64, 0)
+	nanowarp.G[`deltaphase`] = make([][]float64, 0)
+	nanowarp.G[`sigmaphase`] = make([][]float64, 0)
 
-	// file, _ := os.Open(`ticktock.wav`)
-	file, _ := os.Open(`fm.wav`)
+	file, _ := os.Open(`ticktock.wav`)
+	// file, _ := os.Open(`fm.wav`)
 	// file, _ := os.Open(`saw-click.wav`)
 	rd := wav.NewReader(file)
 	data := []float64{}
@@ -35,7 +37,7 @@ func main() {
 		}
 	}
 	nw := nanowarp.New()
-	n := 1.
+	n := 2.
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process2(data, out, n)
 
@@ -43,8 +45,8 @@ func main() {
 		out[i] = max(-1, min(out[i], 1))
 	}
 
-	// file, err := os.Create(`ticktock-x2.wav`)
-	file, err := os.Create(`fm-x2.wav`)
+	file, err := os.Create(`ticktock-x2.wav`)
+	// file, err := os.Create(`fm-x2.wav`)
 	// file, err := os.Create(`saw-click-x2.wav`)
 	if err != nil {
 		panic(err)
@@ -68,6 +70,8 @@ func main() {
 	}
 	phasogram(`phasogram`)
 	phasogram(`origphase`)
+	phasogram(`deltaphase`)
+	phasogram(`sigmaphase`)
 
 }
 
