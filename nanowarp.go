@@ -1,81 +1,93 @@
 package nanowarp
 
 import (
+	"fmt"
 	"math"
+	"os"
+	"reflect"
 
 	"golang.org/x/exp/constraints"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
+const eps = 1e-15
+
 type bufs struct {
-	Fr       []float64 // Frame buffer
-	S        []float64 // Scratch buffer
-	Cs0, Cs1 []complex128
+	Fr                   []float64 // Frame buffer
+	S, Frame, S2, S3, S4 []float64 // Scratch buffers
+	Cs0, Cs1             []complex128
 
 	W, Wd, Wt, Wdt []float64    // Window functions
 	X, Xd, Xt, Xdt []complex128 // Complex spectra
+	P, Xn          []complex128
+	F              [][]complex128
 
-	Speckle []float64
-	P, Xh   []complex128
+	Speckle, Pph []float64
+	N, A, Pd, Pt []complex128
+	Xdh          []complex128
 }
 
 type Nanowarp struct {
-	nfft   int
-	hop    int
-	outhop int
+	nfft        int
+	nbuf        int
+	nbins       int
+	hop         int
+	outhop      int
+	prevstretch float64
+	coeff       float64
 
 	q  []float64
 	qi int
 
-	fft *fourier.FFT
-
+	fft  *fourier.FFT
+	tol  float64
+	iset map[int]struct{}
 	norm float64
+	heap []heaptriple
 
 	a bufs
 }
 
 func New() (n *Nanowarp) {
-	nfft := 4096
+	nfft := 2048
+	nbuf := nfft
+	nbins := nfft/2 + 1
 	n = &Nanowarp{
-		nfft: nfft,
-		hop:  nfft / 32,
+		nfft:  nfft,
+		nbins: nbins,
+		nbuf:  nbuf,
+		hop:   nbuf / 4,
+		iset:  make(map[int]struct{}, nbins),
+		q:     make([]float64, 2*nfft),
 	}
+	a := &n.a
 
-	n.a.Fr = make([]float64, nfft)
-	n.a.S = make([]float64, nfft)
-	n.a.Cs0 = make([]complex128, nfft/2+1)
-	n.a.Cs1 = make([]complex128, nfft/2+1)
-	n.a.W = make([]float64, nfft)
-	n.a.Wd = make([]float64, nfft)
-	n.a.Wt = make([]float64, nfft)
-	n.a.Wdt = make([]float64, nfft)
-	n.a.X = make([]complex128, nfft/2+1)
-	n.a.Xd = make([]complex128, nfft/2+1)
-	n.a.Xt = make([]complex128, nfft/2+1)
-	n.a.Xdt = make([]complex128, nfft/2+1)
-	n.a.Speckle = make([]float64, nfft)
-	n.a.P = make([]complex128, nfft/2+1)
-	n.a.Xh = make([]complex128, nfft/2+1)
+	a.F = make([][]complex128, 4)
 
-	// rn := reflect.ValueOf(n.a)
-	// for i := 0; i < rn.NumField(); i++ {
-	// 	f := rn.Field(i)
-	// 	if f.Kind() == reflect.Slice {
-	// 		sz := nfft
-	// 		f.
-	// 		if f.Index(0).CanComplex() {
-	// 			sz = nfft/2 + 1
-	// 		}
-	// 		f.Grow(sz)
-	// 		f.SetLen(sz)
-	// 	}
-	// }
-	n.q = make([]float64, 2*nfft) // Queue is an exception.
-
-	blackman(n.a.W)
-	blackmanDx(n.a.Wd)
-	windowT(n.a.W, n.a.Wt)
-	windowT(n.a.Wd, n.a.Wdt)
+	// Automatically initialize slices through reflection.
+	rn := reflect.ValueOf(&n.a).Elem()
+	for i := 0; i < rn.NumField(); i++ {
+		f := rn.Field(i)
+		if f.Kind() == reflect.Slice {
+			c := f.Interface()
+			switch c := c.(type) {
+			case []complex128:
+				f.Set(reflect.ValueOf(make([]complex128, nbins)))
+			case []float64:
+				f.Set(reflect.ValueOf(make([]float64, nfft)))
+			case [][]complex128:
+				for i := range c {
+					c[i] = make([]complex128, nbins)
+				}
+			}
+		}
+	}
+	// Exceptions.
+	a.Frame = make([]float64, n.nbins)
+	hann(a.W[:nbuf])
+	hannDx(a.Wd[:nbuf])
+	windowT(a.W[:nbuf], a.Wt[:nbuf])
+	windowT(a.Wd[:nbuf], a.Wdt[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
 
 	n.fft = fourier.NewFFT(nfft)
@@ -83,89 +95,58 @@ func New() (n *Nanowarp) {
 	return
 }
 
-// func (n *Nanowarp) Push(in, out []float64) {
-// 	for {
-// 		n.fr = append(n.fr, in[:min(len(in), n.nfft-len(n.fr))]...)
-// 		in = in[min(len(in), n.hop):]
-// 		if len(n.fr) == n.nfft {
-// 			n.process()
-// 			add(n.q[n.qi:], n.fr)
-// 			n.fr = n.fr[:0]
-// 			n.qi += n.hop
-// 		}
-// 		if n.qi > n.nfft {
-// 			n.qi = 0
-// 			co := min(len(out), n.nfft)
-// 			if len(out) > 0 {
-// 				copy(out, n.q[:co])
-// 				out = out[co:]
-// 			} else {
-// 				return
-// 			}
-// 			// //\_____ -> \_______
-// 			copy(n.q[0:], n.q[co:])
-// 			zero(n.q[n.nfft:])
-// 		}
-// 	}
-// }
-/*
-
-p = read1 * (prev/mag(prev))
-out = read2 * (p/mag(p))
-prev = out
-
-*/
-
-func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
+func (n *Nanowarp) Process2(in []float64, out []float64, stretch float64) {
 	adv := 0
+	a := &n.a
 	o := int(math.Floor(float64(n.hop) * stretch))
-	for i := o; i < len(in); i += n.hop {
+	fmt.Fprintln(os.Stderr, o)
+	n.coeff = 5.5
+	for i := 2 * o; i < len(in); i += n.hop {
 		enfft := func(i int, x []complex128, w []float64) {
-			copy(n.a.S, in[i:i+n.nfft])
-			mul(n.a.S, w)
-			n.fft.Coefficients(x, n.a.S)
+			copy(a.S, in[i:i+n.nfft])
+			mul(a.S, w)
+			n.fft.Coefficients(x, a.S)
 		}
 
-		enfft(i, n.a.X, n.a.W)
-		enfft(i-o, n.a.Xh, n.a.W)
-		enfft(i, n.a.Xd, n.a.Wd)
-		enfft(i, n.a.Xt, n.a.Wt)
-		enfft(i, n.a.Xdt, n.a.Wdt)
+		enfft(i, a.X, a.W)
+		enfft(i, a.Xd, a.Wd)
+		enfft(i, a.Xt, a.Wt)
 
-		// Extract per-bin phase reset points through reassignment.
-		// Values around zero (after normalization by nfft) are
-		// correlated to transient components of the signal.
-		speckle(n.a.X, n.a.Xd, n.a.Xt, n.a.Xdt, n.a.Speckle)
-		for i := range n.a.Speckle {
-			tol1 := min(0.3, 0.17*math.Sqrt(stretch))
-			tol2 := min(0.1, 0.05*math.Sqrt(stretch))
-			base := float64(n.nfft)
-			n.a.Speckle[i] = boolnum(
-				n.a.Speckle[i] > base*(1-tol1) && n.a.Speckle[i] < base*(1+tol1) ||
-					n.a.Speckle[i] > base*-tol2 && n.a.Speckle[i] < base*+tol2)
-			// n.a.Speckle[i] = boolnum(n.a.Speckle[i] < 0)
-		}
+		enfft(i-2*o, a.F[0], a.W)
+		enfft(i-1*o, a.F[1], a.W)
+		enfft(i, a.F[2], a.W)
+		enfft(i+1*o, a.F[3], a.W)
 
-		// Perform phase vocoding.
-		for i := range n.a.Cs0 {
-			n.a.Cs0[i] = n.a.P[i] / (n.a.Xh[i] + 1e-15)
-		}
-		phaselock(n.a.Cs0, n.a.Cs1)
-		for i := range n.a.P {
-			n.a.P[i] = norm(n.a.Cs0[i]+1e-15) * n.a.X[i]
-			if n.a.Speckle[i] > 0.5 {
-				n.a.P[i] = n.a.Xh[i]
-			}
-			n.a.P[i] /= 3
-		}
+		enfft(i-o, a.P, a.W)
+		enfft(i-o, a.Pd, a.Wd)
+		enfft(i-o, a.Pt, a.Wt)
 
-		n.fft.Sequence(n.a.S, n.a.P)
-		mul(n.a.S, n.a.W)
-		for i := range n.a.S {
-			n.a.S[i] /= n.norm
-			n.a.S[i] *= stretch
+		// if i == 2*o {
+		// 	for j := range a.Frame {
+		// 		a.Frame[j] = angle(a.P[j])
+		// 	}
+		// }
+
+		// fmt.Fprintln(os.Stderr, "nanowarp.go: phase convergence test")
+		// for i := range n.nbins {
+		// 	dt := imag(a.Xd[i]/(a.X[i]+eps)) / -math.Pi
+		// 	// df := -real(a.Xt[i]/(a.X[i]+eps)) / float64(n.nfft) * 4 * math.Pi
+		// 	fmt.Println(dt)
+		// }
+		// os.Exit(1)
+		// enfft(i+o, a.P, a.W)
+		// enfft(i+o, a.Pd, a.Wd)
+		// enfft(i+o, a.Pt, a.Wt)
+
+		n.pghi(stretch, a.A)
+
+		n.fft.Sequence(a.S, a.A)
+		for i := range a.S {
+			a.S[i] /= n.norm
+			a.S[i] *= stretch
 		}
-		add(out[adv:adv+n.nfft], n.a.S)
+		mul(a.S, a.W)
+		add(out[adv:adv+n.nfft], a.S)
 		adv += o
 	}
 }
@@ -211,6 +192,20 @@ func blackmanDx(out []float64) {
 	}
 }
 
+func hann(out []float64) {
+	for i := range out {
+		x := float64(i) / float64(len(out))
+		out[i] = 0.5 * (1.0 - math.Cos(2.0*math.Pi*x))
+	}
+}
+
+func hannDx(out []float64) {
+	for i := range out {
+		x := float64(i)/float64(len(out)) + .5
+		out[i] = math.Pi * math.Sin(2*math.Pi*x)
+	}
+}
+
 func windowGain(w []float64) (a float64) {
 	for _, e := range w {
 		a += e * e
@@ -249,7 +244,7 @@ func boolnum(b bool) float64 {
 	return map[bool]float64{false: 0, true: 1}[b]
 }
 
-func mix[F constraints.Float](x, a, b F) F {
+func mix[F constraints.Float](a, b, x F) F {
 	return a*(1-x) + b*x
 }
 
@@ -267,9 +262,32 @@ func mag(c complex128) float64 {
 	return math.Sqrt(real(c)*real(c) + imag(c)*imag(c))
 }
 
+func poltocar(mag, phase float64) complex128 {
+	return complex(mag*math.Cos(phase), mag*math.Sin(phase))
+}
+
+func csqrt(c complex128) complex128 {
+	m := mag(c)
+	re := math.Sqrt(0.5 * (m + real(c)))
+	im := math.Sqrt(0.5 * (m - real(c)))
+	if math.Signbit(imag(c)) {
+		im *= -1
+	}
+	return complex(re, im)
+}
+
+func angle(c complex128) float64 {
+	return math.Atan2(imag(c), real(c))
+}
+
 func norm(c complex128) complex128 {
 	mag := math.Sqrt(real(c)*real(c) + imag(c)*imag(c))
 	return complex(real(c)/mag, imag(c)/mag)
+}
+
+func princarg(phase float64) float64 {
+	pi2 := 2 * math.Pi
+	return phase - math.Round(phase/pi2)*pi2
 }
 
 func max[T constraints.Ordered](a ...T) T {
@@ -281,3 +299,11 @@ func max[T constraints.Ordered](a ...T) T {
 	}
 	return b
 }
+
+// G is an implicit global variable map for internal debugging purposes.
+// Accesses to this map are either in a thing that is not done yet or safe to remove.
+//
+// You MUST NOT initialize this map.
+// If something fails because of it, it's because Nanowarp is broken,
+// and you must use a previous version of the library.
+var G map[string]any
