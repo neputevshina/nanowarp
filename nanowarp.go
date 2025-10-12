@@ -49,13 +49,9 @@ type Nanowarp struct {
 }
 
 func New() (n *Nanowarp) {
-<<<<<<< HEAD
 	nfft := 8192
 	nbuf := nfft / 2
-=======
-	nbuf := 4096
-	nfft := nbuf * 2
->>>>>>> master
+
 	nbins := nfft/2 + 1
 	n = &Nanowarp{
 		nfft:  nfft,
