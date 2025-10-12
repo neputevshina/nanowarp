@@ -28,6 +28,7 @@ func main() {
 	fmt.Fprintln(os.Stderr, filename)
 
 	file, _ := os.Open(filename)
+
 	rd := wav.NewReader(file)
 	data := []float64{}
 	for {
@@ -41,7 +42,7 @@ func main() {
 		}
 	}
 	nw := nanowarp.New()
-	n := 1.
+	n := 2.
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process2(data, out, n)
 
@@ -50,6 +51,7 @@ func main() {
 	}
 
 	file, err := os.Create(`2x-` + filename)
+
 	if err != nil {
 		panic(err)
 	}
@@ -70,6 +72,7 @@ func main() {
 		}
 		png.Encode(file, FloatMatrixToImage(nanowarp.G[name].([][]float64)))
 	}
+
 	for k := range nanowarp.G {
 		if strings.HasSuffix(k, ".png") {
 			phasogram(k)
