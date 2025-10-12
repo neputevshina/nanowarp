@@ -7,17 +7,10 @@ import (
 
 const pipi = 2 * math.Pi
 
-func (n *Nanowarp) pghi(stretch float64, out []complex128) {
-	// TODO:
-	// - Remove phase math, replace it with complex.
-	//	- For frequency reassignment use sin and cos. Will be faster than atan2.
-	// - Pre-compute mag(x) and mag(xp).
-	// - Pre-compute random phase texture.
+func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 	a := &n.a
 	n.heap = n.heap[:0]
 	clear(n.iset)
-	// aap := int(math.Floor(float64(n.hop) * n.prevstretch))
-	// aac := int(math.Floor(float64(n.hop) * stretch))
 
 	abstol := mag(a.X[0])
 	for i := range a.X {
@@ -25,12 +18,9 @@ func (n *Nanowarp) pghi(stretch float64, out []complex128) {
 	}
 	abstol *= 1e-6
 
-	// for i := range a.X {
-	// 	a.Frame[i] = 0
-	// }
-
-	G[`phasogram`] = append(G[`phasogram`].([][]float64), make([]float64, len(a.Frame)))
-	G[`origphase`] = append(G[`origphase`].([][]float64), make([]float64, len(a.Frame)))
+	G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), make([]float64, len(a.Phase)))
+	G[`origphase.png`] = append(G[`origphase.png`].([][]float64), make([]float64, len(a.Phase)))
+	G[`mag.png`] = append(G[`mag.png`].([][]float64), make([]float64, len(a.Phase)))
 
 	for i := range a.X {
 		if mag(a.X[i]) > abstol {
@@ -38,7 +28,7 @@ func (n *Nanowarp) pghi(stretch float64, out []complex128) {
 			heappush(&n.heap, heaptriple{mag(a.P[i]), i, -1})
 		} else {
 			// FIXME Slow. Use noise texture.
-			a.Frame[i] = mix(-math.Pi, math.Pi, rand.Float64())
+			a.Phase[i] = mix(-math.Pi, math.Pi, rand.Float64())
 		}
 	}
 
@@ -48,66 +38,70 @@ func (n *Nanowarp) pghi(stretch float64, out []complex128) {
 		if i == n.nbins-1 || i == 0 {
 			a.S2[i] = angle(a.X[i])
 		} else {
-			a.S2[i] = (princarg(angle(a.X[i+1])-angle(a.X[i])) +
-				princarg(angle(a.X[i])-angle(a.X[i-1]))) / 2
+			l := princarg(angle(a.X[i+1]) - angle(a.X[i]))
+			r := princarg(angle(a.X[i]) - angle(a.X[i-1]))
+			a.S2[i] = (l + r) / 2 * stretch
+
+			corr := 1.0 / float64(n.nfft) * math.Pi * 2
+			a.S2[i] = princarg(-real(a.Xt[i]/a.X[i])*corr+math.Pi) * stretch
 		}
 
-		{
-			const1 := 2.0 * math.Pi * aana / float64(n.nfft)
-			const2 := 2.0 * math.Pi * asyn / float64(n.nfft)
-			f := func(j int) float64 {
-				return asyn*(princarg(angle(a.F[j+1][i])-angle(a.F[j][i])-const1*float64(i))/(2.0*aana)-
-					princarg(angle(a.F[j][i])-angle(a.F[j-1][i])-const1*float64(i))/(2.0*aana)) + const2*float64(i)
-			}
+		p := G[`phasogram.png`].([][]float64)
+		o := G[`origphase.png`].([][]float64)
+		m := G[`mag.png`].([][]float64)
 
-			a.S3[i] = f(1)
-			a.S4[i] = f(2)
+		const1 := 2.0 * math.Pi * aana / float64(n.nfft)
+		const2 := 2.0 * math.Pi * asyn / float64(n.nfft)
+		_ = const2
+		f := func(j int) float64 {
+			l := princarg(angle(a.F[j+1][i])-angle(a.F[j][i])-const1*float64(i)) / (2.0 * aana)
+			r := princarg(angle(a.F[j][i])-angle(a.F[j-1][i])-const1*float64(i)) / (2.0 * aana)
+
+			return asyn*(l-r) + const2*float64(i)
 		}
+
+		a.S3[i] = f(1)
+		a.S4[i] = f(2)
+		o[len(o)-1][i] = princarg(a.S4[i])
+
+		f = func(j int) float64 {
+			return princarg(imag(a.Xd[i]/a.X[i])) * stretch / 5
+		}
+		a.S4[i] = f(1)
+		p[len(o)-1][i] = princarg(a.S4[i])
+		m[len(o)-1][i] = mag(a.X[i])
+
 	}
 	for i := 0; len(n.iset) > 0 && i < n.nbins; i++ {
 		h := heappop(&n.heap)
-		// TODO Time derivative is reassigned frequency correction, frequency derivative is time correction.
-		// dt := func(j int) float64 {
-		// 	// var dts float64 = 1
-		// 	ramp := 2.0 * math.Pi * float64(h.w) / float64(n.nbins)
-		// 	_ = ramp
-		// 	o := 0.0
-		// 	if j == 0 {
-		// 		o = princarg(imag(a.Xd[h.w]/(a.X[h.w]+eps))) / aana * math.Pi
-		// 	} else if j == -1 {
-		// 		o = princarg(imag(a.Pd[h.w]/(a.P[h.w]+eps))) / aana * math.Pi
-		// 	}
-		// 	return float64(n.nfft) * o
-		// }
 		dt := func(j int) float64 {
 			if j == -1 {
 				return a.S3[h.w]
 			}
 			return a.S4[h.w]
 		}
-
-		// df := func(i int) float64 {
-		// 	return -real(a.Xt[i]/(a.X[i]+eps)) / float64(n.nfft) * 4 * math.Pi
-		// }
 		df := func(i int) float64 {
 			return a.S2[i]
 		}
 
 		if h.t == -1 {
 			if _, ok := n.iset[h.w]; ok {
-				a.Frame[h.w] = a.Frame[h.w] + (dt(-1)+dt(0))/2
+				// a.Frame[h.w] = a.Frame[h.w] + (dt(-1)+dt(0))/2
+				a.Phase[h.w] = a.Phase[h.w] + dt(0)
 				delete(n.iset, h.w)
 				heappush(&n.heap, heaptriple{mag(a.X[h.w]), h.w, 0})
 			}
 		}
 		if h.t == 0 {
 			if _, ok := n.iset[h.w+1]; ok {
-				a.Frame[h.w+1] = a.Frame[h.w] + (df(h.w)+df(h.w+1))/2*stretch
+				// a.Frame[h.w+1] = a.Frame[h.w] + (df(h.w)+df(h.w+1))/2
+				a.Phase[h.w+1] = a.Phase[h.w] + df(h.w)
 				delete(n.iset, h.w+1)
 				heappush(&n.heap, heaptriple{mag(a.X[h.w+1]), h.w + 1, 0})
 			}
 			if _, ok := n.iset[h.w-1]; ok {
-				a.Frame[h.w-1] = a.Frame[h.w] - (df(h.w)+df(h.w-1))/2*stretch
+				// a.Frame[h.w-1] = a.Frame[h.w] - (df(h.w)+df(h.w-1))/2
+				a.Phase[h.w-1] = a.Phase[h.w] - df(h.w)
 				delete(n.iset, h.w-1)
 				heappush(&n.heap, heaptriple{mag(a.X[h.w-1]), h.w - 1, 0})
 			}
@@ -116,14 +110,7 @@ func (n *Nanowarp) pghi(stretch float64, out []complex128) {
 	}
 
 	for i := range out {
-		{
-			p := G[`phasogram`].([][]float64)
-			o := G[`origphase`].([][]float64)
-			p[len(p)-1][i] = princarg(a.Frame[i])
-			// o[len(p)-1][i] = o[len(p)-1][max(0, i-1)] + angle(a.P[i])
-			o[len(p)-1][i] = angle(a.P[i])
-		}
-		out[i] = poltocar(mag(a.X[i]), a.Frame[i])
+		out[i] = poltocar(mag(a.X[i]), a.Phase[i])
 	}
 	n.prevstretch = stretch
 }

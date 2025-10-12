@@ -14,7 +14,7 @@ const eps = 1e-15
 
 type bufs struct {
 	Fr                   []float64 // Frame buffer
-	S, Frame, S2, S3, S4 []float64 // Scratch buffers
+	S, Phase, S2, S3, S4 []float64 // Scratch buffers
 	Cs0, Cs1             []complex128
 
 	W, Wd, Wt, Wdt []float64    // Window functions
@@ -49,14 +49,14 @@ type Nanowarp struct {
 }
 
 func New() (n *Nanowarp) {
-	nfft := 2048
-	nbuf := nfft
+	nfft := 8192
+	nbuf := nfft / 2
 	nbins := nfft/2 + 1
 	n = &Nanowarp{
 		nfft:  nfft,
 		nbins: nbins,
 		nbuf:  nbuf,
-		hop:   nbuf / 4,
+		hop:   nbuf / 8,
 		iset:  make(map[int]struct{}, nbins),
 		q:     make([]float64, 2*nfft),
 	}
@@ -83,7 +83,7 @@ func New() (n *Nanowarp) {
 		}
 	}
 	// Exceptions.
-	a.Frame = make([]float64, n.nbins)
+	a.Phase = make([]float64, n.nbins)
 	hann(a.W[:nbuf])
 	hannDx(a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
@@ -101,6 +101,9 @@ func (n *Nanowarp) Process2(in []float64, out []float64, stretch float64) {
 	o := int(math.Floor(float64(n.hop) * stretch))
 	fmt.Fprintln(os.Stderr, o)
 	n.coeff = 5.5
+
+	fmt.Fprintln(os.Stderr, "pghipaper()")
+	pghi := n.pghipaper
 	for i := 2 * o; i < len(in); i += n.hop {
 		enfft := func(i int, x []complex128, w []float64) {
 			copy(a.S, in[i:i+n.nfft])
@@ -138,7 +141,7 @@ func (n *Nanowarp) Process2(in []float64, out []float64, stretch float64) {
 		// enfft(i+o, a.Pd, a.Wd)
 		// enfft(i+o, a.Pt, a.Wt)
 
-		n.pghi(stretch, a.A)
+		pghi(stretch, a.A)
 
 		n.fft.Sequence(a.S, a.A)
 		for i := range a.S {
@@ -298,6 +301,21 @@ func max[T constraints.Ordered](a ...T) T {
 		}
 	}
 	return b
+}
+
+func izero[T any](sl []T, i int) T {
+	var z T
+	if i >= len(sl)-1 || i < 0 {
+		return z
+	}
+	return sl[i]
+}
+
+func iwrap[T any](sl []T, i int) T {
+	if i >= len(sl)-1 || i < 0 {
+		i = ((i % len(sl)) + len(sl)) % len(sl)
+	}
+	return sl[i]
 }
 
 // G is an implicit global variable map for internal debugging purposes.

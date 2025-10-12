@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 
 	"image"
 	"image/color"
@@ -16,12 +17,17 @@ import (
 
 func main() {
 	nanowarp.G = map[string]any{}
-	nanowarp.G[`phasogram`] = make([][]float64, 0)
-	nanowarp.G[`origphase`] = make([][]float64, 0)
+	nanowarp.G[`phasogram.png`] = make([][]float64, 0)
+	nanowarp.G[`origphase.png`] = make([][]float64, 0)
+	nanowarp.G[`mag.png`] = make([][]float64, 0)
 
-	// file, _ := os.Open(`ticktock.wav`)
-	file, _ := os.Open(`fm.wav`)
-	// file, _ := os.Open(`saw-click.wav`)
+	filename := `fm.wav`
+	// filename = `ticktock.wav`
+	// filename = `saw-click.wav`
+
+	fmt.Fprintln(os.Stderr, filename)
+
+	file, _ := os.Open(filename)
 	rd := wav.NewReader(file)
 	data := []float64{}
 	for {
@@ -40,12 +46,10 @@ func main() {
 	nw.Process2(data, out, n)
 
 	for i := range out {
-		out[i] = max(-1, min(out[i], 1))
+		out[i] = math.Tanh(out[i]) // Clipping
 	}
 
-	// file, err := os.Create(`ticktock-x2.wav`)
-	file, err := os.Create(`fm-x2.wav`)
-	// file, err := os.Create(`saw-click-x2.wav`)
+	file, err := os.Create(`2x-` + filename)
 	if err != nil {
 		panic(err)
 	}
@@ -60,14 +64,17 @@ func main() {
 
 	phasogram := func(name string) {
 		fmt.Println(name)
-		file, err := os.Create(name + `.png`)
+		file, err := os.Create(name)
 		if err != nil {
 			panic(err)
 		}
 		png.Encode(file, FloatMatrixToImage(nanowarp.G[name].([][]float64)))
 	}
-	phasogram(`phasogram`)
-	phasogram(`origphase`)
+	for k := range nanowarp.G {
+		if strings.HasSuffix(k, ".png") {
+			phasogram(k)
+		}
+	}
 
 }
 
