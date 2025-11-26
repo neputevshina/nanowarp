@@ -46,6 +46,8 @@ type Nanowarp struct {
 	heap []heaptriple
 
 	a bufs
+
+	ltfat *RTPGHIState
 }
 
 func New() (n *Nanowarp) {
@@ -57,13 +59,13 @@ func New() (n *Nanowarp) {
 		nfft:  nfft,
 		nbins: nbins,
 		nbuf:  nbuf,
-		hop:   nbuf / 8,
+		hop:   nbuf / 4,
 		iset:  make(map[int]struct{}, nbins),
 		q:     make([]float64, 2*nfft),
 	}
 	a := &n.a
 
-	a.F = make([][]complex128, 4)
+	a.F = make([][]complex128, 5)
 
 	// Automatically initialize slices through reflection.
 	rn := reflect.ValueOf(&n.a).Elem()
@@ -93,21 +95,33 @@ func New() (n *Nanowarp) {
 
 	n.fft = fourier.NewFFT(nfft)
 
+	var err error
+	n.ltfat, err = rtpghiInit(8192, n.hop, nfft, 1e-6)
+	if err != nil {
+		panic(err)
+	}
+
 	return
 }
 
-func (n *Nanowarp) Process2(in []float64, out []float64, stretch float64) {
+func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	adv := 0
 	a := &n.a
+	e := int(math.Floor(float64(n.hop)))
 	o := int(math.Floor(float64(n.hop) * stretch))
-	fmt.Fprintln(os.Stderr, o)
-	n.coeff = 5.5
+	fmt.Fprintln(os.Stderr, `outhop:`, o)
+	fmt.Fprintln(os.Stderr, `inhop:`, e, `nbuf:`, n.nbuf)
+
+	// fmt.Fprintln(os.Stderr, "pghivoc()")
+	// pghi := n.pghivoc
 
 	fmt.Fprintln(os.Stderr, "pghipaper()")
 	pghi := n.pghipaper
-	for i := 2 * o; i < len(in); i += n.hop {
+
+	for i := 2 * o; i < len(in); i += e {
 		enfft := func(i int, x []complex128, w []float64) {
-			copy(a.S, in[i:i+n.nfft])
+			zero(a.S)
+			copy(a.S, in[i:i+n.nbuf])
 			mul(a.S, w)
 			n.fft.Coefficients(x, a.S)
 		}
@@ -120,27 +134,11 @@ func (n *Nanowarp) Process2(in []float64, out []float64, stretch float64) {
 		enfft(i-1*o, a.F[1], a.W)
 		enfft(i, a.F[2], a.W)
 		enfft(i+1*o, a.F[3], a.W)
+		enfft(i+2*o, a.F[4], a.W)
 
 		enfft(i-o, a.P, a.W)
 		enfft(i-o, a.Pd, a.Wd)
 		enfft(i-o, a.Pt, a.Wt)
-
-		// if i == 2*o {
-		// 	for j := range a.Frame {
-		// 		a.Frame[j] = angle(a.P[j])
-		// 	}
-		// }
-
-		// fmt.Fprintln(os.Stderr, "nanowarp.go: phase convergence test")
-		// for i := range n.nbins {
-		// 	dt := imag(a.Xd[i]/(a.X[i]+eps)) / -math.Pi
-		// 	// df := -real(a.Xt[i]/(a.X[i]+eps)) / float64(n.nfft) * 4 * math.Pi
-		// 	fmt.Println(dt)
-		// }
-		// os.Exit(1)
-		// enfft(i+o, a.P, a.W)
-		// enfft(i+o, a.Pd, a.Wd)
-		// enfft(i+o, a.Pt, a.Wt)
 
 		pghi(stretch, a.A)
 
@@ -150,35 +148,8 @@ func (n *Nanowarp) Process2(in []float64, out []float64, stretch float64) {
 			a.S[i] *= stretch
 		}
 		mul(a.S, a.W)
-		add(out[adv:adv+n.nfft], a.S)
+		add(out[adv:adv+n.nbuf], a.S)
 		adv += o
-	}
-}
-
-// speckle calculates the mixed partial derivative of spectral phase by time and
-// frequency from reassigned windowed complex spectra.
-// See Fitz, Kelly R., and Sean A. Fulop. “A unified theory of time-frequency reassignment”.
-// https://arxiv.org/pdf/0903.3080
-func speckle(x, xd, xt, xdt []complex128, out []float64) {
-	for i := range x {
-		out[i] = real(xdt[i]/x[i]) - real((xt[i]*xd[i])/(x[i]*x[i]))
-	}
-}
-
-// freqcorr calculates the partial derivative of phase by time.
-// Also known as “reassigned frequency correction” or “phase advance”.
-func freqcorr(x, xd []complex128, out []float64) {
-	for i := range x {
-		out[i] = imag(xd[i]/x[i]) / math.Pi
-	}
-}
-
-// phaselock locks the neighboring phase components of the complex spectrum.
-// See Puckette, Miller. “Phase-locked vocoder”
-// https://msp.ucsd.edu/Publications/mohonk95.pdf
-func phaselock(x []complex128, out []complex128) {
-	for i := range x {
-		out[i] = x[i] - x[max(0, i-1)] - x[min(len(x)-1, i+1)]
 	}
 }
 

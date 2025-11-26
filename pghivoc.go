@@ -7,7 +7,7 @@ import (
 
 const pipi = 2 * math.Pi
 
-func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
+func (n *Nanowarp) pghivoc(stretch float64, out []complex128) {
 	a := &n.a
 	n.heap = n.heap[:0]
 	clear(n.iset)
@@ -27,92 +27,73 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 			n.iset[i] = struct{}{}
 			heappush(&n.heap, heaptriple{mag(a.P[i]), i, -1})
 		} else {
-			// FIXME Slow. Use noise texture.
 			a.Phase[i] = mix(-math.Pi, math.Pi, rand.Float64())
 		}
 	}
 
 	aana := float64(n.hop)
 	asyn := aana * stretch
-	for i := range a.X {
-		if i == n.nbins-1 || i == 0 {
-			a.S2[i] = angle(a.X[i])
-		} else {
-			l := princarg(angle(a.X[i+1]) - angle(a.X[i]))
-			r := princarg(angle(a.X[i]) - angle(a.X[i-1]))
-			a.S2[i] = (l + r) / 2 * stretch
+	bana := float64(n.hop)
+	bsyn := bana * stretch
+	phia := func(w, t float64) float64 {
+		t += 2
+		return angle(izero(a.F[int(t)], int(w)))
+	}
+	maga := func(w, t float64) float64 {
+		t += 2
+		return mag(izero(a.F[int(t)], int(w)))
+	}
+	tcent := func(w, t float64) float64 {
+		tau := func(w, t float64) float64 {
+			const1 := 2.0 * math.Pi * aana / float64(n.nfft)
+			const2 := 2.0 * math.Pi * asyn / float64(n.nfft)
+			l := princarg(phia(w, t+1)-phia(w, t)-const1*w) / (2.0 * aana)
+			r := princarg(phia(w, t)-phia(w, t-1)-const1*w) / (2.0 * aana)
 
-			corr := 1.0 / float64(n.nfft) * math.Pi * 2
-			a.S2[i] = princarg(-real(a.Xt[i]/a.X[i])*corr+math.Pi) * stretch
+			return asyn*(l-r) + const2*w
 		}
-
-		p := G[`phasogram.png`].([][]float64)
-		o := G[`origphase.png`].([][]float64)
-		m := G[`mag.png`].([][]float64)
-
-		const1 := 2.0 * math.Pi * aana / float64(n.nfft)
-		const2 := 2.0 * math.Pi * asyn / float64(n.nfft)
-		_ = const2
-		f := func(j int) float64 {
-			l := princarg(angle(a.F[j+1][i])-angle(a.F[j][i])-const1*float64(i)) / (2.0 * aana)
-			r := princarg(angle(a.F[j][i])-angle(a.F[j-1][i])-const1*float64(i)) / (2.0 * aana)
-
-			return asyn*(l-r) + const2*float64(i)
+		return (tau(w, t) + tau(w, t+1)) / 2
+	}
+	fcent := func(w, t float64) float64 {
+		omega := func(w, t float64) float64 {
+			a := phia(w, t) - phia(w-1, t)
+			return princarg(a) / bana
 		}
-
-		a.S3[i] = f(1)
-		a.S4[i] = f(2)
-		o[len(o)-1][i] = princarg(a.S4[i])
-
-		f = func(j int) float64 {
-			return princarg(imag(a.Xd[i]/a.X[i])) * stretch / 5
+		if w == 0 || int(w) == n.nbins-1 {
+			return phia(w, t)
 		}
-		a.S4[i] = f(1)
-		p[len(o)-1][i] = princarg(a.S4[i])
-		m[len(o)-1][i] = mag(a.X[i])
-
+		return (omega(w+1, t) + omega(w, t)) / 2
 	}
 	for i := 0; len(n.iset) > 0 && i < n.nbins; i++ {
 		h := heappop(&n.heap)
-		dt := func(j int) float64 {
-			if j == -1 {
-				return a.S3[h.w]
-			}
-			return a.S4[h.w]
-		}
-		df := func(i int) float64 {
-			return a.S2[i]
-		}
+		w := float64(h.w)
 
 		if h.t == -1 {
 			if _, ok := n.iset[h.w]; ok {
-				// a.Frame[h.w] = a.Frame[h.w] + (dt(-1)+dt(0))/2
-				a.Phase[h.w] = a.Phase[h.w] + dt(0)
+				a.Phase[h.w] = a.Phase[h.w] + (tcent(w, -1)+tcent(w, 0))*asyn/2
+				// a.Phase[h.w] = a.Phase[h.w] + tcent(w, 0)*asyn
 				delete(n.iset, h.w)
-				heappush(&n.heap, heaptriple{mag(a.X[h.w]), h.w, 0})
+				heappush(&n.heap, heaptriple{maga(w, 0), h.w, 0})
 			}
 		}
 		if h.t == 0 {
 			if _, ok := n.iset[h.w+1]; ok {
-				// a.Frame[h.w+1] = a.Frame[h.w] + (df(h.w)+df(h.w+1))/2
-				a.Phase[h.w+1] = a.Phase[h.w] + df(h.w)
+				a.Phase[h.w+1] = a.Phase[h.w] + (fcent(w+1, 0)+fcent(w, 0))*bsyn/2
 				delete(n.iset, h.w+1)
-				heappush(&n.heap, heaptriple{mag(a.X[h.w+1]), h.w + 1, 0})
+				heappush(&n.heap, heaptriple{maga(w, 0), h.w + 1, 0})
 			}
 			if _, ok := n.iset[h.w-1]; ok {
-				// a.Frame[h.w-1] = a.Frame[h.w] - (df(h.w)+df(h.w-1))/2
-				a.Phase[h.w-1] = a.Phase[h.w] - df(h.w)
+				a.Phase[h.w-1] = a.Phase[h.w] - (fcent(w-1, 0)+fcent(w, 0))*bsyn/2
 				delete(n.iset, h.w-1)
-				heappush(&n.heap, heaptriple{mag(a.X[h.w-1]), h.w - 1, 0})
+				heappush(&n.heap, heaptriple{maga(w, 0), h.w - 1, 0})
 			}
 		}
 
 	}
 
 	for i := range out {
-		out[i] = poltocar(mag(a.X[i]), a.Phase[i])
+		out[i] = poltocar(maga(float64(i), 0), a.Phase[i])
 	}
-	n.prevstretch = stretch
 }
 
 // A stripped-down version of the standard container/heap.
