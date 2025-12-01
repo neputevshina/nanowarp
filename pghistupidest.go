@@ -56,18 +56,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		}
 
 		for j := range a.X {
-			var f float64 = float64(j) / float64(len(a.X))
-			_ = f
-			// a.S2[j] = princarg(f + math.Pi + -2*imag(a.Xd[j]/a.X[j]))
-			// a.S2[j] = -imag(a.Xd[j]/a.X[j]) * (0.001 * float64(i/e))
-			// a.S2[j] = -imag(a.Xd[j]/a.X[j]) * (0.001*16000 + 0.001*float64(i/e))
-			// a.S2[j] = princarg(f*math.Pi - imag(a.Xd[j]/a.X[j])*(0.001*float64(i/e)))
-			// a.S2[j] = princarg(f*math.Pi - imag(a.Xd[j]/a.X[j])*(8+0.001*float64(i/e)))
-			// a.S2[j] = princarg(2*f - 2*imag(a.Xd[j]/a.X[j]))
-			// a.S2[j] = princarg(0.01*float64(i/e) - imag(a.Xd[j]/a.X[j]))
 			a.S2[j] = princarg(0.25 * (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])))
-			// a.S2[j] = cmplx.Phase(a.X[j])
-			// a.S2[j] = princarg(cmplx.Phase(a.X[j]) - cmplx.Phase(a.Cs0[j]))
 		}
 		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.S2))
 

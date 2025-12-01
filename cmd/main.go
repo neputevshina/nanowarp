@@ -21,8 +21,8 @@ func main() {
 	// nanowarp.G[`origphase.png`] = make([][]float64, 0)
 	// nanowarp.G[`mag.png`] = make([][]float64, 0)
 
-	filename := `fm.wav`
-	// filename := `saw.wav`
+	// filename := `fm.wav`
+	filename := `saw.wav`
 	// filename := `ticktock.wav`
 	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
 	// filename := `saw-click.wav`
