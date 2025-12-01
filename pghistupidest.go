@@ -65,7 +65,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 			// a.S2[j] = princarg(f*math.Pi - imag(a.Xd[j]/a.X[j])*(8+0.001*float64(i/e)))
 			// a.S2[j] = princarg(2*f - 2*imag(a.Xd[j]/a.X[j]))
 			// a.S2[j] = princarg(0.01*float64(i/e) - imag(a.Xd[j]/a.X[j]))
-			a.S2[j] = princarg(float64(j) + 0.25*imag(a.Xd[j]/a.X[j]))
+			a.S2[j] = princarg((0.75*float64(j) + 0.25*imag(a.Xd[j]/a.X[j])))
 			// a.S2[j] = cmplx.Phase(a.X[j])
 			// a.S2[j] = princarg(cmplx.Phase(a.X[j]) - cmplx.Phase(a.Cs0[j]))
 		}
