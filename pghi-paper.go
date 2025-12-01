@@ -3,6 +3,7 @@ package nanowarp
 import (
 	"math"
 	"math/rand/v2"
+	"slices"
 )
 
 func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
@@ -15,10 +16,6 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 		abstol = max(abstol, mag(a.X[i]), mag(a.P[i]))
 	}
 	abstol *= 1e-6
-
-	G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), make([]float64, len(a.Phase)))
-	G[`origphase.png`] = append(G[`origphase.png`].([][]float64), make([]float64, len(a.Phase)))
-	G[`mag.png`] = append(G[`mag.png`].([][]float64), make([]float64, len(a.Phase)))
 
 	for i := range a.X {
 		if mag(a.X[i]) > abstol {
@@ -48,6 +45,7 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 	tcent := func(w, t float64) float64 {
 		tau := func(w, t float64) float64 {
 			ramp := pipi * w / float64(n.nfft)
+			// ramp = 0
 			a := phia(w, t) - phia(w, t-1) - aana*ramp
 			return princarg(a)/aana + ramp
 		}
@@ -57,12 +55,21 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 		omega := func(w, t float64) float64 {
 			a := phia(w, t) - phia(w-1, t)
 			return princarg(a) / bana
+			// return a / bana
 		}
 		if w == 0 || int(w) == n.nbins-1 {
 			return phia(w, t)
 		}
 		return (omega(w+1, t) + omega(w, t)) / 2
 	}
+	for i := range a.X {
+		w := float64(i)
+		a.S2[i] = min(50, max(-10, (tcent(w, -1)+tcent(w, 0))*asyn/2))
+		// a.S2[i] = min(4, max(-4, ((fcent(w+1, 0)+fcent(w, 0))*bsyn/2+math.Pi)))
+		// a.S2[i] = mag(a.X[i])
+	}
+	G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.S2))
+
 	for i := 0; len(n.iset) > 0 && i < n.nbins; i++ {
 		h := heappop(&n.heap)
 		w := float64(h.w)
