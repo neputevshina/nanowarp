@@ -55,22 +55,16 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 			}
 		}
 
+		olap := float64(n.nbuf / n.hop)
 		for j := range a.X {
-			a.S2[j] = princarg(0.25 * (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])))
-		}
-		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.S2))
-
-		for j := range a.X {
-			var f float64 = float64(j) / float64(len(a.X))
-			_ = f
-			a.Phase[j] = princarg(cmplx.Phase(a.P[j]) + a.S2[j])
-			// a.Phase[j] = mix(-math.Pi, math.Pi, rand.Float64())
+			padv := (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap
+			a.Phase[j] = princarg(cmplx.Phase(a.P[j]) + padv)
 		}
 
-		// for i := 0; len(n.iset) > 0 && i < n.nbins; i++ {
+		// for j := 0; len(n.iset) > 0 && j < n.nbins; j++ {
 		// 	h := heappop(&n.heap)
-		// 	dt := a.S2[h.w] * stretch
-		// 	dw := (math.Pi - real(a.Xt[i]/a.X[i])/float64(len(a.X))*2*math.Pi) * stretch
+		// 	dt := (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap * stretch
+		// 	dw := (math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi) * stretch
 		// 	switch h.t {
 		// 	case -1:
 		// 		if _, ok := n.iset[h.w]; ok {
@@ -78,7 +72,6 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		// 			delete(n.iset, h.w)
 		// 			heappush(&n.heap, heaptriple{mag(izero(a.X, h.w)), h.w, 0})
 		// 		}
-
 		// 	case 0:
 		// 		if _, ok := n.iset[h.w+1]; ok {
 		// 			a.Phase[h.w+1] = princarg(a.Phase[h.w] + dw)
@@ -93,7 +86,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		// 	}
 		// }
 
-		// G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.Phase))
+		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.Phase))
 
 		for j := range a.Phase {
 			a.A[j] = cmplx.Rect(mag(a.X[j]), a.Phase[j])
