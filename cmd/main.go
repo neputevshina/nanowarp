@@ -5,11 +5,9 @@ import (
 	"io"
 	"math"
 	"os"
-	"strings"
 
 	"image"
 	"image/color"
-	"image/png"
 
 	"github.com/neputevshina/nanowarp"
 	"github.com/youpy/go-wav"
@@ -44,12 +42,13 @@ func main() {
 		}
 	}
 	nw := nanowarp.New()
-	n := 1.
+	n := 2.
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process1(data, out, n)
 
+	// Clipping.
 	for i := range out {
-		out[i] = math.Tanh(out[i] * n) // Clipping
+		out[i] = math.Tanh(out[i] * n)
 	}
 
 	file, err := os.Create(`2x-` + filename)
@@ -66,20 +65,20 @@ func main() {
 	}
 	file.Close()
 
-	phasogram := func(name string) {
-		fmt.Println(name)
-		file, err := os.Create(name)
-		if err != nil {
-			panic(err)
-		}
-		png.Encode(file, FloatMatrixToImage(nanowarp.G[name].([][]float64)))
-	}
+	// phasogram := func(name string) {
+	// 	fmt.Println(name)
+	// 	file, err := os.Create(name)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	png.Encode(file, FloatMatrixToImage(nanowarp.G[name].([][]float64)))
+	// }
 
-	for k := range nanowarp.G {
-		if strings.HasSuffix(k, ".png") {
-			phasogram(k)
-		}
-	}
+	// for k := range nanowarp.G {
+	// 	if strings.HasSuffix(k, ".png") {
+	// 		phasogram(k)
+	// 	}
+	// }
 
 }
 

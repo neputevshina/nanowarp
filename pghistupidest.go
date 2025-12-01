@@ -6,18 +6,17 @@ import (
 	"math/cmplx"
 	"math/rand/v2"
 	"os"
-	"slices"
 )
 
 func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 	a := &n.a
-	e := int(math.Floor(float64(n.hop)))
-	o := int(math.Floor(float64(n.hop) * stretch))
-	fmt.Fprintln(os.Stderr, `outhop:`, o)
-	fmt.Fprintln(os.Stderr, `inhop:`, e, `nbuf:`, n.nbuf)
+	ih := int(math.Floor(float64(n.hop) / stretch))
+	oh := int(math.Floor(float64(n.hop)))
+	fmt.Fprintln(os.Stderr, `inhop:`, ih, `nbuf:`, n.nbuf)
+	fmt.Fprintln(os.Stderr, `outhop:`, oh)
 
 	adv := 0
-	for i := e; i < len(in); i += e {
+	for i := 0; i < len(in); i += ih {
 		enfft := func(i int, x []complex128, w []float64) {
 			zero(a.S)
 			copy(a.S, in[i:i+n.nbuf])
@@ -29,7 +28,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		enfft(i, a.Xd, a.Wd)
 		enfft(i, a.Xt, a.Wt)
 
-		if i == e {
+		if i == 0 {
 			copy(a.P, a.X)
 			continue
 		}
@@ -42,7 +41,8 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 
 		abstol := mag(a.X[0])
 		for j := range a.X {
-			abstol = max(abstol, mag(a.X[j]), mag(a.P[j]))
+			// abstol = max(abstol, mag(a.X[j]), mag(a.P[j]))
+			abstol = max(abstol, mag(a.X[j]))
 		}
 		abstol *= 1e-6
 
@@ -57,8 +57,12 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 
 		olap := float64(n.nbuf / n.hop)
 		for j := range a.X {
+			// I don't know, this phase advance formula is a
+			// product of 10 hours of trial and error.
 			padv := (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap
 			a.Phase[j] = princarg(cmplx.Phase(a.P[j]) + padv)
+			// Implementation note:
+			// Use padv/stretch if oh = nhop*stretch, if ih = nhop/stretch use padv
 		}
 
 		// for j := 0; len(n.iset) > 0 && j < n.nbins; j++ {
@@ -86,7 +90,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		// 	}
 		// }
 
-		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.Phase))
+		// G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.Phase))
 
 		for j := range a.Phase {
 			a.A[j] = cmplx.Rect(mag(a.X[j]), a.Phase[j])
@@ -100,10 +104,10 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		n.fft.Sequence(a.S, a.P)
 		for j := range a.S {
 			a.S[j] /= n.norm
-			// a.S[i] *= stretch
+			a.S[j] /= stretch
 		}
 		mul(a.S, a.W)
 		add(out[adv:adv+n.nbuf], a.S)
-		adv += o
+		adv += oh
 	}
 }

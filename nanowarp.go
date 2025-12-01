@@ -55,11 +55,12 @@ func New() (n *Nanowarp) {
 	nbuf := nfft / 2
 
 	nbins := nfft/2 + 1
+	olap := 4
 	n = &Nanowarp{
 		nfft:  nfft,
 		nbins: nbins,
 		nbuf:  nbuf,
-		hop:   nbuf / 4,
+		hop:   nbuf / olap,
 		iset:  make(map[int]struct{}, nbins),
 		q:     make([]float64, 2*nfft),
 	}
