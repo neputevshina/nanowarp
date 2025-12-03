@@ -62,7 +62,8 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 			return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap
 		}
 		fadv := func(j int) float64 {
-			return math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi
+			// return math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi
+			return -real(a.Xt[j]/a.X[j])/float64(len(a.X))*math.Pi - math.Pi
 		}
 		_ = padv
 		_ = fadv
