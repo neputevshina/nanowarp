@@ -47,7 +47,7 @@ func main() {
 	nw := nanowarp.New()
 	n := 2.
 	out := make([]float64, int(float64(len(data)+8192)*n))
-	nw.Process1(data, out, n)
+	nw.Process(data, out, n)
 
 	// Clipping.
 	for i := range out {
