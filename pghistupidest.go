@@ -83,12 +83,12 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
-					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w)*stretch)
+					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w))
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w-1]), w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
-					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w)*stretch)
+					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w))
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w+1]), w + 1, 0})
 				}
