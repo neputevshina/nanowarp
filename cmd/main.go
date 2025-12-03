@@ -45,7 +45,7 @@ func main() {
 		}
 	}
 	nw := nanowarp.New()
-	n := 2.
+	n := 4.
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process(data, out, n)
 
@@ -54,7 +54,7 @@ func main() {
 		out[i] = math.Tanh(out[i] * n)
 	}
 
-	file, err := os.Create(`2x-` + filename)
+	file, err := os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
 
 	if err != nil {
 		panic(err)

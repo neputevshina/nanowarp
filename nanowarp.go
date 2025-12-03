@@ -15,35 +15,18 @@ import (
 const eps = 1e-15
 
 type bufs struct {
-	Fr                   []float64 // Frame buffer
-	S, Phase, S2, S3, S4 []float64 // Scratch buffers
-	Cs0, Cs1             []complex128
-
-	W, Wd, Wt, Wdt []float64    // Window functions
-	X, Xd, Xt, Xdt []complex128 // Complex spectra
-	P, Xn          []complex128
-	F              [][]complex128
-
-	Speckle, Pph []float64
-	N, A, Pd, Pt []complex128
-	Xdh          []complex128
+	S, Phase        []float64    // Scratch buffers
+	W, Wd, Wt       []float64    // Window functions
+	X, Xd, Xt, P, O []complex128 // Complex spectra
 }
 
 type Nanowarp struct {
-	nfft        int
-	nbuf        int
-	nbins       int
-	hop         int
-	outhop      int
-	prevstretch float64
-	coeff       float64
-
-	q  []float64
-	qi int
+	nfft  int
+	nbuf  int
+	nbins int
+	hop   int
 
 	fft  *fourier.FFT
-	tol  float64
-	iset map[int]struct{}
 	arm  []bool
 	norm float64
 	heap hp
@@ -52,7 +35,7 @@ type Nanowarp struct {
 }
 
 func New() (n *Nanowarp) {
-	nfft := 2048
+	nfft := 4096
 	nbuf := nfft / 2
 
 	nbins := nfft/2 + 1
@@ -62,12 +45,8 @@ func New() (n *Nanowarp) {
 		nbins: nbins,
 		nbuf:  nbuf,
 		hop:   nbuf / olap,
-		iset:  make(map[int]struct{}, nbins),
-		q:     make([]float64, 2*nfft),
 	}
 	a := &n.a
-
-	a.F = make([][]complex128, 5)
 
 	// Automatically initialize slices through reflection.
 	rn := reflect.ValueOf(&n.a).Elem()
@@ -92,7 +71,6 @@ func New() (n *Nanowarp) {
 	hann(a.W[:nbuf])
 	hannDx(a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
-	windowT(a.Wd[:nbuf], a.Wdt[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
 	n.arm = make([]bool, nbins)
 
@@ -176,12 +154,12 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
-					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w))
+					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w-1))
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w-1]), w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
-					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w))
+					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w+1))
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w+1]), w + 1, 0})
 				}
@@ -189,9 +167,9 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		}
 
 		for j := range a.Phase {
-			a.A[j] = cmplx.Rect(mag(a.X[j]), a.Phase[j])
+			a.O[j] = cmplx.Rect(mag(a.X[j]), a.Phase[j])
 		}
-		copy(a.P, a.A)
+		copy(a.P, a.O)
 
 		// End of PGHI
 
