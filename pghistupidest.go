@@ -6,7 +6,6 @@ import (
 	"math"
 	"math/cmplx"
 	"os"
-	"slices"
 )
 
 type hp []heaptriple
@@ -53,13 +52,11 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		// Begin of PGHI
 
 		a := &n.a
-		// n.heap = n.heap[:0]
 		n.heap = make(hp, n.nbins)
 		clear(n.arm)
 
 		for j := range a.X {
 			n.arm[j] = true
-			// heappush(&n.heap, heaptriple{mag(a.P[j]), j, -1})
 			n.heap[j] = heaptriple{mag(a.P[j]), j, -1}
 		}
 		heap.Init(&n.heap)
@@ -71,15 +68,10 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		}
 		fadv := func(j int) float64 {
 			return (-math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi) / 2
-			// return 0.5*math.Pi*float64(j) + real(a.Xt[j]/a.X[j])/float64(len(a.X)) - math.Pi
-			// return -real(a.Xt[j]/a.X[j])/float64(len(a.X))*math.Pi - math.Pi
 		}
-		_ = padv
-		_ = fadv
 
-		c := n.nbins
 		for len(n.heap) > 0 {
-			// for c > 0 {
+
 			h := heap.Pop(&n.heap).(heaptriple)
 			w := h.w
 			switch h.t {
@@ -88,37 +80,25 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 					a.Phase[w] = princarg(cmplx.Phase(a.P[w]) + padv(w))
 					n.arm[w] = false
 					heap.Push(&n.heap, heaptriple{mag(izero(a.X, w)), w, 0})
-					c--
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
-					// a.Phase[w-1] = princarg(a.Phase[w] + cmplx.Phase(a.X[w-1]-a.X[w]))
-					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w))
+					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w)*stretch)
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w-1]), w - 1, 0})
-					c--
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
-					// a.Phase[w+1] = princarg(a.Phase[w] + cmplx.Phase(a.X[w+1]-a.X[w]))
-					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w))
+					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w)*stretch)
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w+1]), w + 1, 0})
-					c--
 				}
 			}
 		}
 
-		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.Phase))
-
 		for j := range a.Phase {
 			a.A[j] = cmplx.Rect(mag(a.X[j]), a.Phase[j])
-			a.S[j] = cmplx.Phase(a.X[j]) // - cmplx.Phase(a.X[max(0, j-1)])
 		}
-
-		G[`origphase.png`] = append(G[`origphase.png`].([][]float64), slices.Clone(a.S))
-
 		copy(a.P, a.A)
-		copy(a.Cs0, a.X)
 
 		// End of PGHI
 

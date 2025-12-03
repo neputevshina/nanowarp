@@ -45,7 +45,7 @@ func main() {
 		}
 	}
 	nw := nanowarp.New()
-	n := 1.
+	n := 2.
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process1(data, out, n)
 
