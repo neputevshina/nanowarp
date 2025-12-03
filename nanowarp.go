@@ -44,7 +44,7 @@ type Nanowarp struct {
 	iset map[int]struct{}
 	arm  []bool
 	norm float64
-	heap []heaptriple
+	heap hp
 
 	a bufs
 
@@ -291,6 +291,110 @@ func iwrap[T any](sl []T, i int) T {
 		i = ((i % len(sl)) + len(sl)) % len(sl)
 	}
 	return sl[i]
+}
+
+// A stripped-down version of the standard container/heap.
+
+type heaptriple struct {
+	mag  float64
+	w, t int
+}
+
+func less(h *[]heaptriple, i, j int) bool {
+	// [...] To build a priority queue, implement the Heap interface with the
+	// (negative) priority as the ordering for the Less method, so Push adds
+	// items while Pop removes the highest-priority item from the queue.
+	return (*h)[i].mag > (*h)[j].mag
+}
+
+func heapinit(h *[]heaptriple) {
+	// heapify
+	n := len(*h)
+	for i := n/2 - 1; i >= 0; i-- {
+		down(h, i, n)
+	}
+}
+
+func swap(h *[]heaptriple, i, j int) {
+	(*h)[i], (*h)[j] = (*h)[j], (*h)[i]
+}
+
+func pop(h *[]heaptriple) heaptriple {
+	n := len(*h) - 1
+	l := (*h)[n]
+	*h = (*h)[:n]
+	return l
+}
+
+// heappush pushes the element x onto the heap.
+// The complexity is O(log n) where n = h.Len().
+func heappush(h *[]heaptriple, x heaptriple) {
+	*h = append(*h, x)
+	up(h, len(*h)-1)
+}
+
+// heappop removes and returns the minimum element (according to Less) from the heap.
+// The complexity is O(log n) where n = h.Len().
+// heappop is equivalent to [heapremove](h, 0).
+func heappop(h *[]heaptriple) heaptriple {
+	n := len(*h) - 1
+	swap(h, 0, n)
+	down(h, 0, n)
+	return pop(h)
+}
+
+// heapremove removes and returns the element at index i from the heap.
+// The complexity is O(log n) where n = h.Len().
+func heapremove(h *[]heaptriple, i int) any {
+	n := len(*h) - 1
+	if n != i {
+		swap(h, i, n)
+		if !down(h, i, n) {
+			up(h, i)
+		}
+	}
+	return pop(h)
+}
+
+// heapfix re-establishes the heap ordering after the element at index i has changed its value.
+// Changing the value of the element at index i and then calling heapfix is equivalent to,
+// but less expensive than, calling [heapremove](h, i) followed by a Push of the new value.
+// The complexity is O(log n) where n = h.Len().
+func heapfix(h *[]heaptriple, i int) {
+	if !down(h, i, len(*h)) {
+		up(h, i)
+	}
+}
+
+func up(h *[]heaptriple, j int) {
+	for {
+		i := (j - 1) / 2 // parent
+		if i == j || less(h, j, i) {
+			break
+		}
+		swap(h, i, j)
+		j = i
+	}
+}
+
+func down(h *[]heaptriple, i0, n int) bool {
+	i := i0
+	for {
+		j1 := 2*i + 1
+		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+			break
+		}
+		j := j1 // left child
+		if j2 := j1 + 1; j2 < n && less(h, j2, j1) {
+			j = j2 // = 2*i + 2  // right child
+		}
+		if !less(h, j, i) {
+			break
+		}
+		swap(h, i, j)
+		i = j
+	}
+	return i > i0
 }
 
 // G is an implicit global variable map for internal debugging purposes.

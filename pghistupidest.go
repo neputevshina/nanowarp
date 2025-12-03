@@ -1,13 +1,29 @@
 package nanowarp
 
 import (
+	"container/heap"
 	"fmt"
 	"math"
 	"math/cmplx"
-	"math/rand/v2"
 	"os"
 	"slices"
 )
+
+type hp []heaptriple
+
+func (h hp) Len() int           { return len(h) }
+func (h hp) Less(i, j int) bool { return h[i].mag > h[j].mag }
+func (h hp) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *hp) Push(x any) {
+	*h = append(*h, x.(heaptriple))
+}
+func (h *hp) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
 
 func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 	a := &n.a
@@ -37,24 +53,16 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		// Begin of PGHI
 
 		a := &n.a
-		n.heap = n.heap[:0]
+		// n.heap = n.heap[:0]
+		n.heap = make(hp, n.nbins)
 		clear(n.arm)
 
-		abstol := mag(a.X[0])
 		for j := range a.X {
-			// abstol = max(abstol, mag(a.X[j]), mag(a.P[j]))
-			abstol = max(abstol, mag(a.X[j]))
+			n.arm[j] = true
+			// heappush(&n.heap, heaptriple{mag(a.P[j]), j, -1})
+			n.heap[j] = heaptriple{mag(a.P[j]), j, -1}
 		}
-		abstol *= 1e-6
-
-		for j := range a.X {
-			if mag(a.X[j]) > abstol {
-				n.arm[j] = true
-				heappush(&n.heap, heaptriple{mag(a.X[j]), j, -1})
-			} else {
-				a.Phase[j] = mix(-math.Pi, math.Pi, rand.Float64())
-			}
-		}
+		heap.Init(&n.heap)
 
 		olap := float64(n.nbuf / n.hop)
 		padv := func(j int) float64 {
@@ -62,32 +70,40 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 			return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap
 		}
 		fadv := func(j int) float64 {
-			// return math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi
-			return -real(a.Xt[j]/a.X[j])/float64(len(a.X))*math.Pi - math.Pi
+			return (-math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi) / 2
+			// return 0.5*math.Pi*float64(j) + real(a.Xt[j]/a.X[j])/float64(len(a.X)) - math.Pi
+			// return -real(a.Xt[j]/a.X[j])/float64(len(a.X))*math.Pi - math.Pi
 		}
 		_ = padv
 		_ = fadv
 
+		c := n.nbins
 		for len(n.heap) > 0 {
-			h := heappop(&n.heap)
+			// for c > 0 {
+			h := heap.Pop(&n.heap).(heaptriple)
 			w := h.w
 			switch h.t {
 			case -1:
 				if n.arm[w] {
 					a.Phase[w] = princarg(cmplx.Phase(a.P[w]) + padv(w))
 					n.arm[w] = false
-					heappush(&n.heap, heaptriple{mag(izero(a.X, w)), w, 0})
+					heap.Push(&n.heap, heaptriple{mag(izero(a.X, w)), w, 0})
+					c--
 				}
 			case 0:
-				if w+1 < n.nbins-1 && n.arm[w+1] {
-					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w))
-					n.arm[w+1] = false
-					heappush(&n.heap, heaptriple{mag(izero(a.X, w+1)), w + 1, 0})
-				}
-				if w-1 > 0 && n.arm[w-1] {
+				if w > 1 && n.arm[w-1] {
+					// a.Phase[w-1] = princarg(a.Phase[w] + cmplx.Phase(a.X[w-1]-a.X[w]))
 					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w))
 					n.arm[w-1] = false
-					heappush(&n.heap, heaptriple{mag(izero(a.X, w-1)), w - 1, 0})
+					heap.Push(&n.heap, heaptriple{mag(a.X[w-1]), w - 1, 0})
+					c--
+				}
+				if w < n.nbins-1 && n.arm[w+1] {
+					// a.Phase[w+1] = princarg(a.Phase[w] + cmplx.Phase(a.X[w+1]-a.X[w]))
+					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w))
+					n.arm[w+1] = false
+					heap.Push(&n.heap, heaptriple{mag(a.X[w+1]), w + 1, 0})
+					c--
 				}
 			}
 		}
@@ -96,7 +112,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 
 		for j := range a.Phase {
 			a.A[j] = cmplx.Rect(mag(a.X[j]), a.Phase[j])
-			a.S[j] = cmplx.Phase(a.X[j])
+			a.S[j] = cmplx.Phase(a.X[j]) // - cmplx.Phase(a.X[max(0, j-1)])
 		}
 
 		G[`origphase.png`] = append(G[`origphase.png`].([][]float64), slices.Clone(a.S))

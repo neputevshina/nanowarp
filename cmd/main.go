@@ -23,10 +23,10 @@ func main() {
 
 	// filename := `fm.wav`
 	// filename := `saw.wav`
-	filename := `saw-short.wav`
+	// filename := `saw-short.wav`
+	filename := `saw-click.wav`
 	// filename := `ticktock.wav`
 	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
-	// filename := `saw-click.wav`
 
 	fmt.Fprintln(os.Stderr, filename)
 
@@ -45,7 +45,7 @@ func main() {
 		}
 	}
 	nw := nanowarp.New()
-	n := 2.
+	n := 1.
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process1(data, out, n)
 

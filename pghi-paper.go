@@ -1,6 +1,7 @@
 package nanowarp
 
 import (
+	"container/heap"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -20,7 +21,7 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 	for i := range a.X {
 		if mag(a.X[i]) > abstol {
 			n.iset[i] = struct{}{}
-			heappush(&n.heap, heaptriple{mag(a.P[i]), i, -1})
+			heap.Push(&n.heap, heaptriple{mag(a.P[i]), i, -1})
 		} else {
 			a.Phase[i] = mix(-math.Pi, math.Pi, rand.Float64())
 		}
@@ -44,7 +45,7 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 	}
 	tcent := func(w, t float64) float64 {
 		tau := func(w, t float64) float64 {
-			ramp := pipi * w / float64(n.nfft)
+			ramp := 2 * math.Pi * w / float64(n.nfft)
 			// ramp = 0
 			a := phia(w, t) - phia(w, t-1) - aana*ramp
 			return princarg(a)/aana + ramp
@@ -71,7 +72,7 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 	G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.S2))
 
 	for i := 0; len(n.iset) > 0 && i < n.nbins; i++ {
-		h := heappop(&n.heap)
+		h := heap.Pop(&n.heap).(heaptriple)
 		w := float64(h.w)
 
 		if h.t == -1 {
@@ -79,19 +80,19 @@ func (n *Nanowarp) pghipaper(stretch float64, out []complex128) {
 				a.Phase[h.w] = a.Phase[h.w] + (tcent(w, -1)+tcent(w, 0))*asyn/2
 				// a.Phase[h.w] = a.Phase[h.w] + tcent(w, 0)*asyn
 				delete(n.iset, h.w)
-				heappush(&n.heap, heaptriple{maga(w, 0), h.w, 0})
+				heap.Push(&n.heap, heaptriple{maga(w, 0), h.w, 0})
 			}
 		}
 		if h.t == 0 {
 			if _, ok := n.iset[h.w+1]; ok {
 				a.Phase[h.w+1] = a.Phase[h.w] + (fcent(w+1, 0)+fcent(w, 0))*bsyn/2
 				delete(n.iset, h.w+1)
-				heappush(&n.heap, heaptriple{maga(w, 0), h.w + 1, 0})
+				heap.Push(&n.heap, heaptriple{maga(w, 0), h.w + 1, 0})
 			}
 			if _, ok := n.iset[h.w-1]; ok {
 				a.Phase[h.w-1] = a.Phase[h.w] - (fcent(w-1, 0)+fcent(w, 0))*bsyn/2
 				delete(n.iset, h.w-1)
-				heappush(&n.heap, heaptriple{maga(w, 0), h.w - 1, 0})
+				heap.Push(&n.heap, heaptriple{maga(w, 0), h.w - 1, 0})
 			}
 		}
 
