@@ -42,6 +42,7 @@ type Nanowarp struct {
 	fft  *fourier.FFT
 	tol  float64
 	iset map[int]struct{}
+	arm  []bool
 	norm float64
 	heap []heaptriple
 
@@ -93,6 +94,7 @@ func New() (n *Nanowarp) {
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	windowT(a.Wd[:nbuf], a.Wdt[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
+	n.arm = make([]bool, nbins)
 
 	n.fft = fourier.NewFFT(nfft)
 

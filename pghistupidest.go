@@ -6,6 +6,7 @@ import (
 	"math/cmplx"
 	"math/rand/v2"
 	"os"
+	"slices"
 )
 
 func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
@@ -37,7 +38,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 
 		a := &n.a
 		n.heap = n.heap[:0]
-		clear(n.iset)
+		clear(n.arm)
 
 		abstol := mag(a.X[0])
 		for j := range a.X {
@@ -48,7 +49,7 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 
 		for j := range a.X {
 			if mag(a.X[j]) > abstol {
-				n.iset[j] = struct{}{}
+				n.arm[j] = true
 				heappush(&n.heap, heaptriple{mag(a.X[j]), j, -1})
 			} else {
 				a.Phase[j] = mix(-math.Pi, math.Pi, rand.Float64())
@@ -56,45 +57,48 @@ func (n *Nanowarp) Process1(in []float64, out []float64, stretch float64) {
 		}
 
 		olap := float64(n.nbuf / n.hop)
-		for j := range a.X {
-			// I don't know, this phase advance formula is a
-			// product of 10 hours of trial and error.
-			padv := (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap
-			a.Phase[j] = princarg(cmplx.Phase(a.P[j]) + padv)
-			// Implementation note:
-			// Use padv/stretch if oh = nhop*stretch, if ih = nhop/stretch use padv
+		padv := func(j int) float64 {
+			// This phase advance formula is a product of 10 hours of trial and error.
+			return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap
+		}
+		fadv := func(j int) float64 {
+			return math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi
+		}
+		_ = padv
+		_ = fadv
+
+		for len(n.heap) > 0 {
+			h := heappop(&n.heap)
+			w := h.w
+			switch h.t {
+			case -1:
+				if n.arm[w] {
+					a.Phase[w] = princarg(cmplx.Phase(a.P[w]) + padv(w))
+					n.arm[w] = false
+					heappush(&n.heap, heaptriple{mag(izero(a.X, w)), w, 0})
+				}
+			case 0:
+				if w+1 < n.nbins-1 && n.arm[w+1] {
+					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w))
+					n.arm[w+1] = false
+					heappush(&n.heap, heaptriple{mag(izero(a.X, w+1)), w + 1, 0})
+				}
+				if w-1 > 0 && n.arm[w-1] {
+					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w))
+					n.arm[w-1] = false
+					heappush(&n.heap, heaptriple{mag(izero(a.X, w-1)), w - 1, 0})
+				}
+			}
 		}
 
-		// for j := 0; len(n.iset) > 0 && j < n.nbins; j++ {
-		// 	h := heappop(&n.heap)
-		// 	dt := (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap * stretch
-		// 	dw := (math.Pi - real(a.Xt[j]/a.X[j])/float64(len(a.X))*2*math.Pi) * stretch
-		// 	switch h.t {
-		// 	case -1:
-		// 		if _, ok := n.iset[h.w]; ok {
-		// 			a.Phase[h.w] = princarg(cmplx.Phase(a.P[h.w]) + dt)
-		// 			delete(n.iset, h.w)
-		// 			heappush(&n.heap, heaptriple{mag(izero(a.X, h.w)), h.w, 0})
-		// 		}
-		// 	case 0:
-		// 		if _, ok := n.iset[h.w+1]; ok {
-		// 			a.Phase[h.w+1] = princarg(a.Phase[h.w] + dw)
-		// 			delete(n.iset, h.w+1)
-		// 			heappush(&n.heap, heaptriple{mag(izero(a.X, h.w)), h.w + 1, 0})
-		// 		}
-		// 		if _, ok := n.iset[h.w-1]; ok {
-		// 			a.Phase[h.w-1] = princarg(a.Phase[h.w] - dw)
-		// 			delete(n.iset, h.w-1)
-		// 			heappush(&n.heap, heaptriple{mag(izero(a.X, h.w)), h.w - 1, 0})
-		// 		}
-		// 	}
-		// }
-
-		// G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.Phase))
+		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), slices.Clone(a.Phase))
 
 		for j := range a.Phase {
 			a.A[j] = cmplx.Rect(mag(a.X[j]), a.Phase[j])
+			a.S[j] = cmplx.Phase(a.X[j])
 		}
+
+		G[`origphase.png`] = append(G[`origphase.png`].([][]float64), slices.Clone(a.S))
 
 		copy(a.P, a.A)
 		copy(a.Cs0, a.X)
