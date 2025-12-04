@@ -53,7 +53,7 @@ func main() {
 	// Clipping.
 	for i := range out {
 		// out[i] = math.Tanh(out[i] * n)
-		out[i] = out[i] * 0.5
+		out[i] = out[i] * 0.25
 	}
 
 	file, err := os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
