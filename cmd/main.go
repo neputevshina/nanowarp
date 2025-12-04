@@ -21,12 +21,13 @@ func main() {
 	nanowarp.G[`origphase.png`] = make([][]float64, 0)
 	// nanowarp.G[`mag.png`] = make([][]float64, 0)
 
-	filename := `fm.wav`
+	// filename := `fm.wav`
 	// filename := `saw.wav`
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
-	// filename := `ticktock.wav`
+	filename := `ticktock.wav`
 	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
+	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
 
 	fmt.Fprintln(os.Stderr, filename)
 
@@ -45,13 +46,14 @@ func main() {
 		}
 	}
 	nw := nanowarp.New()
-	n := 4.
+	var n float64 = 2
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process(data, out, n)
 
 	// Clipping.
 	for i := range out {
-		out[i] = math.Tanh(out[i] * n)
+		// out[i] = math.Tanh(out[i] * n)
+		out[i] = out[i] * 0.5
 	}
 
 	file, err := os.Create(fmt.Sprintf("%.2fx-%s", n, filename))

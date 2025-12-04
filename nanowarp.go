@@ -35,7 +35,7 @@ type Nanowarp struct {
 }
 
 func New() (n *Nanowarp) {
-	nfft := 4096
+	nfft := 8192
 	nbuf := nfft / 2
 
 	nbins := nfft/2 + 1
@@ -79,22 +79,6 @@ func New() (n *Nanowarp) {
 	return
 }
 
-type hp []heaptriple
-
-func (h hp) Len() int           { return len(h) }
-func (h hp) Less(i, j int) bool { return h[i].mag > h[j].mag }
-func (h hp) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *hp) Push(x any) {
-	*h = append(*h, x.(heaptriple))
-}
-func (h *hp) Pop() any {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
-}
-
 func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	a := &n.a
 	ih := int(math.Floor(float64(n.hop) / stretch))
@@ -134,12 +118,11 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 
 		olap := float64(n.nbuf / n.hop)
 		padv := func(j int) float64 {
-			// This phase advance formula is a product of 10 hours of trial and error.
 			return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / olap
 		}
 		fadv := func(j int) float64 {
-			// And this one took two days.
 			return -real(a.Xt[j]/a.X[j])/float64(len(a.X))*math.Pi - math.Pi/2
+			// return -real(a.Xt[j]/a.X[j]) / float64(len(a.X)) * math.Pi * 2
 		}
 
 		for len(n.heap) > 0 {
@@ -154,12 +137,14 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
-					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w-1))
+					// a.Phase[w-1] = princarg(a.Phase[w] - fadv(w-1))
+					a.Phase[w-1] = princarg(a.Phase[w] - fadv(w))
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w-1]), w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
-					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w+1))
+					// a.Phase[w+1] = princarg(a.Phase[w] + fadv(w+1))
+					a.Phase[w+1] = princarg(a.Phase[w] + fadv(w))
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w+1]), w + 1, 0})
 				}
@@ -182,6 +167,26 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		add(out[adv:adv+n.nbuf], a.S)
 		adv += oh
 	}
+}
+
+type heaptriple struct {
+	mag  float64
+	w, t int
+}
+type hp []heaptriple
+
+func (h hp) Len() int           { return len(h) }
+func (h hp) Less(i, j int) bool { return h[i].mag > h[j].mag }
+func (h hp) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *hp) Push(x any) {
+	*h = append(*h, x.(heaptriple))
+}
+func (h *hp) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }
 
 func blackman(out []float64) {
@@ -209,6 +214,20 @@ func hannDx(out []float64) {
 	for i := range out {
 		x := float64(i)/float64(len(out)) + .5
 		out[i] = math.Pi * math.Sin(2*math.Pi*x)
+	}
+}
+
+func niemitalo(out []float64) {
+	for i := range out {
+		x := float64(i) / float64(len(out))
+		out[i] = .42 - .5*math.Cos(math.Pi*x*2) + .08*math.Cos(math.Pi*x*4)
+	}
+}
+
+func niemitaloDx(out []float64) {
+	for i := range out {
+		x := float64(i)/float64(len(out)) + .5
+		out[i] = -math.Pi*math.Sin(2*math.Pi*x) - .32*math.Pi*math.Sin(4*math.Pi*x)
 	}
 }
 
@@ -319,110 +338,6 @@ func iwrap[T any](sl []T, i int) T {
 		i = ((i % len(sl)) + len(sl)) % len(sl)
 	}
 	return sl[i]
-}
-
-// A stripped-down version of the standard container/heap.
-
-type heaptriple struct {
-	mag  float64
-	w, t int
-}
-
-func less(h *[]heaptriple, i, j int) bool {
-	// [...] To build a priority queue, implement the Heap interface with the
-	// (negative) priority as the ordering for the Less method, so Push adds
-	// items while Pop removes the highest-priority item from the queue.
-	return (*h)[i].mag > (*h)[j].mag
-}
-
-func heapinit(h *[]heaptriple) {
-	// heapify
-	n := len(*h)
-	for i := n/2 - 1; i >= 0; i-- {
-		down(h, i, n)
-	}
-}
-
-func swap(h *[]heaptriple, i, j int) {
-	(*h)[i], (*h)[j] = (*h)[j], (*h)[i]
-}
-
-func pop(h *[]heaptriple) heaptriple {
-	n := len(*h) - 1
-	l := (*h)[n]
-	*h = (*h)[:n]
-	return l
-}
-
-// heappush pushes the element x onto the heap.
-// The complexity is O(log n) where n = h.Len().
-func heappush(h *[]heaptriple, x heaptriple) {
-	*h = append(*h, x)
-	up(h, len(*h)-1)
-}
-
-// heappop removes and returns the minimum element (according to Less) from the heap.
-// The complexity is O(log n) where n = h.Len().
-// heappop is equivalent to [heapremove](h, 0).
-func heappop(h *[]heaptriple) heaptriple {
-	n := len(*h) - 1
-	swap(h, 0, n)
-	down(h, 0, n)
-	return pop(h)
-}
-
-// heapremove removes and returns the element at index i from the heap.
-// The complexity is O(log n) where n = h.Len().
-func heapremove(h *[]heaptriple, i int) any {
-	n := len(*h) - 1
-	if n != i {
-		swap(h, i, n)
-		if !down(h, i, n) {
-			up(h, i)
-		}
-	}
-	return pop(h)
-}
-
-// heapfix re-establishes the heap ordering after the element at index i has changed its value.
-// Changing the value of the element at index i and then calling heapfix is equivalent to,
-// but less expensive than, calling [heapremove](h, i) followed by a Push of the new value.
-// The complexity is O(log n) where n = h.Len().
-func heapfix(h *[]heaptriple, i int) {
-	if !down(h, i, len(*h)) {
-		up(h, i)
-	}
-}
-
-func up(h *[]heaptriple, j int) {
-	for {
-		i := (j - 1) / 2 // parent
-		if i == j || less(h, j, i) {
-			break
-		}
-		swap(h, i, j)
-		j = i
-	}
-}
-
-func down(h *[]heaptriple, i0, n int) bool {
-	i := i0
-	for {
-		j1 := 2*i + 1
-		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
-			break
-		}
-		j := j1 // left child
-		if j2 := j1 + 1; j2 < n && less(h, j2, j1) {
-			j = j2 // = 2*i + 2  // right child
-		}
-		if !less(h, j, i) {
-			break
-		}
-		swap(h, i, j)
-		i = j
-	}
-	return i > i0
 }
 
 // G is an implicit global variable map for internal debugging purposes.
