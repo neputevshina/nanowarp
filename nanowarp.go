@@ -1,6 +1,7 @@
 package nanowarp
 
 // TODO
+// - Time-domain correctness
 // - Pitch
 // - Streaming
 // - Time and pitch envelopes
@@ -10,10 +11,15 @@ package nanowarp
 // 	- Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
 //	- Need dx/dt and dx/dw of it
-// - HPSS and lower-upper (req. streaming)
+// + HPSS and lower-upper
 // - Optimizations
-//	- Calculate mag(a.X) once
+//	+ Calculate mag(a.X) once
+//	- Try replacing cmplx.Phase with complex arithmetic and measure the speedup
+//	- Replace container.Heap with rankfilt
 //	- Parallelize through channels
+//	- Use/port vectorized FFT library (e.g. SLEEF)
+//	- Use float32 (impossible with gonum)
+//	- SIMD?
 
 import (
 	"container/heap"
@@ -21,19 +27,14 @@ import (
 	"math"
 	"math/cmplx"
 	"os"
-	"reflect"
 
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
-type bufs struct {
-	S, Phase, Pphase []float64    // Scratch buffers
-	W, Wd, Wt        []float64    // Window functions
-	X, Xd, Xt, P, O  []complex128 // Complex spectra
-}
-
 type Nanowarp struct {
+	hfile, pfile []float64
 	lower, upper *warper
+	hpss         *splitter
 }
 
 func New(samplerate int) (n *Nanowarp) {
@@ -41,14 +42,24 @@ func New(samplerate int) (n *Nanowarp) {
 	// TODO Fixed absolute bandwidth through zero-padding.
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
-	w := int(math.Ceil(float64(samplerate) / 48000))
-	n.lower = warperNew(1 << (13 + w)) // 8192 @ 48000 Hz // TODO 120-150 ms prob the best
-	n.upper = warperNew(1 << (9 + w))  // 512 @ 48000 Hz // TODO 12-15 ms
+	w := int(math.Ceil(float64(samplerate)/48000)) - 1
+	n.lower = warperNew(1 << (13 + w)) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.upper = warperNew(1 << (10 + w)) // 1024 (512) @ 48000 Hz // TODO 12-15 ms
+	n.hpss = splitterNew(1 << (9 + w)) // TODO Find optimal size
 	return
 }
 
 func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
-	n.lower.process(in, out, stretch)
+	n.hfile = make([]float64, len(in))
+	n.pfile = make([]float64, len(in))
+	n.hpss.process(in, n.pfile, n.hfile)
+	// Delay compensation.
+	// TODO Streaming.
+	dc := n.lower.hop - n.upper.hop
+	copy(n.pfile, n.pfile[dc:])
+
+	n.lower.process(n.hfile, out, stretch)
+	n.upper.process(n.pfile, out, stretch)
 }
 
 type warper struct {
@@ -62,7 +73,12 @@ type warper struct {
 	norm float64
 	heap hp
 
-	a bufs
+	a wbufs
+}
+type wbufs struct {
+	S, M, P, Phase, Pphase []float64    // Scratch buffers
+	W, Wd, Wt              []float64    // Window functions
+	X, Xd, Xt, O           []complex128 // Complex spectra
 }
 
 func warperNew(nfft int) (n *warper) {
@@ -77,31 +93,16 @@ func warperNew(nfft int) (n *warper) {
 	}
 	a := &n.a
 
-	// Automatically initialize slices through reflection.
-	rn := reflect.ValueOf(&n.a).Elem()
-	for i := 0; i < rn.NumField(); i++ {
-		f := rn.Field(i)
-		if f.Kind() == reflect.Slice {
-			c := f.Interface()
-			switch c := c.(type) {
-			case []complex128:
-				f.Set(reflect.ValueOf(make([]complex128, nbins)))
-			case []float64:
-				f.Set(reflect.ValueOf(make([]float64, nfft)))
-			case [][]complex128:
-				for i := range c {
-					c[i] = make([]complex128, nbins)
-				}
-			}
-		}
-	}
+	makeslices(a, nbins, nfft)
+
 	// Exceptions.
-	a.Phase = make([]float64, n.nbins)
+	a.Phase = make([]float64, nbins)
+	n.arm = make([]bool, nbins)
+
 	hann(a.W[:nbuf])
 	hannDx(a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
-	n.arm = make([]bool, nbins)
 
 	n.fft = fourier.NewFFT(nfft)
 
@@ -112,14 +113,15 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 	a := &n.a
 	ih := int(math.Floor(float64(n.hop) / stretch))
 	oh := int(math.Floor(float64(n.hop)))
-	fmt.Fprintln(os.Stderr, `inhop:`, ih, `nbuf:`, n.nbuf)
+	fmt.Fprintln(os.Stderr, `(*warper).process`)
+	fmt.Fprintln(os.Stderr, `inhop:`, ih, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
 	fmt.Fprintln(os.Stderr, `outhop:`, oh)
 
 	adv := 0
 	for i := 0; i < len(in); i += ih {
 		enfft := func(i int, x []complex128, w []float64) {
 			zero(a.S)
-			copy(a.S, in[i:i+n.nbuf])
+			copy(a.S, in[i:min(len(in), i+n.nbuf)])
 			mul(a.S, w)
 			n.fft.Coefficients(x, a.S)
 		}
@@ -128,11 +130,21 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		enfft(i, a.Xd, a.Wd)
 		enfft(i, a.Xt, a.Wt)
 
+		for w := range a.X {
+			a.M[w] = mag(a.X[w])
+		}
 		if i == 0 {
-			copy(a.P, a.X)
 			for w := range a.Phase {
 				a.Pphase[w] = cmplx.Phase(a.X[w])
 			}
+			copy(a.P, a.M)
+
+			for j := range a.S[:n.nbuf] {
+				a.S[j] = in[i:min(len(in), i+n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
+			}
+			add(out[adv:min(len(out), adv+n.nbuf)], a.S)
+			adv += oh
+
 			continue
 		}
 
@@ -146,8 +158,9 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 			// Allow time-phase propagation only for local maxima.
 			// Which is a simplest possible auditory masking model.
 			// if j == 0 || j == n.nbins-1 ||
-			// 	mag(a.X[j-1]) < mag(a.X[j]) && mag(a.X[j+1]) < mag(a.X[j]) {
-			n.heap[j] = heaptriple{mag(a.P[j]), j, -1}
+			// 	a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
+			n.heap[j] = heaptriple{a.P[j], j, -1}
+			// }
 		}
 		heap.Init(&n.heap)
 
@@ -177,44 +190,137 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 					hor[w] = princarg(tadv(w))
 					a.Phase[w] = a.Pphase[w] + tadv(w)
 					n.arm[w] = false
-					heap.Push(&n.heap, heaptriple{mag(a.X[w]), w, 0})
+					heap.Push(&n.heap, heaptriple{a.M[w], w, 0})
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
 					ver[w-1] = princarg(fadv(w - 1))
 					a.Phase[w-1] = a.Phase[w] - fadv(w-1)
 					n.arm[w-1] = false
-					heap.Push(&n.heap, heaptriple{mag(a.X[w-1]), w - 1, 0})
+					heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
 					ver[w+1] = princarg(fadv(w + 1))
 					a.Phase[w+1] = a.Phase[w] + fadv(w+1)
 					n.arm[w+1] = false
-					heap.Push(&n.heap, heaptriple{mag(a.X[w+1]), w + 1, 0})
+					heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 				}
 			}
 		}
 
-		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), hor)
-		G[`origphase.png`] = append(G[`origphase.png`].([][]float64), ver)
+		// G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), hor)
+		// G[`origphase.png`] = append(G[`origphase.png`].([][]float64), ver)
 
+		copy(a.P, a.M)
 		for w := range a.Phase {
-			m := mag(a.X[w])
-			p := a.Phase[w]
-			a.O[w] = cmplx.Rect(m, p)
+			a.O[w] = cmplx.Rect(a.M[w], a.Phase[w])
 			a.Pphase[w] = princarg(a.Phase[w])
 		}
-		copy(a.P, a.O)
 		// End of PGHI.
 
-		n.fft.Sequence(a.S, a.P)
+		n.fft.Sequence(a.S, a.O)
 		for j := range a.S {
 			a.S[j] /= n.norm
 			a.S[j] /= stretch
 		}
 		mul(a.S, a.W)
-		add(out[adv:adv+n.nbuf], a.S)
+		add(out[adv:min(len(out), adv+n.nbuf)], a.S)
 		adv += oh
+	}
+}
+
+type splitter struct {
+	nfft  int
+	nbuf  int
+	nbins int
+	hop   int
+	norm  float64
+
+	fft  *fourier.FFT
+	vert *mediator[float64, bang]
+	hor  []*mediator[float64, bang]
+
+	a sbufs
+}
+type sbufs struct {
+	S, W, M, H, P []float64
+	X, Y          []complex128
+}
+
+func splitterNew(nfft int) (n *splitter) {
+	nbuf := nfft
+	nbins := nfft/2 + 1
+	olap := 8
+
+	n = &splitter{
+		nfft:  nfft,
+		nbins: nbins,
+		nbuf:  nbuf,
+		hop:   nbuf / olap,
+	}
+	makeslices(&n.a, nbins, nfft)
+	n.hor = make([]*mediator[float64, bang], nbins)
+
+	// TODO Samplerate-independent filter sizes.
+	for i := range n.hor {
+		nhor := 27
+		qhor := 0.5
+		n.hor[i] = MediatorNew[float64, bang](nhor, nhor, qhor)
+	}
+	nvert := 15
+	qvert := 0.25
+	n.vert = MediatorNew[float64, bang](nvert, nvert, qvert)
+
+	hann(n.a.W)
+	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.W)
+	n.fft = fourier.NewFFT(nfft)
+
+	return
+}
+
+func (n *splitter) process(in []float64, outp []float64, outh []float64) {
+	fmt.Fprintln(os.Stderr, `(*splitter).process`)
+	for i := 0; i < len(in); i += n.hop {
+		n.vert.Reset(n.vert.N)
+		a := &n.a
+
+		enfft := func(i int, x []complex128, w []float64) {
+			zero(a.S)
+			copy(a.S, in[i:min(len(in), i+n.nbuf)])
+			mul(a.S, w)
+			n.fft.Coefficients(x, a.S)
+		}
+
+		enfft(i, a.X, a.W)
+
+		for w := range a.X {
+			a.M[w] = mag(a.X[w])
+		}
+		n.vert.filt(a.M, n.vert.N, a.P, REFLECT, 0, 0)
+		for w := range a.X {
+			m := n.hor[w]
+			m.Insert(a.M[w], bang{})
+			a.H[w], _ = m.Take()
+		}
+
+		for w := range a.X {
+			if a.P[w] < a.H[w] {
+				a.X[w] = 0
+			}
+		}
+
+		n.fft.Sequence(a.S, a.X)
+		for w := range a.S {
+			a.S[w] /= n.norm
+		}
+		mul(a.S, a.W)
+		add(outp[i:min(len(outp), i+n.nbuf)], a.S)
+
+		// Harmonic = original - percussive
+		for j := range a.S {
+			a.S[j] -= in[i : i+n.nbuf][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
+		}
+		add(outh[i:min(len(outh), i+n.nbuf)], a.S)
 	}
 }
 
