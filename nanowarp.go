@@ -6,10 +6,14 @@ package nanowarp
 // - Time and pitch envelopes
 // - Hop size dithering
 // - Noise extraction
-// - Pre-echo fix
+// + Pre-echo fix
 // 	- Niemitalo asymmetric windowing?
-//		See sources of Rubber Band V3
-//		Need dx/dt and dx/dw of it
+//	- See sources of Rubber Band V3
+//	- Need dx/dt and dx/dw of it
+// - HPSS and lower-upper (req. streaming)
+// - Optimizations
+//	- Calculate mag(a.X) once
+//	- Parallelize through channels
 
 import (
 	"container/heap"
@@ -19,11 +23,8 @@ import (
 	"os"
 	"reflect"
 
-	"golang.org/x/exp/constraints"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
-
-const eps = 1e-15
 
 type bufs struct {
 	S, Phase, Pphase []float64    // Scratch buffers
@@ -32,6 +33,25 @@ type bufs struct {
 }
 
 type Nanowarp struct {
+	lower, upper *warper
+}
+
+func New(samplerate int) (n *Nanowarp) {
+	n = &Nanowarp{}
+	// TODO Fixed absolute bandwidth through zero-padding.
+	// Hint: nbuf is already there.
+	// TODO Find optimal bandwidths.
+	w := int(math.Ceil(float64(samplerate) / 48000))
+	n.lower = warperNew(1 << (13 + w)) // 8192 @ 48000 Hz // TODO 120-150 ms prob the best
+	n.upper = warperNew(1 << (9 + w))  // 512 @ 48000 Hz // TODO 12-15 ms
+	return
+}
+
+func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
+	n.lower.process(in, out, stretch)
+}
+
+type warper struct {
 	nfft  int
 	nbuf  int
 	nbins int
@@ -45,12 +65,11 @@ type Nanowarp struct {
 	a bufs
 }
 
-func New() (n *Nanowarp) {
-	nfft := 8192
+func warperNew(nfft int) (n *warper) {
 	nbuf := nfft / 2
 	nbins := nfft/2 + 1
 	olap := 4
-	n = &Nanowarp{
+	n = &warper{
 		nfft:  nfft,
 		nbins: nbins,
 		nbuf:  nbuf,
@@ -89,7 +108,7 @@ func New() (n *Nanowarp) {
 	return
 }
 
-func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
+func (n *warper) process(in []float64, out []float64, stretch float64) {
 	a := &n.a
 	ih := int(math.Floor(float64(n.hop) / stretch))
 	oh := int(math.Floor(float64(n.hop)))
@@ -118,18 +137,17 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		}
 
 		// Begin of phase gradient heap integration (PGHI).
-
 		a := &n.a
 		n.heap = make(hp, n.nbins)
 		clear(n.arm)
 
 		for j := range a.X {
 			n.arm[j] = true
-			if j == 0 ||
-				j == n.nbins-1 ||
-				mag(a.X[j-1]) < mag(a.X[j]) && mag(a.X[j+1]) < mag(a.X[j]) {
-				n.heap[j] = heaptriple{mag(a.P[j]), j, -1}
-			}
+			// Allow time-phase propagation only for local maxima.
+			// Which is a simplest possible auditory masking model.
+			// if j == 0 || j == n.nbins-1 ||
+			// 	mag(a.X[j-1]) < mag(a.X[j]) && mag(a.X[j+1]) < mag(a.X[j]) {
+			n.heap[j] = heaptriple{mag(a.P[j]), j, -1}
 		}
 		heap.Init(&n.heap)
 
@@ -159,7 +177,7 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 					hor[w] = princarg(tadv(w))
 					a.Phase[w] = a.Pphase[w] + tadv(w)
 					n.arm[w] = false
-					heap.Push(&n.heap, heaptriple{mag(izero(a.X, w)), w, 0})
+					heap.Push(&n.heap, heaptriple{mag(a.X[w]), w, 0})
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
@@ -187,7 +205,6 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 			a.Pphase[w] = princarg(a.Phase[w])
 		}
 		copy(a.P, a.O)
-
 		// End of PGHI.
 
 		n.fft.Sequence(a.S, a.P)
@@ -221,20 +238,6 @@ func (h *hp) Pop() any {
 	return x
 }
 
-func blackman(out []float64) {
-	for i := range out {
-		x := float64(i) / float64(len(out))
-		out[i] = .42 - .5*math.Cos(math.Pi*x*2) + .08*math.Cos(math.Pi*x*4)
-	}
-}
-
-func blackmanDx(out []float64) {
-	for i := range out {
-		x := float64(i)/float64(len(out)) + .5
-		out[i] = -math.Pi*math.Sin(2*math.Pi*x) - .32*math.Pi*math.Sin(4*math.Pi*x)
-	}
-}
-
 func hann(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out))
@@ -246,20 +249,6 @@ func hannDx(out []float64) {
 	for i := range out {
 		x := float64(i)/float64(len(out)) + .5
 		out[i] = math.Pi * math.Sin(2*math.Pi*x)
-	}
-}
-
-func niemitalo(out []float64) {
-	for i := range out {
-		x := float64(i) / float64(len(out))
-		out[i] = .42 - .5*math.Cos(math.Pi*x*2) + .08*math.Cos(math.Pi*x*4)
-	}
-}
-
-func niemitaloDx(out []float64) {
-	for i := range out {
-		x := float64(i)/float64(len(out)) + .5
-		out[i] = -math.Pi*math.Sin(2*math.Pi*x) - .32*math.Pi*math.Sin(4*math.Pi*x)
 	}
 }
 
@@ -284,98 +273,3 @@ func zero[T any](dst []T) {
 		dst[i] = z
 	}
 }
-
-func add[T constraints.Float](dst, src []T) {
-	for i := 0; i < min(len(dst), len(src)); i++ {
-		dst[i] += src[i]
-	}
-}
-
-func mul[T constraints.Float](dst, src []T) {
-	for i := 0; i < min(len(dst), len(src)); i++ {
-		dst[i] *= src[i]
-	}
-}
-
-func boolnum(b bool) float64 {
-	return map[bool]float64{false: 0, true: 1}[b]
-}
-
-func mix[F constraints.Float](a, b, x F) F {
-	return a*(1-x) + b*x
-}
-
-func min[T constraints.Ordered](a ...T) T {
-	b := a[0]
-	for _, e := range a {
-		if e < b {
-			b = e
-		}
-	}
-	return b
-}
-
-func mag(c complex128) float64 {
-	return math.Sqrt(real(c)*real(c) + imag(c)*imag(c))
-}
-
-func poltocar(mag, phase float64) complex128 {
-	return complex(mag*math.Cos(phase), mag*math.Sin(phase))
-}
-
-func csqrt(c complex128) complex128 {
-	m := mag(c)
-	re := math.Sqrt(0.5 * (m + real(c)))
-	im := math.Sqrt(0.5 * (m - real(c)))
-	if math.Signbit(imag(c)) {
-		im *= -1
-	}
-	return complex(re, im)
-}
-
-func angle(c complex128) float64 {
-	return math.Atan2(imag(c), real(c))
-}
-
-func norm(c complex128) complex128 {
-	mag := math.Sqrt(real(c)*real(c) + imag(c)*imag(c))
-	return complex(real(c)/mag, imag(c)/mag)
-}
-
-func princarg(phase float64) float64 {
-	pi2 := 2 * math.Pi
-	return phase - math.Round(phase/pi2)*pi2
-}
-
-func max[T constraints.Ordered](a ...T) T {
-	b := a[0]
-	for _, e := range a {
-		if e > b {
-			b = e
-		}
-	}
-	return b
-}
-
-func izero[T any](sl []T, i int) T {
-	var z T
-	if i >= len(sl)-1 || i < 0 {
-		return z
-	}
-	return sl[i]
-}
-
-func iwrap[T any](sl []T, i int) T {
-	if i >= len(sl)-1 || i < 0 {
-		i = ((i % len(sl)) + len(sl)) % len(sl)
-	}
-	return sl[i]
-}
-
-// G is an implicit global variable map for internal debugging purposes.
-// Accesses to this map are either in a thing that is not done yet or safe to remove.
-//
-// You MUST NOT initialize this map.
-// If something fails because of it, it's because Nanowarp is broken,
-// and you must use a previous version of the library.
-var G map[string]any

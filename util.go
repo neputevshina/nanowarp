@@ -1,0 +1,39 @@
+package nanowarp
+
+import (
+	"math"
+	"math/cmplx"
+
+	"golang.org/x/exp/constraints"
+)
+
+// G is an implicit global variable map for internal debugging purposes.
+// Accesses to this map are either in a thing that is not done yet or safe to remove.
+//
+// You MUST NOT initialize this map.
+// If something fails because of it, it's because Nanowarp is broken,
+// and you must use a previous version of the library.
+var G map[string]any
+
+var mag = cmplx.Abs
+
+func princarg(phase float64) float64 {
+	pi2 := 2 * math.Pi
+	return phase - math.Round(phase/pi2)*pi2
+}
+
+func add[T constraints.Float](dst, src []T) {
+	for i := 0; i < min(len(dst), len(src)); i++ {
+		dst[i] += src[i]
+	}
+}
+
+func mul[T constraints.Float](dst, src []T) {
+	for i := 0; i < min(len(dst), len(src)); i++ {
+		dst[i] *= src[i]
+	}
+}
+
+func mix[F constraints.Float](a, b, x F) F {
+	return a*(1-x) + b*x
+}

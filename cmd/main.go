@@ -45,7 +45,7 @@ func main() {
 			data = append(data, rd.FloatValue(sample, 0))
 		}
 	}
-	nw := nanowarp.New()
+	nw := nanowarp.New(48000)
 	var n float64 = 2
 	out := make([]float64, int(float64(len(data)+8192)*n))
 	nw.Process(data, out, n)
