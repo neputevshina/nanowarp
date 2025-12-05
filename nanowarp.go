@@ -46,7 +46,7 @@ type Nanowarp struct {
 }
 
 func New() (n *Nanowarp) {
-	nfft := 4096
+	nfft := 8192
 	nbuf := nfft / 2
 	nbins := nfft/2 + 1
 	olap := 4
@@ -125,16 +125,20 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 
 		for j := range a.X {
 			n.arm[j] = true
-			n.heap[j] = heaptriple{mag(a.P[j]), j, -1}
+			if j == 0 ||
+				j == n.nbins-1 ||
+				mag(a.X[j-1]) < mag(a.X[j]) && mag(a.X[j+1]) < mag(a.X[j]) {
+				n.heap[j] = heaptriple{mag(a.P[j]), j, -1}
+			}
 		}
 		heap.Init(&n.heap)
 
-		// Here we are using time-frequency reassignment[1] as a way of obtaining
+		// Here we are using time-frequency reassignment[¹] as a way of obtaining
 		// phase derivatives. Probably in future these derivatives will be replaced
 		// with differences because currently phase is leaking in time domain and
 		// finite differences guarrantee idempotency at stretch=1.
 		//
-		// [1] - Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+		// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 		olap := float64(n.nbuf / n.hop)
 		tadv := func(j int) float64 {
 			osampc := float64(n.nfft/n.nbuf) / 2
@@ -144,23 +148,28 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 			return -real(a.Xt[j]/a.X[j])/float64(n.nfft/2)*math.Pi*stretch - math.Pi/2
 		}
 
+		hor := make([]float64, n.nbins)
+		ver := make([]float64, n.nbins)
 		for len(n.heap) > 0 {
 			h := heap.Pop(&n.heap).(heaptriple)
 			w := h.w
 			switch h.t {
 			case -1:
 				if n.arm[w] {
+					hor[w] = princarg(tadv(w))
 					a.Phase[w] = a.Pphase[w] + tadv(w)
 					n.arm[w] = false
 					heap.Push(&n.heap, heaptriple{mag(izero(a.X, w)), w, 0})
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
+					ver[w-1] = princarg(fadv(w - 1))
 					a.Phase[w-1] = a.Phase[w] - fadv(w-1)
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w-1]), w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
+					ver[w+1] = princarg(fadv(w + 1))
 					a.Phase[w+1] = a.Phase[w] + fadv(w+1)
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{mag(a.X[w+1]), w + 1, 0})
@@ -168,13 +177,18 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 			}
 		}
 
+		G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), hor)
+		G[`origphase.png`] = append(G[`origphase.png`].([][]float64), ver)
+
 		for w := range a.Phase {
-			a.O[w] = cmplx.Rect(mag(a.X[w]), a.Phase[w])
+			m := mag(a.X[w])
+			p := a.Phase[w]
+			a.O[w] = cmplx.Rect(m, p)
 			a.Pphase[w] = princarg(a.Phase[w])
 		}
 		copy(a.P, a.O)
 
-		// End of PGHI
+		// End of PGHI.
 
 		n.fft.Sequence(a.S, a.P)
 		for j := range a.S {
