@@ -60,7 +60,7 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	// Delay compensation.
 	// TODO Streaming.
 	// TODO *2 is there as a way to make “bubbling” less noticeable
-	dc := n.lower.hop - n.upper.hop*2
+	dc := n.lower.hop - n.upper.hop
 	copy(n.pfile, n.pfile[dc:])
 
 	n.lower.process(n.hfile, out, stretch)
@@ -183,7 +183,7 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 			return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
 		}
 		fadv := func(j int) float64 {
-			return -real(a.Xt[j]/a.X[j])/float64(n.nfft/2)*math.Pi*stretch - math.Pi/2
+			return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
 			// l := 0.
 			// r := 0.
 			// if j > 1 {
@@ -195,28 +195,23 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 			// return (2*cmplx.Phase(a.X[j])-l-r)*stretch - math.Pi/2
 		}
 
-		hor := make([]float64, n.nbins)
-		ver := make([]float64, n.nbins)
 		for len(n.heap) > 0 {
 			h := heap.Pop(&n.heap).(heaptriple)
 			w := h.w
 			switch h.t {
 			case -1:
 				if n.arm[w] {
-					hor[w] = princarg(tadv(w))
 					a.Phase[w] = a.Pphase[w] + tadv(w)
 					n.arm[w] = false
 					heap.Push(&n.heap, heaptriple{a.M[w], w, 0})
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
-					ver[w-1] = princarg(fadv(w - 1))
 					a.Phase[w-1] = a.Phase[w] - fadv(w-1)
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
-					ver[w+1] = princarg(fadv(w + 1))
 					a.Phase[w+1] = a.Phase[w] + fadv(w+1)
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})

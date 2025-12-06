@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
 
 	"image"
 	"image/color"
@@ -23,7 +24,8 @@ func main() {
 	// filename := `saw-click.wav`
 	// filename := `saw-click.wav`
 	// filename := `ticktock.wav`
-	filename := `welcome.wav`
+	// filename := `welcome.wav`
+	filename := `ЗАПАХЛО_NIGHTCALL_МЭШАПЕР_АРКАДИЙ_ГАЧИБАСОВ.mp3.wav`
 	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
 	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
 
@@ -49,11 +51,21 @@ func main() {
 	lnw := nanowarp.New(48000)
 	rnw := nanowarp.New(48000)
 
-	var n float64 = 0.5
+	var n float64 = 2
 	lout := make([]float64, int(float64(len(left)+8192)*n))
 	rout := make([]float64, int(float64(len(left)+8192)*n))
-	lnw.Process(left, lout, n)
-	rnw.Process(right, rout, n)
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		lnw.Process(left, lout, n)
+		wg.Done()
+	}()
+	go func() {
+		rnw.Process(right, rout, n)
+		wg.Done()
+	}()
+	wg.Wait()
 
 	for i := range lout {
 		lout[i] *= 0.25
