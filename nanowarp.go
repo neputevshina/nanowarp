@@ -8,7 +8,8 @@ package nanowarp
 // - Hop size dithering
 // - Noise extraction
 // - Bubbling artifacts fix
-// - Play with HPSS filter sizes and quantiles
+// - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
+// - Reset phase accuum sometimes against numerical errors
 // + Pre-echo fix
 // 	- Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
@@ -57,7 +58,8 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	n.hpss.process(in, n.pfile, n.hfile)
 	// Delay compensation.
 	// TODO Streaming.
-	dc := n.lower.hop - n.upper.hop
+	// TODO *2 is there as a way to make “bubbling” less noticeable
+	dc := n.lower.hop - n.upper.hop*2
 	copy(n.pfile, n.pfile[dc:])
 
 	n.lower.process(n.hfile, out, stretch)
@@ -111,6 +113,9 @@ func warperNew(nfft int) (n *warper) {
 	return
 }
 
+// process performs phase gradient heap integration (PGHI) based time stretching.
+// See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
+// (https://arxiv.org/pdf/2202.07382)
 func (n *warper) process(in []float64, out []float64, stretch float64) {
 	a := &n.a
 	ih := int(math.Floor(float64(n.hop) / stretch))
@@ -150,7 +155,6 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 			continue
 		}
 
-		// Begin of phase gradient heap integration (PGHI).
 		a := &n.a
 		n.heap = make(hp, n.nbins)
 		clear(n.arm)
@@ -215,7 +219,6 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 			a.O[w] = cmplx.Rect(a.M[w], a.Phase[w])
 			a.Pphase[w] = princarg(a.Phase[w])
 		}
-		// End of PGHI.
 
 		n.fft.Sequence(a.S, a.O)
 		for j := range a.S {
@@ -277,6 +280,9 @@ func splitterNew(nfft int) (n *splitter) {
 	return
 }
 
+// process performs harmonic-percussive source separation (HPSS).
+// See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
+// (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
 func (n *splitter) process(in []float64, outp []float64, outh []float64) {
 	fmt.Fprintln(os.Stderr, `(*splitter).process`)
 	for i := 0; i < len(in); i += n.hop {
