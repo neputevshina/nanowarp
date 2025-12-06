@@ -21,7 +21,9 @@ func main() {
 	// filename := `saw.wav`
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
-	filename := `ticktock.wav`
+	// filename := `saw-click.wav`
+	// filename := `ticktock.wav`
+	filename := `welcome.wav`
 	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
 	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
 
@@ -47,15 +49,13 @@ func main() {
 	lnw := nanowarp.New(48000)
 	rnw := nanowarp.New(48000)
 
-	var n float64 = 2
+	var n float64 = 0.5
 	lout := make([]float64, int(float64(len(left)+8192)*n))
 	rout := make([]float64, int(float64(len(left)+8192)*n))
 	lnw.Process(left, lout, n)
 	rnw.Process(right, rout, n)
 
-	// Clipping.
 	for i := range lout {
-		// out[i] = math.Tanh(out[i] * n)
 		lout[i] *= 0.25
 		rout[i] *= 0.25
 	}

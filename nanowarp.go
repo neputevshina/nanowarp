@@ -10,7 +10,8 @@ package nanowarp
 // ± Bubbling artifacts fix
 // - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
 // - Reset phase accuum sometimes against numerical errors
-// + Pre-echo fix
+// - Speed-up is broken
+// - Pre-echo fix
 // 	- Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
 //	- Need dx/dt of it
@@ -232,7 +233,6 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		n.fft.Sequence(a.S, a.O)
 		for j := range a.S {
 			a.S[j] /= n.norm
-			a.S[j] /= stretch
 		}
 		mul(a.S, a.W)
 		add(out[adv:min(len(out), adv+n.nbuf)], a.S)
