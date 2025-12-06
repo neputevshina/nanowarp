@@ -30,7 +30,7 @@ oversampled by factor of 2 with zero-padding.
 - ~~Boa — Welcome (-12 pitch, external)~~
 
 ## References
-[1] Průša, Z., & Holighaus, N. (2017, August). Phase vocoder done right. In 2017 25th European
+1. Průša, Z., & Holighaus, N. (2017, August). Phase vocoder done right. In 2017 25th European
     signal processing conference (Eusipco) (pp. 976-980). IEEE.
-[2] Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
-[3] Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+2. Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
+3. Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
