@@ -25,8 +25,8 @@ func main() {
 	// filename := `saw.wav`
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
-	filename := `ticktock.wav`
-	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
+	// filename := `ticktock.wav`
+	filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
 	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
 
 	fmt.Fprintln(os.Stderr, filename)

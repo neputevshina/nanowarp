@@ -7,6 +7,8 @@ package nanowarp
 // - Time and pitch envelopes
 // - Hop size dithering
 // - Noise extraction
+// - Bubbling artifacts fix
+// - Play with HPSS filter sizes and quantiles
 // + Pre-echo fix
 // 	- Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
@@ -157,10 +159,10 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 			n.arm[j] = true
 			// Allow time-phase propagation only for local maxima.
 			// Which is a simplest possible auditory masking model.
-			// if j == 0 || j == n.nbins-1 ||
-			// 	a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
-			n.heap[j] = heaptriple{a.P[j], j, -1}
-			// }
+			if j == 0 || j == n.nbins-1 ||
+				a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
+				n.heap[j] = heaptriple{a.P[j], j, -1}
+			}
 		}
 		heap.Init(&n.heap)
 
@@ -207,9 +209,6 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 				}
 			}
 		}
-
-		// G[`phasogram.png`] = append(G[`phasogram.png`].([][]float64), hor)
-		// G[`origphase.png`] = append(G[`origphase.png`].([][]float64), ver)
 
 		copy(a.P, a.M)
 		for w := range a.Phase {
@@ -317,8 +316,9 @@ func (n *splitter) process(in []float64, outp []float64, outh []float64) {
 		add(outp[i:min(len(outp), i+n.nbuf)], a.S)
 
 		// Harmonic = original - percussive
-		for j := range a.S {
-			a.S[j] -= in[i : i+n.nbuf][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
+		in1 := in[i:min(len(in), i+n.nbuf)]
+		for j := range in1 {
+			a.S[j] -= in1[j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
 		}
 		add(outh[i:min(len(outh), i+n.nbuf)], a.S)
 	}
