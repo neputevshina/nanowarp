@@ -20,28 +20,14 @@ oversampled by factor of 2 with zero-padding.
 **Current implementation is calibrated for 48kHz.**
 
 ## Demos
-Joji — Tick Tock (original)
-<iframe width="711" height="144" frameborder="0" src="https://mega.nz/embed/m7AGCbCR#FKddyqQFEPtKz6sTvZcs1mz4FBbrrgOlAePzoxdHWpE!1v1c" allowfullscreen ></iframe>
-
-Joji — Tick Tock (2x stretch)
-<iframe width="711" height="144" frameborder="0" src="https://mega.nz/embed/v3RADSLD#wkVLz_feIvGGKMrE_jAeKxhsjbyRsSIXW09wKiXn3_A!1v1c" allowfullscreen ></iframe>
-
-Joji — Tick Tock (0.5x stretch)
-<iframe width="711" height="144" frameborder="0" src="https://mega.nz/embed/Kvx03RAI#4wxdcfG0xHNtPPcgzDjJv2VGoDYYrC4wx3wZYTKw89Q!1v1c" allowfullscreen ></iframe>
-
-Joji — Tick Tock (+12 pitch, external)
-<br>
-Boa — Welcome (original)
-<iframe width="711" height="144" frameborder="0" src="https://mega.nz/embed/26BSAAyL#MMiGQ_cGTgW568C9CRbGi0mSpK3eLoOXLqQ03SYhyDQ!1v1c" allowfullscreen ></iframe>
-
-Boa — Welcome (2x stretch)
-<iframe width="711" height="144" frameborder="0" src="https://mega.nz/embed/v3RADSLD#wkVLz_feIvGGKMrE_jAeKxhsjbyRsSIXW09wKiXn3_A!1v1c" allowfullscreen ></iframe>
-
-Boa — Welcome (0.5x stretch)
-<iframe width="711" height="144" frameborder="0" src="https://mega.nz/embed/f7522Qba#UKvFU1lFHDyloxI-5j2rYMbT1HHgQovVC2XVlY7aC48!1v1c" allowfullscreen ></iframe>
-
-Boa — Welcome (-12 pitch, external)
-
+- [Joji — Tick Tock (original)](https://mega.nz/file/m7AGCbCR#FKddyqQFEPtKz6sTvZcs1mz4FBbrrgOlAePzoxdHWpE)
+- [Joji — Tick Tock (2x stretch)](https://mega.nz/file/v3RADSLD#wkVLz_feIvGGKMrE_jAeKxhsjbyRsSIXW09wKiXn3_A)
+- [Joji — Tick Tock (0.5x stretch)](https://mega.nz/file/Kvx03RAI#4wxdcfG0xHNtPPcgzDjJv2VGoDYYrC4wx3wZYTKw89Q)
+- ~~Joji — Tick Tock (+12 pitch, external)~~
+- [Boa — Welcome (original)](https://mega.nz/file/26BSAAyL#MMiGQ_cGTgW568C9CRbGi0mSpK3eLoOXLqQ03SYhyDQ)
+- [Boa — Welcome (2x stretch)](https://mega.nz/file/rnhGTR6Y#AiwE8upG0ETx1rTWbKUoBrY0Hi8g1viUpucibYYZABY)
+- [Boa — Welcome (0.5x stretch)](https://mega.nz/file/f7522Qba#UKvFU1lFHDyloxI-5j2rYMbT1HHgQovVC2XVlY7aC48)
+- ~~Boa — Welcome (-12 pitch, external)~~
 
 ## References
 [1] Průša, Z., & Holighaus, N. (2017, August). Phase vocoder done right. In 2017 25th European
