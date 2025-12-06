@@ -8,6 +8,8 @@ package nanowarp
 // - Hop size dithering
 // - Noise extraction
 // ± Bubbling artifacts fix
+//	- Is because of HPSS
+//	- Probably nfft is forgotten somewhere in formulas
 // - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
 // - Reset phase accuum sometimes against numerical errors
 // - Speed-up is broken
@@ -18,13 +20,13 @@ package nanowarp
 // + HPSS and lower-upper
 // - Optimizations
 //	+ Calculate mag(a.X) once
-//	- Try replacing cmplx.Phase with complex arithmetic and measure the speedup
 //	- Replace container.Heap with rankfilt
-//	- Parallelize
+//	+ Parallelize
 //		- Parallelize after streaming
 //	- Use/port a vectorized FFT library (e.g. SLEEF)
 //	- Use float32 (impossible with gonum)
 //	- SIMD?
+//		- dev.simd branch of Go compiler with intrinsics
 
 import (
 	"container/heap"
@@ -50,7 +52,7 @@ func New(samplerate int) (n *Nanowarp) {
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate)/48000)) - 1
 	n.lower = warperNew(1 << (13 + w)) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(1 << (10 + w)) // 1024 (512) @ 48000 Hz // TODO 12-15 ms
+	n.upper = warperNew(1 << (8 + w))  // 1024 (512) @ 48000 Hz // TODO 12-15 ms
 	n.hpss = splitterNew(1 << (9 + w)) // TODO Find optimal size
 	return
 }
@@ -61,14 +63,13 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	n.hpss.process(in, n.pfile, n.hfile)
 	// Delay compensation.
 	// TODO Streaming.
-	// TODO *2 is there as a way to make “bubbling” less noticeable
 	dc := n.lower.hop - n.upper.hop
 	copy(n.pfile, n.pfile[dc:])
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		// n.lower.process(n.hfile, out, stretch)
+		n.lower.process(n.hfile, out, stretch)
 		wg.Done()
 	}()
 	go func() {
@@ -174,12 +175,12 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 
 		for j := range a.X {
 			n.arm[j] = true
-			// Allow time-phase propagation only for local maxima.
-			// Which is a simplest possible auditory masking model.
-			if j == 0 || j == n.nbins-1 ||
-				a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
-				n.heap[j] = heaptriple{a.P[j], j, -1}
-			}
+			// // Allow time-phase propagation only for local maxima.
+			// // Which is a simplest possible auditory masking model.
+			// if j == 0 || j == n.nbins-1 ||
+			// 	a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
+			n.heap[j] = heaptriple{a.P[j], j, -1}
+			// }
 		}
 		heap.Init(&n.heap)
 
@@ -191,11 +192,19 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 		olap := float64(n.nbuf / n.hop)
 		tadv := func(j int) float64 {
+			if mag(a.X[j]) < 1e-6 {
+				return 0
+			}
 			osampc := float64(n.nfft/n.nbuf) / 2
 			return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
+
 		}
 		fadv := func(j int) float64 {
+			if mag(a.X[j]) < 1e-6 {
+				return 0
+			}
 			return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
+
 		}
 
 		for len(n.heap) > 0 {
@@ -210,19 +219,20 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
-					// a.Phase[w-1] = a.Phase[w] - fadv(w-1)
-					a.Phase[w-1] = a.Phase[w] + (cmplx.Phase(a.X[w-1])-cmplx.Phase(a.X[w]))*stretch
+					a.Phase[w-1] = a.Phase[w] - fadv(w-1)
+					// a.Phase[w-1] = a.Phase[w] + cmplx.Phase(a.X[w-1]/a.X[w])*stretch - math.Pi/2
 					_ = fadv
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
-					// a.Phase[w+1] = a.Phase[w] - fadv(w+1)
-					a.Phase[w+1] = a.Phase[w] + (cmplx.Phase(a.X[w+1])-cmplx.Phase(a.X[w]))*stretch
+					a.Phase[w+1] = a.Phase[w] + fadv(w+1)
+					// a.Phase[w+1] = a.Phase[w] + cmplx.Phase(a.X[w+1]/a.X[w])*stretch - math.Pi/2
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 				}
 			}
+
 		}
 
 		copy(a.P, a.M)
@@ -237,6 +247,7 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		}
 		mul(a.S, a.W)
 		add(out[adv:min(len(out), adv+n.nbuf)], a.S)
+
 		adv += oh
 	}
 }
@@ -280,7 +291,7 @@ func splitterNew(nfft int) (n *splitter) {
 		n.hor[i] = MediatorNew[float64, bang](nhor, nhor, qhor)
 	}
 	nvert := 15
-	qvert := 0.25
+	qvert := 0.2
 	n.vert = MediatorNew[float64, bang](nvert, nvert, qvert)
 
 	hann(n.a.W)
