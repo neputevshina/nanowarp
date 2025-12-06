@@ -11,7 +11,7 @@ advance in this version of PGHI is allowed only for bins with local maxima in ma
 working as a simplest form of auditory noise masking method.
 
 To reduce smearing of transients, a variant of median harmonic-percussive source separation
-(HPSS) with a very short window is first applied to the signal. Extracted impulsive components
+(HPSS)[3] with a very short window is first applied to the signal. Extracted impulsive components
 of the signal are then warped with smaller FFT grain (512 in this case), and harmonic portion
 is then warped using large grain (4096). Like in original implementation of PGHI-PV, FFT is
 oversampled by factor of 2 with zero-padding.
@@ -30,7 +30,7 @@ oversampled by factor of 2 with zero-padding.
 - ~~Boa — Welcome (-12 pitch, external)~~
 
 ## References
-1. Průša, Z., & Holighaus, N. (2017, August). Phase vocoder done right. In 2017 25th European
-    signal processing conference (Eusipco) (pp. 976-980). IEEE.
-2. Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
-3. Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+1. [Průša, Z., & Holighaus, N. (2017, August). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
+2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
+3. [Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.](https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
+
