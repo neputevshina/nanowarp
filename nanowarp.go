@@ -20,7 +20,8 @@ package nanowarp
 //	+ Calculate mag(a.X) once
 //	- Try replacing cmplx.Phase with complex arithmetic and measure the speedup
 //	- Replace container.Heap with rankfilt
-//	- Parallelize through channels
+//	- Parallelize
+//		- Parallelize after streaming
 //	- Use/port a vectorized FFT library (e.g. SLEEF)
 //	- Use float32 (impossible with gonum)
 //	- SIMD?
@@ -31,6 +32,7 @@ import (
 	"math"
 	"math/cmplx"
 	"os"
+	"sync"
 
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -63,8 +65,18 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	dc := n.lower.hop - n.upper.hop
 	copy(n.pfile, n.pfile[dc:])
 
-	n.lower.process(n.hfile, out, stretch)
-	n.upper.process(n.pfile, out, stretch)
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		// n.lower.process(n.hfile, out, stretch)
+		wg.Done()
+	}()
+	go func() {
+		n.upper.process(n.pfile, out, stretch)
+		wg.Done()
+	}()
+	wg.Wait()
+
 }
 
 type warper struct {
@@ -184,15 +196,6 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		}
 		fadv := func(j int) float64 {
 			return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
-			// l := 0.
-			// r := 0.
-			// if j > 1 {
-			// 	l = cmplx.Phase(a.X[j-1])
-			// }
-			// if j+1 < n.nbins {
-			// 	r = cmplx.Phase(a.X[j+1])
-			// }
-			// return (2*cmplx.Phase(a.X[j])-l-r)*stretch - math.Pi/2
 		}
 
 		for len(n.heap) > 0 {
@@ -207,12 +210,15 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 				}
 			case 0:
 				if w > 1 && n.arm[w-1] {
-					a.Phase[w-1] = a.Phase[w] - fadv(w-1)
+					// a.Phase[w-1] = a.Phase[w] - fadv(w-1)
+					a.Phase[w-1] = a.Phase[w] + (cmplx.Phase(a.X[w-1])-cmplx.Phase(a.X[w]))*stretch
+					_ = fadv
 					n.arm[w-1] = false
 					heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 				}
 				if w < n.nbins-1 && n.arm[w+1] {
-					a.Phase[w+1] = a.Phase[w] + fadv(w+1)
+					// a.Phase[w+1] = a.Phase[w] - fadv(w+1)
+					a.Phase[w+1] = a.Phase[w] + (cmplx.Phase(a.X[w+1])-cmplx.Phase(a.X[w]))*stretch
 					n.arm[w+1] = false
 					heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 				}
