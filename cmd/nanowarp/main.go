@@ -36,6 +36,8 @@ func main() {
 	rd := wav.NewReader(file)
 	left := []float64{}
 	right := []float64{}
+	f, err := rd.Format()
+
 	for {
 		samples, err := rd.ReadSamples()
 		if err == io.EOF {
@@ -44,12 +46,12 @@ func main() {
 
 		for _, sample := range samples {
 			left = append(left, rd.FloatValue(sample, 0))
-			right = append(left, rd.FloatValue(sample, 1))
+			right = append(right, rd.FloatValue(sample, 1))
 		}
 	}
 
-	lnw := nanowarp.New(48000)
-	rnw := nanowarp.New(48000)
+	lnw := nanowarp.New(int(f.SampleRate))
+	rnw := nanowarp.New(int(f.SampleRate))
 
 	var n float64 = 2
 	lout := make([]float64, int(float64(len(left)+8192)*n))
@@ -72,12 +74,12 @@ func main() {
 		rout[i] *= 0.25
 	}
 
-	file, err := os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
+	file, err = os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
 
 	if err != nil {
 		panic(err)
 	}
-	wr := wav.NewWriter(file, uint32(len(lout)), 2, 48000, 16)
+	wr := wav.NewWriter(file, uint32(len(lout)), 2, f.SampleRate, 16)
 	for i := range lout {
 		lsa, rsa := lout[i], rout[i]
 		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{int(lsa * math.Pow(2, 16-1)), int(rsa * math.Pow(2, 16-1))}}})
