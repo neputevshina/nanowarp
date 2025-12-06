@@ -59,26 +59,29 @@ func New(samplerate int) (n *Nanowarp) {
 }
 
 func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
-	n.hfile = make([]float64, len(in))
-	n.pfile = make([]float64, len(in))
-	n.hpss.process(in, n.pfile, n.hfile)
-	// Delay compensation.
-	// TODO Streaming.
-	dc := n.lower.hop - n.upper.hop
-	copy(n.pfile, n.pfile[dc:])
+	if stretch > 1 {
+		n.hfile = make([]float64, len(in))
+		n.pfile = make([]float64, len(in))
+		n.hpss.process(in, n.pfile, n.hfile)
+		// Delay compensation.
+		// TODO Streaming.
+		dc := n.lower.hop - n.upper.hop
+		copy(n.pfile, n.pfile[dc:])
 
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		n.lower.process(n.hfile, out, stretch)
-		wg.Done()
-	}()
-	go func() {
-		n.upper.process(n.pfile, out, stretch)
-		wg.Done()
-	}()
-	wg.Wait()
-
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			n.lower.process(n.hfile, out, stretch)
+			wg.Done()
+		}()
+		go func() {
+			n.upper.process(n.pfile, out, stretch)
+			wg.Done()
+		}()
+		wg.Wait()
+	} else {
+		n.lower.process(in, out, stretch)
+	}
 }
 
 type warper struct {
