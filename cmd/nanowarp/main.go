@@ -34,8 +34,8 @@ func main() {
 	file, _ := os.Open(filename)
 
 	rd := wav.NewReader(file)
-	left := []float64{}
-	right := []float64{}
+	mid := []float64{}
+	side := []float64{}
 	f, err := rd.Format()
 
 	for {
@@ -45,33 +45,33 @@ func main() {
 		}
 
 		for _, sample := range samples {
-			left = append(left, rd.FloatValue(sample, 0))
-			right = append(right, rd.FloatValue(sample, 1))
+			mid = append(mid, rd.FloatValue(sample, 0)+rd.FloatValue(sample, 1))
+			side = append(side, rd.FloatValue(sample, 0)-rd.FloatValue(sample, 1))
 		}
 	}
 
-	lnw := nanowarp.New(int(f.SampleRate))
-	rnw := nanowarp.New(int(f.SampleRate))
+	mnw := nanowarp.New(int(f.SampleRate))
+	snw := nanowarp.New(int(f.SampleRate))
 
 	var n float64 = 2
-	lout := make([]float64, int(float64(len(left)+8192)*n))
-	rout := make([]float64, int(float64(len(left)+8192)*n))
+	mout := make([]float64, int(float64(len(mid)+8192)*n))
+	sout := make([]float64, int(float64(len(mid)+8192)*n))
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		lnw.Process(left, lout, n)
+		mnw.Process(mid, mout, n)
 		wg.Done()
 	}()
 	go func() {
-		rnw.Process(right, rout, n)
+		snw.Process(side, sout, n)
 		wg.Done()
 	}()
 	wg.Wait()
 
-	for i := range lout {
-		lout[i] *= 0.25
-		rout[i] *= 0.25
+	for i := range mout {
+		mout[i] *= 0.25
+		sout[i] *= 0.25
 	}
 
 	file, err = os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
@@ -79,9 +79,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	wr := wav.NewWriter(file, uint32(len(lout)), 2, f.SampleRate, 16)
-	for i := range lout {
-		lsa, rsa := lout[i], rout[i]
+	wr := wav.NewWriter(file, uint32(len(mout)), 2, f.SampleRate, 16)
+	for i := range mout {
+		msa, ssa := mout[i]/2, sout[i]/2
+		lsa, rsa := msa+ssa, msa-ssa
 		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{int(lsa * math.Pow(2, 16-1)), int(rsa * math.Pow(2, 16-1))}}})
 		if err != nil {
 			panic(err)

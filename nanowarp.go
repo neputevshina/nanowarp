@@ -7,6 +7,7 @@ package nanowarp
 // - Time and pitch envelopes
 // - Hop size dithering
 // - Noise extraction
+// + Stereo fix
 // ± Bubbling artifacts fix
 //	- Is because of HPSS
 //	- Probably nfft is forgotten somewhere in formulas
