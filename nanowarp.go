@@ -7,20 +7,20 @@ package nanowarp
 // - Time and pitch envelopes
 // - Hop size dithering
 // - Noise extraction
-// - Bubbling artifacts fix
+// ± Bubbling artifacts fix
 // - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
 // - Reset phase accuum sometimes against numerical errors
 // + Pre-echo fix
 // 	- Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
-//	- Need dx/dt and dx/dw of it
+//	- Need dx/dt of it
 // + HPSS and lower-upper
 // - Optimizations
 //	+ Calculate mag(a.X) once
 //	- Try replacing cmplx.Phase with complex arithmetic and measure the speedup
 //	- Replace container.Heap with rankfilt
 //	- Parallelize through channels
-//	- Use/port vectorized FFT library (e.g. SLEEF)
+//	- Use/port a vectorized FFT library (e.g. SLEEF)
 //	- Use float32 (impossible with gonum)
 //	- SIMD?
 
@@ -183,6 +183,15 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		}
 		fadv := func(j int) float64 {
 			return -real(a.Xt[j]/a.X[j])/float64(n.nfft/2)*math.Pi*stretch - math.Pi/2
+			// l := 0.
+			// r := 0.
+			// if j > 1 {
+			// 	l = cmplx.Phase(a.X[j-1])
+			// }
+			// if j+1 < n.nbins {
+			// 	r = cmplx.Phase(a.X[j+1])
+			// }
+			// return (2*cmplx.Phase(a.X[j])-l-r)*stretch - math.Pi/2
 		}
 
 		hor := make([]float64, n.nbins)

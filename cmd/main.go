@@ -5,23 +5,19 @@ import (
 	"io"
 	"math"
 	"os"
-	"strings"
 
 	"image"
 	"image/color"
-	"image/png"
 
 	"github.com/neputevshina/nanowarp"
 	"github.com/youpy/go-wav"
 )
 
-func main() {
-	nanowarp.G = map[string]any{}
-	nanowarp.G[`phasogram.png`] = make([][]float64, 0)
-	nanowarp.G[`origphase.png`] = make([][]float64, 0)
-	// nanowarp.G[`mag.png`] = make([][]float64, 0)
+var println = fmt.Println
 
+func main() {
 	// filename := `fm.wav`
+	// filename := `output.wav`
 	// filename := `saw.wav`
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
@@ -34,7 +30,8 @@ func main() {
 	file, _ := os.Open(filename)
 
 	rd := wav.NewReader(file)
-	data := []float64{}
+	left := []float64{}
+	right := []float64{}
 	for {
 		samples, err := rd.ReadSamples()
 		if err == io.EOF {
@@ -42,20 +39,25 @@ func main() {
 		}
 
 		for _, sample := range samples {
-			data = append(data, rd.FloatValue(sample, 0))
+			left = append(left, rd.FloatValue(sample, 0))
+			right = append(left, rd.FloatValue(sample, 1))
 		}
 	}
 
-	nw := nanowarp.New(48000)
+	lnw := nanowarp.New(48000)
+	rnw := nanowarp.New(48000)
+
 	var n float64 = 2
-	out := make([]float64, int(float64(len(data)+8192)*n))
-	fmt.Fprintln(os.Stderr, "nsamp:", len(out))
-	nw.Process(data, out, n)
+	lout := make([]float64, int(float64(len(left)+8192)*n))
+	rout := make([]float64, int(float64(len(left)+8192)*n))
+	lnw.Process(left, lout, n)
+	rnw.Process(right, rout, n)
 
 	// Clipping.
-	for i := range out {
+	for i := range lout {
 		// out[i] = math.Tanh(out[i] * n)
-		out[i] = out[i] * 0.25
+		lout[i] *= 0.25
+		rout[i] *= 0.25
 	}
 
 	file, err := os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
@@ -63,35 +65,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	wr := wav.NewWriter(file, uint32(len(out)), 1, 48000, 16)
-	for _, sa := range out {
-		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{int(sa * math.Pow(2, 16-1))}}})
+	wr := wav.NewWriter(file, uint32(len(lout)), 2, 48000, 16)
+	for i := range lout {
+		lsa, rsa := lout[i], rout[i]
+		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{int(lsa * math.Pow(2, 16-1)), int(rsa * math.Pow(2, 16-1))}}})
 		if err != nil {
 			panic(err)
 		}
 	}
 	file.Close()
-
-	phasogram := func(name string) {
-		e := nanowarp.G[name].([][]float64)
-		fmt.Println(name)
-		if len(e) == 0 {
-			fmt.Println(`<skipped>`)
-			return
-		}
-		file, err := os.Create(name)
-		if err != nil {
-			panic(err)
-		}
-		png.Encode(file, FloatMatrixToImage(e))
-	}
-
-	for k := range nanowarp.G {
-		if strings.HasSuffix(k, ".png") {
-			phasogram(k)
-		}
-	}
-
 }
 
 // FloatMatrixToImage converts a 2D float64 matrix into a grayscale image.Image.

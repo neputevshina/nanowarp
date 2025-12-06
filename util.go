@@ -1,6 +1,7 @@
 package nanowarp
 
 import (
+	"fmt"
 	"math"
 	"math/cmplx"
 	"reflect"
@@ -19,6 +20,8 @@ var G map[string]any
 var mag = cmplx.Abs
 
 type bang = struct{}
+
+var println = fmt.Println
 
 func princarg(phase float64) float64 {
 	pi2 := 2 * math.Pi
@@ -47,7 +50,6 @@ func mix[F constraints.Float](a, b, x F) F {
 	return a*(1-x) + b*x
 }
 
-// makeslices automatically initializes slices through reflection.
 func makeslices(a any, nbins, nfft int) {
 	rn := reflect.ValueOf(a).Elem()
 	for i := 0; i < rn.NumField(); i++ {
