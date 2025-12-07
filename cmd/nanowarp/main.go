@@ -23,8 +23,8 @@ func main() {
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
 	// filename := `saw-click.wav`
-	filename := `ticktock.wav`
-	// filename := `welcome.wav`
+	// filename := `ticktock.wav`
+	filename := `welcome.wav`
 	// filename := `ЗАПАХЛО_NIGHTCALL_МЭШАПЕР_АРКАДИЙ_ГАЧИБАСОВ.mp3.wav`
 	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
 	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
@@ -45,17 +45,18 @@ func main() {
 		}
 
 		for _, sample := range samples {
-			mid = append(mid, rd.FloatValue(sample, 0)+rd.FloatValue(sample, 1))
-			side = append(side, rd.FloatValue(sample, 0)-rd.FloatValue(sample, 1))
+			l, r := rd.FloatValue(sample, 0), rd.FloatValue(sample, 1)
+			mid = append(mid, l+r)
+			side = append(side, l-r)
 		}
 	}
 
 	mnw := nanowarp.New(int(f.SampleRate))
 	snw := nanowarp.New(int(f.SampleRate))
 
-	var n float64 = 0.5
-	mout := make([]float64, int(float64(len(mid)+8192)*n))
-	sout := make([]float64, int(float64(len(mid)+8192)*n))
+	var n float64 = 2
+	mout := make([]float64, int(float64(len(mid))*n))
+	sout := make([]float64, int(float64(len(mid))*n))
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
@@ -83,7 +84,9 @@ func main() {
 	for i := range mout {
 		msa, ssa := mout[i]/2, sout[i]/2
 		lsa, rsa := msa+ssa, msa-ssa
-		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{int(lsa * math.Pow(2, 16-1)), int(rsa * math.Pow(2, 16-1))}}})
+		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{
+			int(lsa * math.Pow(2, 16-1)),
+			int(rsa * math.Pow(2, 16-1))}}})
 		if err != nil {
 			panic(err)
 		}

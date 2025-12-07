@@ -1,20 +1,23 @@
 package nanowarp
 
 // TODO
-// - Time-domain correctness
 // - Pitch
+//	- Good resampler is required
 // - Streaming
 // - Time and pitch envelopes
 // - Hop size dithering
-// - Noise extraction
+// - Phase drift fix (try long impulse train signal to see it)
+// 	± Time-domain correctness
+//	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
 // + Stereo fix
-// ± Bubbling artifacts fix
-//	- Is because of HPSS
-//	- Probably nfft is forgotten somewhere in formulas
+// + Bubbling artifacts fix
+//	+ Is because of HPSS
+//	+ Simply wrong sign
+// - HPSS erosion
 // - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
-// - Reset phase accuum sometimes against numerical errors
-// - Speed-up is broken
-// - Pre-echo fix
+// - Reset phase accuum sometimes to counteract numerical errors
+// + Speed-up fix
+// + Pre-echo fix
 // 	- Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
 //	- Need dx/dt of it
@@ -23,9 +26,9 @@ package nanowarp
 //	+ Calculate mag(a.X) once
 //	- Replace container.Heap with rankfilt
 //	+ Parallelize
-//		- Parallelize after streaming
+//		- Parallelize in streaming
 //	- Use/port a vectorized FFT library (e.g. SLEEF)
-//	- Use float32 (impossible with gonum)
+//	- Use only float32 (impossible with gonum)
 //	- SIMD?
 //		- dev.simd branch of Go compiler with intrinsics
 
@@ -53,7 +56,7 @@ func New(samplerate int) (n *Nanowarp) {
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate)/48000)) - 1
 	n.lower = warperNew(1 << (13 + w)) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(1 << (8 + w))  // 1024 (512) @ 48000 Hz // TODO 12-15 ms
+	n.upper = warperNew(1 << (8 + w))  // 256 (128) @ 48000 Hz
 	n.hpss = splitterNew(1 << (9 + w)) // TODO Find optimal size
 	return
 }
@@ -67,6 +70,7 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		// TODO Streaming.
 		dc := n.lower.hop - n.upper.hop
 		copy(n.pfile, n.pfile[dc:])
+		clear(n.pfile[len(n.pfile)-dc:])
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
@@ -80,6 +84,7 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		}()
 		wg.Wait()
 	} else {
+		// TODO Too lazy, do something more smart
 		n.lower.process(in, out, stretch)
 	}
 }
@@ -131,9 +136,105 @@ func warperNew(nfft int) (n *warper) {
 	return
 }
 
-// process performs phase gradient heap integration (PGHI) based time stretching.
+// advance adds to the phase of the output by one frame using
+// phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
+func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64) {
+	a := &n.a
+	enfft := func(x []complex128, w []float64) {
+		clear(a.S)
+		copy(a.S, ingrain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
+
+	enfft(a.X, a.W)
+	enfft(a.Xd, a.Wd)
+	enfft(a.Xt, a.Wt)
+
+	for w := range a.X {
+		a.M[w] = mag(a.X[w])
+	}
+
+	n.heap = make(hp, n.nbins)
+	clear(n.arm)
+
+	for j := range a.X {
+		n.arm[j] = true
+		// Disabled because it adds more pre-echo.
+		// // Allow time-phase propagation only for local maxima.
+		// // Which is a simplest possible auditory masking model.
+		// if j == 0 || j == n.nbins-1 ||
+		// 	a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
+		n.heap[j] = heaptriple{a.P[j], j, -1}
+		// }
+	}
+	heap.Init(&n.heap)
+
+	// Here we are using time-frequency reassignment[¹] as a way of obtaining
+	// phase derivatives. Probably in future these derivatives will be replaced
+	// with differences because currently phase is leaking in time domain and
+	// finite differences guarrantee idempotency at stretch=1.
+	//
+	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+	olap := float64(n.nbuf / n.hop)
+	tadv := func(j int) float64 {
+		if mag(a.X[j]) < 1e-6 {
+			return 0
+		}
+		osampc := float64(n.nfft/n.nbuf) / 2
+		return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
+
+	}
+	fadv := func(j int) float64 {
+		if mag(a.X[j]) < 1e-6 {
+			return 0
+		}
+		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
+
+	}
+
+	for len(n.heap) > 0 {
+		h := heap.Pop(&n.heap).(heaptriple)
+		w := h.w
+		switch h.t {
+		case -1:
+			if n.arm[w] {
+				a.Phase[w] = a.Pphase[w] + tadv(w)
+				n.arm[w] = false
+				heap.Push(&n.heap, heaptriple{a.M[w], w, 0})
+			}
+		case 0:
+			if w > 1 && n.arm[w-1] {
+				a.Phase[w-1] = a.Phase[w] - fadv(w-1)
+				_ = fadv
+				n.arm[w-1] = false
+				heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
+			}
+			if w < n.nbins-1 && n.arm[w+1] {
+				a.Phase[w+1] = a.Phase[w] + fadv(w+1)
+				n.arm[w+1] = false
+				heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
+			}
+		}
+	}
+
+	copy(a.P, a.M)
+	for w := range a.Phase {
+		a.O[w] = cmplx.Rect(a.M[w], a.Phase[w])
+		a.Pphase[w] = princarg(a.Phase[w])
+	}
+
+	n.fft.Sequence(a.S, a.O)
+	for j := range a.S {
+		a.S[j] /= n.norm
+	}
+	mul(a.S, a.W)
+
+	copy(outgrain, a.S)
+}
+
 func (n *warper) process(in []float64, out []float64, stretch float64) {
 	a := &n.a
 	ih := int(math.Floor(float64(n.hop) / stretch))
@@ -142,117 +243,29 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, `inhop:`, ih, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
 	fmt.Fprintln(os.Stderr, `outhop:`, oh)
 
-	adv := 0
-	for i := 0; i < len(in); i += ih {
-		enfft := func(i int, x []complex128, w []float64) {
-			zero(a.S)
-			copy(a.S, in[i:min(len(in), i+n.nbuf)])
-			mul(a.S, w)
-			n.fft.Coefficients(x, a.S)
-		}
+	clear(a.S)
+	copy(a.S, in[:min(len(in), n.nbuf)])
+	mul(a.S, a.W)
+	n.fft.Coefficients(a.X, a.S)
 
-		enfft(i, a.X, a.W)
-		enfft(i, a.Xd, a.Wd)
-		enfft(i, a.Xt, a.Wt)
+	for w := range a.X {
+		a.M[w] = mag(a.X[w])
+		a.Pphase[w] = cmplx.Phase(a.X[w])
+	}
+	copy(a.P, a.M)
 
-		for w := range a.X {
-			a.M[w] = mag(a.X[w])
-		}
-		if i == 0 {
-			for w := range a.Phase {
-				a.Pphase[w] = cmplx.Phase(a.X[w])
-			}
-			copy(a.P, a.M)
+	for j := range a.S[:n.nbuf] {
+		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
+	}
+	add(out[:min(len(out), n.nbuf)], a.S)
 
-			for j := range a.S[:n.nbuf] {
-				a.S[j] = in[i:min(len(in), i+n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
-			}
-			add(out[adv:min(len(out), adv+n.nbuf)], a.S)
-			adv += oh
+	outgrain := make([]float64, n.nfft)
 
-			continue
-		}
-
-		a := &n.a
-		n.heap = make(hp, n.nbins)
-		clear(n.arm)
-
-		for j := range a.X {
-			n.arm[j] = true
-			// // Allow time-phase propagation only for local maxima.
-			// // Which is a simplest possible auditory masking model.
-			// if j == 0 || j == n.nbins-1 ||
-			// 	a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
-			n.heap[j] = heaptriple{a.P[j], j, -1}
-			// }
-		}
-		heap.Init(&n.heap)
-
-		// Here we are using time-frequency reassignment[¹] as a way of obtaining
-		// phase derivatives. Probably in future these derivatives will be replaced
-		// with differences because currently phase is leaking in time domain and
-		// finite differences guarrantee idempotency at stretch=1.
-		//
-		// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
-		olap := float64(n.nbuf / n.hop)
-		tadv := func(j int) float64 {
-			if mag(a.X[j]) < 1e-6 {
-				return 0
-			}
-			osampc := float64(n.nfft/n.nbuf) / 2
-			return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
-
-		}
-		fadv := func(j int) float64 {
-			if mag(a.X[j]) < 1e-6 {
-				return 0
-			}
-			return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
-
-		}
-
-		for len(n.heap) > 0 {
-			h := heap.Pop(&n.heap).(heaptriple)
-			w := h.w
-			switch h.t {
-			case -1:
-				if n.arm[w] {
-					a.Phase[w] = a.Pphase[w] + tadv(w)
-					n.arm[w] = false
-					heap.Push(&n.heap, heaptriple{a.M[w], w, 0})
-				}
-			case 0:
-				if w > 1 && n.arm[w-1] {
-					a.Phase[w-1] = a.Phase[w] - fadv(w-1)
-					// a.Phase[w-1] = a.Phase[w] + cmplx.Phase(a.X[w-1]/a.X[w])*stretch - math.Pi/2
-					_ = fadv
-					n.arm[w-1] = false
-					heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
-				}
-				if w < n.nbins-1 && n.arm[w+1] {
-					a.Phase[w+1] = a.Phase[w] + fadv(w+1)
-					// a.Phase[w+1] = a.Phase[w] + cmplx.Phase(a.X[w+1]/a.X[w])*stretch - math.Pi/2
-					n.arm[w+1] = false
-					heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
-				}
-			}
-
-		}
-
-		copy(a.P, a.M)
-		for w := range a.Phase {
-			a.O[w] = cmplx.Rect(a.M[w], a.Phase[w])
-			a.Pphase[w] = princarg(a.Phase[w])
-		}
-
-		n.fft.Sequence(a.S, a.O)
-		for j := range a.S {
-			a.S[j] /= n.norm
-		}
-		mul(a.S, a.W)
-		add(out[adv:min(len(out), adv+n.nbuf)], a.S)
-
-		adv += oh
+	j := oh
+	for i := ih; i < len(in); i += ih {
+		n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, stretch)
+		add(out[j:min(len(out), j+n.nbuf)], outgrain)
+		j += oh
 	}
 }
 
@@ -305,53 +318,64 @@ func splitterNew(nfft int) (n *splitter) {
 	return
 }
 
+func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []float64) {
+	n.vert.Reset(n.vert.N)
+	a := &n.a
+
+	enfft := func(x []complex128, w []float64) {
+		clear(a.S)
+		copy(a.S, ingrain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
+
+	enfft(a.X, a.W)
+
+	for w := range a.X {
+		a.M[w] = mag(a.X[w])
+	}
+	n.vert.filt(a.M, n.vert.N, a.P, REFLECT, 0, 0)
+	for w := range a.X {
+		m := n.hor[w]
+		m.Insert(a.M[w], bang{})
+		a.H[w], _ = m.Take()
+	}
+
+	for w := range a.X {
+		if a.P[w] < a.H[w] {
+			a.X[w] = 0
+		}
+	}
+
+	n.fft.Sequence(a.S, a.X)
+	for w := range a.S {
+		a.S[w] /= n.norm
+	}
+	mul(a.S, a.W)
+	copy(poutgrain, a.S)
+
+	// Harmonic = original - percussive
+	for j := range ingrain {
+		houtgrain[j] = ingrain[j]*a.W[j]*a.W[j]/n.norm*float64(n.nfft) - a.S[j]
+	}
+}
+
 // process performs harmonic-percussive source separation (HPSS).
 // See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
 // (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
-func (n *splitter) process(in []float64, outp []float64, outh []float64) {
+func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 	fmt.Fprintln(os.Stderr, `(*splitter).process`)
+	for i := range n.hor {
+		n.hor[i].Reset(n.hor[i].N)
+	}
+
+	poutgrain := make([]float64, n.nfft)
+	houtgrain := make([]float64, n.nfft)
+
 	for i := 0; i < len(in); i += n.hop {
-		n.vert.Reset(n.vert.N)
-		a := &n.a
-
-		enfft := func(i int, x []complex128, w []float64) {
-			zero(a.S)
-			copy(a.S, in[i:min(len(in), i+n.nbuf)])
-			mul(a.S, w)
-			n.fft.Coefficients(x, a.S)
-		}
-
-		enfft(i, a.X, a.W)
-
-		for w := range a.X {
-			a.M[w] = mag(a.X[w])
-		}
-		n.vert.filt(a.M, n.vert.N, a.P, REFLECT, 0, 0)
-		for w := range a.X {
-			m := n.hor[w]
-			m.Insert(a.M[w], bang{})
-			a.H[w], _ = m.Take()
-		}
-
-		for w := range a.X {
-			if a.P[w] < a.H[w] {
-				a.X[w] = 0
-			}
-		}
-
-		n.fft.Sequence(a.S, a.X)
-		for w := range a.S {
-			a.S[w] /= n.norm
-		}
-		mul(a.S, a.W)
-		add(outp[i:min(len(outp), i+n.nbuf)], a.S)
-
-		// Harmonic = original - percussive
-		in1 := in[i:min(len(in), i+n.nbuf)]
-		for j := range in1 {
-			a.S[j] -= in1[j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
-		}
-		add(outh[i:min(len(outh), i+n.nbuf)], a.S)
+		n.advance(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
+		add(pout[i:min(len(pout), i+n.nbuf)], poutgrain)
+		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
 	}
 }
 
@@ -401,12 +425,5 @@ func windowT(w, out []float64) {
 	n := float64(len(w))
 	for i := range w {
 		out[i] = w[i] * mix(-n/2, n/2+1, float64(i)/n)
-	}
-}
-
-func zero[T any](dst []T) {
-	var z T
-	for i := range dst {
-		dst[i] = z
 	}
 }
