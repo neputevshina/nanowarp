@@ -20,6 +20,7 @@ import (
 var println = fmt.Println
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+var noclip = flag.Bool("noclip", true, "don't apply soft clipping to the output, make it 12dB quieter instead")
 
 func main() {
 	// filename := `fm.wav`
@@ -104,9 +105,14 @@ func main() {
 	for i := range mout {
 		msa, ssa := mout[i]/2, sout[i]/2
 		lsa, rsa := msa+ssa, msa-ssa
+		if *noclip {
+			lsa, rsa = lsa*0.25, rsa*0.25
+		} else {
+			lsa, rsa = math.Tanh(lsa), math.Tanh(rsa)
+		}
 		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{
-			int(math.Tanh(lsa) * math.Pow(2, 16-1)),
-			int(math.Tanh(rsa) * math.Pow(2, 16-1))}}})
+			int(lsa * math.Pow(2, 16-1)),
+			int(rsa * math.Pow(2, 16-1))}}})
 		if err != nil {
 			panic(err)
 		}
