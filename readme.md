@@ -14,9 +14,6 @@ of the signal are then warped with smaller FFT grain (512 in this case), and har
 is then warped using large grain (4096). Like in original implementation of PGHI-PV, FFT is
 oversampled by factor of 2 with zero-padding.
 
-**Currently none of filter sizes (FFT and HPSS quantile filters) are corrected for sample rate.**
-**Current implementation is calibrated for 48kHz.**
-
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
 
