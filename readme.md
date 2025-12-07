@@ -17,6 +17,16 @@ oversampled by factor of 2 with zero-padding.
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
 
+## Known issues
+- No pitch modification. Requires a good resampler library,  e.g. r8brain. 
+  Either port it or use through cgo.
+- Desync of percussive and harmonic output because of hop size dithering. 
+  Results in more pronounced “bubbling” artifacts on non-integer stretch sizes.
+- Slow. Mostly from container/heap.
+- -12dB gain on output because of 16-bit WAV inputs and outputs.
+  Requires switching to 32-bit float WAV files (both for input and output). 
+  Currently no Go library provides float WAV support.
+
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)

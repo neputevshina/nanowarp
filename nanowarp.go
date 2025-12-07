@@ -6,8 +6,8 @@ package nanowarp
 // - Streaming
 // - Time and pitch envelopes
 // + Hop size dithering
-//	- Harmonic-percussive desync fix
-//	- Probably achieveable through resampling
+//	- Harmonic-percussive desync fix (bubbling)
+//	- Probably achieveable through resampling or output hop size manipulation
 // - Phase drift fix (try long impulse train signal to see it)
 // 	± Time-domain correctness
 //	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
@@ -69,7 +69,6 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		// Delay compensation.
 		// TODO Streaming and dithering.
 		dc := int(2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2)
-		println(`dc:`, dc, n.lower.hop-n.upper.hop)
 		copy(n.pfile, n.pfile[dc:])
 		clear(n.pfile[len(n.pfile)-dc:])
 

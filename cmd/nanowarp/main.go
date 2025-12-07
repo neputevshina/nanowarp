@@ -1,10 +1,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
+	"runtime/pprof"
 	"sync"
 
 	"image"
@@ -16,6 +19,8 @@ import (
 
 var println = fmt.Println
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+
 func main() {
 	// filename := `fm.wav`
 	// filename := `output.wav`
@@ -23,11 +28,25 @@ func main() {
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
 	// filename := `saw-click.wav`
-	filename := `ticktock.wav`
+	// filename := `ticktock.wav`
 	// filename := `welcome.wav`
 	// filename := `ЗАПАХЛО_NIGHTCALL_МЭШАПЕР_АРКАДИЙ_ГАЧИБАСОВ.mp3.wav`
-	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
+	filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
 	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
+
+	flag.Parse()
+	if *cpuprofile != "" {
+		fmt.Fprintln(os.Stderr, `profiling`)
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	fmt.Fprintln(os.Stderr, filename)
 
@@ -54,7 +73,7 @@ func main() {
 	mnw := nanowarp.New(int(f.SampleRate))
 	snw := nanowarp.New(int(f.SampleRate))
 
-	var n float64 = 1.1
+	var n float64 = 2.1
 	mout := make([]float64, int(float64(len(mid))*n))
 	sout := make([]float64, int(float64(len(mid))*n))
 
