@@ -23,10 +23,10 @@ func main() {
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
 	// filename := `saw-click.wav`
-	// filename := `ticktock.wav`
+	filename := `ticktock.wav`
 	// filename := `welcome.wav`
 	// filename := `ЗАПАХЛО_NIGHTCALL_МЭШАПЕР_АРКАДИЙ_ГАЧИБАСОВ.mp3.wav`
-	filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
+	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
 	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
 
 	fmt.Fprintln(os.Stderr, filename)
@@ -54,7 +54,7 @@ func main() {
 	mnw := nanowarp.New(int(f.SampleRate))
 	snw := nanowarp.New(int(f.SampleRate))
 
-	var n float64 = 1.5
+	var n float64 = 1.1
 	mout := make([]float64, int(float64(len(mid))*n))
 	sout := make([]float64, int(float64(len(mid))*n))
 

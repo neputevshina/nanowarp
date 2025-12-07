@@ -68,9 +68,10 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		n.hpss.process(in, n.pfile, n.hfile)
 		// Delay compensation.
 		// TODO Streaming and dithering.
-		// dc := n.lower.hop - n.upper.hop
-		// copy(n.pfile, n.pfile[dc:])
-		// clear(n.pfile[len(n.pfile)-dc:])
+		dc := int(2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2)
+		println(`dc:`, dc, n.lower.hop-n.upper.hop)
+		copy(n.pfile, n.pfile[dc:])
+		clear(n.pfile[len(n.pfile)-dc:])
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
