@@ -6,6 +6,8 @@ package nanowarp
 // - Streaming
 // - Time and pitch envelopes
 // + Hop size dithering
+//	- Harmonic-percussive desync fix
+//	- Probably achieveable through resampling
 // - Phase drift fix (try long impulse train signal to see it)
 // 	± Time-domain correctness
 //	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
@@ -65,10 +67,10 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		n.pfile = make([]float64, len(in))
 		n.hpss.process(in, n.pfile, n.hfile)
 		// Delay compensation.
-		// TODO Streaming.
-		dc := n.lower.hop - n.upper.hop
-		copy(n.pfile, n.pfile[dc:])
-		clear(n.pfile[len(n.pfile)-dc:])
+		// TODO Streaming and dithering.
+		// dc := n.lower.hop - n.upper.hop
+		// copy(n.pfile, n.pfile[dc:])
+		// clear(n.pfile[len(n.pfile)-dc:])
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
@@ -239,7 +241,7 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 	ih, fh := math.Modf(inhop)
 	fmt.Fprintln(os.Stderr, `(*warper).process`)
 	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
-	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh)
+	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
 	clear(a.S)
@@ -270,8 +272,10 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		if dh > 0 {
 			i += 1
 			dh -= 1
+			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih+1))
+		} else {
+			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih))
 		}
-		n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, stretch)
 		add(out[j:min(len(out), j+n.nbuf)], outgrain)
 		j += n.hop
 	}

@@ -54,7 +54,7 @@ func main() {
 	mnw := nanowarp.New(int(f.SampleRate))
 	snw := nanowarp.New(int(f.SampleRate))
 
-	var n float64 = 1.2
+	var n float64 = 1.5
 	mout := make([]float64, int(float64(len(mid))*n))
 	sout := make([]float64, int(float64(len(mid))*n))
 
