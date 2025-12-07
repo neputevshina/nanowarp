@@ -50,6 +50,10 @@ func mix[F constraints.Float](a, b, x F) F {
 	return a*(1-x) + b*x
 }
 
+func clamp[T constraints.Ordered](a, b, x T) T {
+	return max(a, min(b, x))
+}
+
 func makeslices(a any, nbins, nfft int) {
 	rn := reflect.ValueOf(a).Elem()
 	for i := 0; i < rn.NumField(); i++ {

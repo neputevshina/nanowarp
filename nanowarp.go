@@ -5,20 +5,18 @@ package nanowarp
 //	- Good resampler is required
 // - Streaming
 // - Time and pitch envelopes
-// - Hop size dithering
+// + Hop size dithering
 // - Phase drift fix (try long impulse train signal to see it)
 // 	± Time-domain correctness
 //	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
-// + Stereo fix
-// + Bubbling artifacts fix
-//	+ Is because of HPSS
-//	+ Simply wrong sign
 // - HPSS erosion
+//	- Empty frame elimination
 // - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
 // - Reset phase accuum sometimes to counteract numerical errors
-// + Speed-up fix
-// + Pre-echo fix
-// 	- Niemitalo asymmetric windowing?
+// - Try to simply resample percussive content by stretch size
+//	- See Royer, T. (2019). Pitch-shifting algorithm design and applications in music.
+// - WAV float32 input and output
+// - Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
 //	- Need dx/dt of it
 // + HPSS and lower-upper
@@ -55,9 +53,9 @@ func New(samplerate int) (n *Nanowarp) {
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate)/48000)) - 1
-	n.lower = warperNew(1 << (13 + w)) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(1 << (8 + w))  // 256 (128) @ 48000 Hz
-	n.hpss = splitterNew(1 << (9 + w)) // TODO Find optimal size
+	n.lower = warperNew(1 << (13 + w))                 // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.upper = warperNew(1 << (8 + w))                  // 256 (128) @ 48000 Hz
+	n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 	return
 }
 
@@ -237,11 +235,12 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 
 func (n *warper) process(in []float64, out []float64, stretch float64) {
 	a := &n.a
-	ih := int(math.Floor(float64(n.hop) / stretch))
-	oh := int(math.Floor(float64(n.hop)))
+	inhop := float64(n.hop) / stretch
+	ih, fh := math.Modf(inhop)
 	fmt.Fprintln(os.Stderr, `(*warper).process`)
-	fmt.Fprintln(os.Stderr, `inhop:`, ih, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
-	fmt.Fprintln(os.Stderr, `outhop:`, oh)
+	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
+	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh)
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
 	clear(a.S)
 	copy(a.S, in[:min(len(in), n.nbuf)])
@@ -261,11 +260,20 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 
 	outgrain := make([]float64, n.nfft)
 
-	j := oh
-	for i := ih; i < len(in); i += ih {
+	j := n.hop
+	dh := fh
+	for i := int(ih); i < len(in); i += int(ih) {
+		if j > len(out) {
+			break
+		}
+		dh += fh
+		if dh > 0 {
+			i += 1
+			dh -= 1
+		}
 		n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, stretch)
 		add(out[j:min(len(out), j+n.nbuf)], outgrain)
-		j += oh
+		j += n.hop
 	}
 }
 
@@ -275,19 +283,22 @@ type splitter struct {
 	nbins int
 	hop   int
 	norm  float64
+	corr  float64
 
-	fft  *fourier.FFT
-	vert *mediator[float64, bang]
-	hor  []*mediator[float64, bang]
+	fft    *fourier.FFT
+	vimp   *mediator[float64, bang]
+	himp   []*mediator[float64, bang]
+	verode *mediator[float64, bang]
+	herode []*mediator[float64, bang]
 
 	a sbufs
 }
 type sbufs struct {
-	S, W, M, H, P []float64
-	X, Y          []complex128
+	S, W, M, H, P, A []float64
+	X, Y             []complex128
 }
 
-func splitterNew(nfft int) (n *splitter) {
+func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 8
@@ -297,19 +308,21 @@ func splitterNew(nfft int) (n *splitter) {
 		nbins: nbins,
 		nbuf:  nbuf,
 		hop:   nbuf / olap,
+		corr:  filtcorr,
 	}
 	makeslices(&n.a, nbins, nfft)
-	n.hor = make([]*mediator[float64, bang], nbins)
+	n.himp = make([]*mediator[float64, bang], nbins)
+	n.herode = make([]*mediator[float64, bang], nbins)
 
-	// TODO Samplerate-independent filter sizes.
-	for i := range n.hor {
-		nhor := 27
-		qhor := 0.5
-		n.hor[i] = MediatorNew[float64, bang](nhor, nhor, qhor)
+	// TODO Log-scale for HPSS and erosion
+	for i := range n.himp {
+		nhimp := 27 * int(filtcorr)
+		qhimp := 0.5
+		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
-	nvert := 15
-	qvert := 0.2
-	n.vert = MediatorNew[float64, bang](nvert, nvert, qvert)
+	nvimp := 15 * int(filtcorr)
+	qvimp := 0.25
+	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
 	hann(n.a.W)
 	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.W)
@@ -319,7 +332,7 @@ func splitterNew(nfft int) (n *splitter) {
 }
 
 func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []float64) {
-	n.vert.Reset(n.vert.N)
+	n.vimp.Reset(n.vimp.N)
 	a := &n.a
 
 	enfft := func(x []complex128, w []float64) {
@@ -334,15 +347,22 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 	for w := range a.X {
 		a.M[w] = mag(a.X[w])
 	}
-	n.vert.filt(a.M, n.vert.N, a.P, REFLECT, 0, 0)
+	n.vimp.filt(a.M, n.vimp.N, a.P, REFLECT, 0, 0)
 	for w := range a.X {
-		m := n.hor[w]
+		m := n.himp[w]
 		m.Insert(a.M[w], bang{})
 		a.H[w], _ = m.Take()
 	}
 
 	for w := range a.X {
+		a.A[w] = max(0, a.A[w]-1)
 		if a.P[w] < a.H[w] {
+			a.A[w] = 1 //math.Round(2 * n.corr)
+		}
+	}
+
+	for w := range a.X {
+		if a.A[w] > 0 {
 			a.X[w] = 0
 		}
 	}
@@ -365,8 +385,8 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 // (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
 func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 	fmt.Fprintln(os.Stderr, `(*splitter).process`)
-	for i := range n.hor {
-		n.hor[i].Reset(n.hor[i].N)
+	for i := range n.himp {
+		n.himp[i].Reset(n.himp[i].N)
 	}
 
 	poutgrain := make([]float64, n.nfft)

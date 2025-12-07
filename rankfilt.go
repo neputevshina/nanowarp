@@ -3,7 +3,7 @@
 // <http://www.opensource.org/licenses/mit-license>
 // Modified in 2024 by Gideon Genadi Kogan
 // Modified in 2025 by neputevshina
-// Rewritten by ChatGPT to Go in 2025 for use in Nanowarp
+// Rewritten by neputevshina and ChatGPT to Go in 2025 for use in Nanowarp
 
 package nanowarp
 
