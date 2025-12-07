@@ -8,6 +8,7 @@ package nanowarp
 // + Hop size dithering
 //	- Harmonic-percussive desync fix (bubbling)
 //	- Probably achieveable through resampling or output hop size manipulation
+//	- Or by using nbuf+1 window
 // - Phase drift fix (try long impulse train signal to see it)
 // 	± Time-domain correctness
 //	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
@@ -67,25 +68,24 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		n.pfile = make([]float64, len(in))
 		n.hpss.process(in, n.pfile, n.hfile)
 		// Delay compensation.
-		// TODO Streaming and dithering.
-		dc := int(2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2)
-		copy(n.pfile, n.pfile[dc:])
-		clear(n.pfile[len(n.pfile)-dc:])
+		// TODO Streaming.
+		// copy(n.pfile, n.pfile[dc:])
+		// clear(n.pfile[len(n.pfile)-dc:])
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
-			n.lower.process(n.hfile, out, stretch)
+			n.lower.process(n.hfile, out, stretch, 2048-(2048-float64(n.lower.hop-n.upper.hop))/stretch*2)
 			wg.Done()
 		}()
 		go func() {
-			n.upper.process(n.pfile, out, stretch)
+			n.upper.process(n.pfile, out, stretch, 0)
 			wg.Done()
 		}()
 		wg.Wait()
 	} else {
 		// TODO Too lazy, do something more smart
-		n.lower.process(in, out, stretch)
+		n.lower.process(in, out, stretch, 0)
 	}
 }
 
@@ -208,7 +208,6 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		case 0:
 			if w > 1 && n.arm[w-1] {
 				a.Phase[w-1] = a.Phase[w] - fadv(w-1)
-				_ = fadv
 				n.arm[w-1] = false
 				heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
@@ -235,14 +234,8 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 	copy(outgrain, a.S)
 }
 
-func (n *warper) process(in []float64, out []float64, stretch float64) {
+func (n *warper) start(in []float64, out []float64) {
 	a := &n.a
-	inhop := float64(n.hop) / stretch
-	ih, fh := math.Modf(inhop)
-	fmt.Fprintln(os.Stderr, `(*warper).process`)
-	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
-	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
-	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
 	clear(a.S)
 	copy(a.S, in[:min(len(in), n.nbuf)])
@@ -259,11 +252,23 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
 	}
 	add(out[:min(len(out), n.nbuf)], a.S)
+}
 
+func (n *warper) process(in []float64, out []float64, stretch float64, delay float64) {
+	inhop := float64(n.hop) / stretch
+	ih, fh := math.Modf(inhop)
+	fmt.Fprintln(os.Stderr, `(*warper).process`)
+	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
+	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
+
+	n.start(in, out)
 	outgrain := make([]float64, n.nfft)
 
-	j := n.hop
+	id, fd := math.Modf(delay)
+	j := n.hop + int(id)
 	dh := fh
+	dd := fd
 	for i := int(ih); i < len(in); i += int(ih) {
 		if j > len(out) {
 			break
@@ -275,6 +280,11 @@ func (n *warper) process(in []float64, out []float64, stretch float64) {
 			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih+1))
 		} else {
 			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih))
+		}
+		dd += fd
+		if dh > 0 {
+			j += 1
+			dd -= 1
 		}
 		add(out[j:min(len(out), j+n.nbuf)], outgrain)
 		j += n.hop

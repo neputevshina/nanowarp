@@ -28,10 +28,11 @@ func main() {
 	// filename := `saw-short.wav`
 	// filename := `saw-click.wav`
 	// filename := `saw-click.wav`
-	// filename := `ticktock.wav`
+	filename := `ticktock.wav`
 	// filename := `welcome.wav`
 	// filename := `ЗАПАХЛО_NIGHTCALL_МЭШАПЕР_АРКАДИЙ_ГАЧИБАСОВ.mp3.wav`
-	filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
+	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
+	// filename := `06 - Big Time Sensuality (-44c).flac.wav`
 	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
 
 	flag.Parse()
@@ -73,7 +74,7 @@ func main() {
 	mnw := nanowarp.New(int(f.SampleRate))
 	snw := nanowarp.New(int(f.SampleRate))
 
-	var n float64 = 2.1
+	var n float64 = 1.33
 	mout := make([]float64, int(float64(len(mid))*n))
 	sout := make([]float64, int(float64(len(mid))*n))
 
@@ -89,10 +90,10 @@ func main() {
 	}()
 	wg.Wait()
 
-	for i := range mout {
-		mout[i] *= 0.25
-		sout[i] *= 0.25
-	}
+	// for i := range mout {
+	// 	mout[i] *= 0.25
+	// 	sout[i] *= 0.25
+	// }
 
 	file, err = os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
 
@@ -104,8 +105,8 @@ func main() {
 		msa, ssa := mout[i]/2, sout[i]/2
 		lsa, rsa := msa+ssa, msa-ssa
 		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{
-			int(lsa * math.Pow(2, 16-1)),
-			int(rsa * math.Pow(2, 16-1))}}})
+			int(math.Tanh(lsa) * math.Pow(2, 16-1)),
+			int(math.Tanh(rsa) * math.Pow(2, 16-1))}}})
 		if err != nil {
 			panic(err)
 		}
