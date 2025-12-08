@@ -1,4 +1,4 @@
-module github.com/neputevshina/nanowarp/go-wav
+module github.com/neputevshina/nanowarp/wav
 
 go 1.17
 
