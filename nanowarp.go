@@ -6,11 +6,9 @@ package nanowarp
 // - Streaming
 // - Time and pitch envelopes
 // + Hop size dithering
-//	- Harmonic-percussive desync fix (bubbling)
-//	- Probably achieveable through resampling or output hop size manipulation
-//	- Or by using nbuf+1 window
+//	+ Harmonic-percussive desync fix (bubbling)
 // - Phase drift fix (try long impulse train signal to see it)
-// 	± Time-domain correctness
+// 	+ Time-domain correctness
 //	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
 // - HPSS erosion
 //	- Empty frame elimination

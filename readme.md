@@ -20,10 +20,9 @@ oversampled by factor of 2 with zero-padding.
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
-- Desync of percussive and harmonic output because of hop size dithering. 
-  Results in more pronounced “bubbling” artifacts on non-integer stretch sizes.
+- No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. Mostly from container/heap.
-- -12dB gain on output because of 16-bit WAV inputs and outputs.
+- Either tanh clipping (use -clip option) or -12dB gain on output because of 16-bit WAV inputs and outputs.
   Requires switching to 32-bit float WAV files (both for input and output). 
   Currently no Go library provides float WAV support.
 

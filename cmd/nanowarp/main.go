@@ -20,22 +20,12 @@ import (
 var println = fmt.Println
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-var noclip = flag.Bool("noclip", true, "don't apply soft clipping to the output, make it 12dB quieter instead")
+var clip = flag.Bool("clip", false, "apply soft clipping to the output, instead of making it 12dB quieter")
+var finput = flag.String("i", "", "input WAV path")
+var foutput = flag.String("o", "", "output WAV path")
+var coeff = flag.Float64("c", 0, "time stretch multiplier")
 
 func main() {
-	// filename := `fm.wav`
-	// filename := `output.wav`
-	// filename := `saw.wav`
-	// filename := `saw-short.wav`
-	// filename := `saw-click.wav`
-	// filename := `saw-click.wav`
-	filename := `ticktock.wav`
-	// filename := `welcome.wav`
-	// filename := `ЗАПАХЛО_NIGHTCALL_МЭШАПЕР_АРКАДИЙ_ГАЧИБАСОВ.mp3.wav`
-	// filename := `Диалоги тет-а-тет - ALEKS ATAMAN.m4a.mp3.wav`
-	// filename := `06 - Big Time Sensuality (-44c).flac.wav`
-	// filename := `audio_2025-12-04_04-07-32.ogg.wav`
-
 	flag.Parse()
 	if *cpuprofile != "" {
 		fmt.Fprintln(os.Stderr, `profiling`)
@@ -50,9 +40,12 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	fmt.Fprintln(os.Stderr, filename)
+	if *finput == "" || *coeff <= 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
 
-	file, _ := os.Open(filename)
+	file, _ := os.Open(*finput)
 
 	rd := wav.NewReader(file)
 	mid := []float64{}
@@ -75,28 +68,26 @@ func main() {
 	mnw := nanowarp.New(int(f.SampleRate))
 	snw := nanowarp.New(int(f.SampleRate))
 
-	var n float64 = 1.33
-	mout := make([]float64, int(float64(len(mid))*n))
-	sout := make([]float64, int(float64(len(mid))*n))
+	mout := make([]float64, int(float64(len(mid))**coeff))
+	sout := make([]float64, int(float64(len(mid))**coeff))
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		mnw.Process(mid, mout, n)
+		mnw.Process(mid, mout, *coeff)
 		wg.Done()
 	}()
 	go func() {
-		snw.Process(side, sout, n)
+		snw.Process(side, sout, *coeff)
 		wg.Done()
 	}()
 	wg.Wait()
 
-	// for i := range mout {
-	// 	mout[i] *= 0.25
-	// 	sout[i] *= 0.25
-	// }
+	if *foutput == "" {
+		*foutput = fmt.Sprintf("%.2fx-%s", *coeff, *finput)
+	}
 
-	file, err = os.Create(fmt.Sprintf("%.2fx-%s", n, filename))
+	file, err = os.Create(*foutput)
 
 	if err != nil {
 		panic(err)
@@ -105,10 +96,10 @@ func main() {
 	for i := range mout {
 		msa, ssa := mout[i]/2, sout[i]/2
 		lsa, rsa := msa+ssa, msa-ssa
-		if *noclip {
-			lsa, rsa = lsa*0.25, rsa*0.25
-		} else {
+		if *clip {
 			lsa, rsa = math.Tanh(lsa), math.Tanh(rsa)
+		} else {
+			lsa, rsa = lsa*0.25, rsa*0.25
 		}
 		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{
 			int(lsa * math.Pow(2, 16-1)),
