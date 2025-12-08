@@ -65,10 +65,6 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		n.hfile = make([]float64, len(in))
 		n.pfile = make([]float64, len(in))
 		n.hpss.process(in, n.pfile, n.hfile)
-		// Delay compensation.
-		// TODO Streaming.
-		// copy(n.pfile, n.pfile[dc:])
-		// clear(n.pfile[len(n.pfile)-dc:])
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
@@ -160,7 +156,7 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 
 	for j := range a.X {
 		n.arm[j] = true
-		// Disabled because it adds more pre-echo.
+		// Disabled, adds more pre-echo.
 		// // Allow time-phase propagation only for local maxima.
 		// // Which is a simplest possible auditory masking model.
 		// if j == 0 || j == n.nbins-1 ||
