@@ -22,9 +22,6 @@ oversampled by factor of 2 with zero-padding.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. Mostly from container/heap.
-- Either tanh clipping (use -clip option) or -12dB gain on output because of 16-bit WAV inputs and outputs.
-  Requires switching to 32-bit float WAV files (both for input and output). 
-  Currently no Go library provides float WAV support.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)

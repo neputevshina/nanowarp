@@ -20,7 +20,6 @@ import (
 var println = fmt.Println
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-var clip = flag.Bool("clip", false, "apply soft clipping to the output, instead of making it 12dB quieter")
 var finput = flag.String("i", "", "input WAV path")
 var foutput = flag.String("o", "", "output WAV path")
 var coeff = flag.Float64("c", 0, "time stretch multiplier")
@@ -33,7 +32,7 @@ func main() {
 		if err != nil {
 			log.Fatal("could not create CPU profile: ", err)
 		}
-		defer f.Close() // error handling omitted for example
+		defer f.Close()
 		if err := pprof.StartCPUProfile(f); err != nil {
 			log.Fatal("could not start CPU profile: ", err)
 		}
@@ -92,18 +91,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	wr := wav.NewWriter(file, uint32(len(mout)), 2, f.SampleRate, 16)
+	wr := wav.NewWriter(file, uint32(len(mout)), 2, f.SampleRate, 32, true)
 	for i := range mout {
 		msa, ssa := mout[i]/2, sout[i]/2
 		lsa, rsa := msa+ssa, msa-ssa
-		if *clip {
-			lsa, rsa = math.Tanh(lsa), math.Tanh(rsa)
-		} else {
-			lsa, rsa = lsa*0.25, rsa*0.25
-		}
 		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{
-			int(lsa * math.Pow(2, 16-1)),
-			int(rsa * math.Pow(2, 16-1))}}})
+			int(math.Float32bits(float32(lsa))),
+			int(math.Float32bits(float32(rsa)))}}})
 		if err != nil {
 			panic(err)
 		}
