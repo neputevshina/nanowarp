@@ -3,6 +3,9 @@ An ongoing attempt of professional grade audio time stretching algorithm.
 Reference implementation is going to be in Go, and a possible C implementation will share
 this repo with a Go version.
 
+Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
+float WAV support export.
+
 ## Implementation
 Nanowarp is a phase gradient heap integration (PGHI) phase vocoder[1] where partial derivatives 
 of phase are obtained through time-frequency reassignment[2]. This way accurate phase-time 
