@@ -9,14 +9,6 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-// G is an implicit global variable map for internal debugging purposes.
-// Accesses to this map are either in a thing that is not done yet or safe to remove.
-//
-// You MUST NOT initialize this map.
-// If something fails because of it, it's because Nanowarp is broken,
-// and you must use a previous version of the library.
-var G map[string]any
-
 var mag = cmplx.Abs
 
 type bang = struct{}

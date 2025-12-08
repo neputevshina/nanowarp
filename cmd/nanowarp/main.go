@@ -14,7 +14,7 @@ import (
 	"image/color"
 
 	"github.com/neputevshina/nanowarp"
-	"github.com/youpy/go-wav"
+	"github.com/neputevshina/nanowarp/wav"
 )
 
 var println = fmt.Println
