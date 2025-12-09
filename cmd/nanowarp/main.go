@@ -13,9 +13,6 @@ import (
 	"runtime/pprof"
 	"sync"
 
-	"image"
-	"image/color"
-
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/wav"
 )
@@ -23,9 +20,9 @@ import (
 var println = fmt.Println
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-var finput = flag.String("i", "", "input WAV (or anything else, if ffmpeg is present) path")
-var foutput = flag.String("o", "", "output WAV path")
-var coeff = flag.Float64("c", 0, "time stretch multiplier")
+var finput = flag.String("i", "", "input WAV (or anything else, if ffmpeg is present) `path`")
+var foutput = flag.String("o", "", "output WAV `path`")
+var coeff = flag.Float64("t", 0, "time stretch multiplier")
 
 func main() {
 	flag.Parse()
@@ -160,53 +157,4 @@ func main() {
 		}
 	}
 	file.Close()
-}
-
-// FloatMatrixToImage converts a 2D float64 matrix into a grayscale image.Image.
-// The function normalizes the input values to the range [0, 255].
-//
-// Courtesy of ChatGPT.
-func FloatMatrixToImage(data [][]float64) image.Image {
-	if len(data) == 0 || len(data[0]) == 0 {
-		return nil
-	}
-
-	height := len(data[0])
-	width := len(data)
-
-	// Find min and max
-	minVal := math.Inf(1)
-	maxVal := math.Inf(-1)
-	for _, row := range data {
-		for _, v := range row {
-			if v < minVal {
-				minVal = v
-			}
-			if v > maxVal {
-				maxVal = v
-			}
-		}
-	}
-	fmt.Println(minVal, maxVal)
-
-	scale := 1.
-	offset := 3.14
-	scale = 255.0 / (maxVal - minVal)
-	offset = -minVal * scale
-
-	img := image.NewGray(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			val := data[x][y]*scale + offset
-			if val < 0 {
-				val = 0
-			}
-			if val > 255 {
-				val = 255
-			}
-			img.SetGray(x, y, color.Gray{Y: uint8(val + 0.5)})
-		}
-	}
-
-	return img
 }

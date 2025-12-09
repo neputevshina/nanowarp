@@ -16,7 +16,7 @@ package nanowarp
 // - Reset phase accuum sometimes to counteract numerical errors
 // - Try to simply resample percussive content by stretch size
 //	- See Royer, T. (2019). Pitch-shifting algorithm design and applications in music.
-// - WAV float32 input and output
+// + WAV float32 input and output
 // - Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
 //	- Need dx/dt of it
@@ -30,6 +30,7 @@ package nanowarp
 //	- Use only float32 (impossible with gonum)
 //	- SIMD?
 //		- dev.simd branch of Go compiler with intrinsics
+// - From tests, zplane Elastiqué seems to use 3072-point in time window for everything?
 
 import (
 	"container/heap"
@@ -69,7 +70,9 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
-			n.lower.process(n.hfile, out, stretch, 2048-(2048-float64(n.lower.hop-n.upper.hop))/stretch*2)
+			// TODO Is this delay value correct?
+			dc := 2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2
+			n.lower.process(n.hfile, out, stretch, dc)
 			wg.Done()
 		}()
 		go func() {
@@ -185,6 +188,7 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		if mag(a.X[j]) < 1e-6 {
 			return 0
 		}
+		// TODO This phase correction value is guaranteed to be wrong.
 		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
 
 	}
@@ -363,14 +367,15 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 	}
 
 	for w := range a.X {
-		a.A[w] = max(0, a.A[w]-1)
-		if a.P[w] < a.H[w] {
-			a.A[w] = 1 //math.Round(2 * n.corr)
+		if a.P[w] > a.H[w] {
+			a.A[w] += 1
+		} else {
+			a.A[w] = 0
 		}
 	}
 
 	for w := range a.X {
-		if a.A[w] > 0 {
+		if a.A[w] < 6*n.corr {
 			a.X[w] = 0
 		}
 	}

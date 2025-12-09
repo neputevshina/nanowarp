@@ -25,6 +25,7 @@ oversampled by factor of 2 with zero-padding.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. Mostly from container/heap.
+- Bubbling artifacts and smeared transients. 
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
