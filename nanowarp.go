@@ -54,9 +54,9 @@ func New(samplerate int) (n *Nanowarp) {
 	// TODO Fixed absolute bandwidth through zero-padding.
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
-	w := int(math.Ceil(float64(samplerate)/48000)) - 1
-	n.lower = warperNew(1 << (13 + w))                 // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(1 << (8 + w))                  // 256 (128) @ 48000 Hz
+	w := int(math.Ceil(float64(samplerate) / 48000))
+	n.lower = warperNew(3000 * w)                      // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.upper = warperNew(128 * w)                       // 256 (128) @ 48000 Hz
 	n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 	return
 }
@@ -105,8 +105,9 @@ type wbufs struct {
 	X, Xd, Xt, O           []complex128 // Complex spectra
 }
 
-func warperNew(nfft int) (n *warper) {
-	nbuf := nfft / 2
+func warperNew(nbuf int) (n *warper) {
+	nextpow2 := int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(nbuf))))))
+	nfft := nextpow2 * 2
 	nbins := nfft/2 + 1
 	olap := 4
 	n = &warper{
@@ -329,10 +330,12 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
 		nhimp := 40 * int(filtcorr)
+		// nhimp := 21 * int(filtcorr)
 		qhimp := 0.5
 		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
 	nvimp := 21 * int(filtcorr)
+	// nvimp := 15 * int(filtcorr)
 	qvimp := 0.25
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
 

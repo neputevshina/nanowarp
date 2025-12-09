@@ -6,6 +6,13 @@ this repo with a Go version.
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export.
 
+## Installation and usage
+
+```
+$ go install github.com/neputevshina/nanowarp/cmd/nanowarp
+$ nanowarp -i inputfile.wav -t <stretch> [-o outputfile.wav]
+```
+
 ## Implementation
 Nanowarp is a phase gradient heap integration (PGHI) phase vocoder[1] where partial derivatives 
 of phase are obtained through time-frequency reassignment[2]. This way accurate phase-time 
