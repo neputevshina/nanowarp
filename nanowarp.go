@@ -328,11 +328,11 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
-		nhimp := 27 * int(filtcorr)
+		nhimp := 40 * int(filtcorr)
 		qhimp := 0.5
 		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
-	nvimp := 15 * int(filtcorr)
+	nvimp := 21 * int(filtcorr)
 	qvimp := 0.25
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
@@ -359,7 +359,7 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 	for w := range a.X {
 		a.M[w] = mag(a.X[w])
 	}
-	n.vimp.filt(a.M, n.vimp.N, a.P, REFLECT, 0, 0)
+	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
 	for w := range a.X {
 		m := n.himp[w]
 		m.Insert(a.M[w], bang{})
@@ -375,7 +375,7 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 	}
 
 	for w := range a.X {
-		if a.A[w] < 6*n.corr {
+		if a.A[w] == 0 {
 			a.X[w] = 0
 		}
 	}

@@ -12,11 +12,11 @@ import "golang.org/x/exp/constraints"
 type mediatorMode int
 
 const (
-	NEAREST  mediatorMode = 0
-	WRAP     mediatorMode = 1
-	REFLECT  mediatorMode = 2
-	MIRROR   mediatorMode = 3
-	CONSTANT mediatorMode = 4
+	mNEAREST  mediatorMode = 0
+	mWRAP     mediatorMode = 1
+	mREFLECT  mediatorMode = 2
+	mMIRROR   mediatorMode = 3
+	mCONSTANT mediatorMode = 4
 )
 
 // mediator - rank keeping structure
@@ -210,23 +210,23 @@ func (m *mediator[T, I]) filt(in []T, win int, out []T, mode mediatorMode, cval 
 	var z I
 
 	switch mode {
-	case REFLECT:
+	case mREFLECT:
 		for i := win - lim - 1; i > -1; i-- {
 			m.Insert(in[i], z)
 		}
-	case CONSTANT:
+	case mCONSTANT:
 		for i := win - lim; i > 0; i-- {
 			m.Insert(cval, z)
 		}
-	case NEAREST:
+	case mNEAREST:
 		for i := win - lim; i > 0; i-- {
 			m.Insert(in[0], z)
 		}
-	case MIRROR:
+	case mMIRROR:
 		for i := win - lim; i > 0; i-- {
 			m.Insert(in[i], z)
 		}
-	case WRAP:
+	case mWRAP:
 		if win%2 == 0 {
 			offset = 2
 		} else {
@@ -250,30 +250,30 @@ func (m *mediator[T, I]) filt(in []T, win int, out []T, mode mediatorMode, cval 
 	}
 
 	switch mode {
-	case REFLECT:
+	case mREFLECT:
 		arrLenThresh := length - 1
 		for i := 0; i < lim; i++ {
 			m.Insert(in[arrLenThresh-i], z)
 			out[lim2+i] = data[m.getHeap(0)]
 		}
-	case CONSTANT:
+	case mCONSTANT:
 		for i := 0; i < lim; i++ {
 			m.Insert(cval, z)
 			out[lim2+i] = data[m.getHeap(0)]
 		}
-	case NEAREST:
+	case mNEAREST:
 		arrLenThresh := length - 1
 		for i := 0; i < lim; i++ {
 			m.Insert(in[arrLenThresh], z)
 			out[lim2+i] = data[m.getHeap(0)]
 		}
-	case MIRROR:
+	case mMIRROR:
 		arrLenThresh := length - 2
 		for i := 0; i < lim+1; i++ {
 			m.Insert(in[arrLenThresh-i], z)
 			out[lim2+i] = data[m.getHeap(0)]
 		}
-	case WRAP:
+	case mWRAP:
 		for i := 0; i < lim; i++ {
 			m.Insert(in[i], z)
 			out[lim2+i] = data[m.getHeap(0)]
