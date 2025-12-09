@@ -35,10 +35,13 @@ package nanowarp
 import (
 	"container/heap"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"math"
 	"math/cmplx"
+	"math/rand"
 	"os"
-	"sync"
 
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -55,35 +58,38 @@ func New(samplerate int) (n *Nanowarp) {
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
-	n.lower = warperNew(3000 * w)                      // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.lower = warperNew(4096 * w)                      // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.upper = warperNew(128 * w)                       // 256 (128) @ 48000 Hz
 	n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 	return
 }
 
 func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
-	if stretch > 1 {
-		n.hfile = make([]float64, len(in))
-		n.pfile = make([]float64, len(in))
-		n.hpss.process(in, n.pfile, n.hfile)
+	n.lower.process(in, out, stretch, 0)
+	// if stretch >= 1 {
+	// 	n.hfile = make([]float64, len(in))
+	// 	n.pfile = make([]float64, len(in))
+	// 	n.hpss.process(in, n.pfile, n.hfile)
 
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			// TODO Is this delay value correct?
-			dc := 2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2
-			n.lower.process(n.hfile, out, stretch, dc)
-			wg.Done()
-		}()
-		go func() {
-			n.upper.process(n.pfile, out, stretch, 0)
-			wg.Done()
-		}()
-		wg.Wait()
-	} else {
-		// TODO Too lazy, do something more smart
-		n.lower.process(in, out, stretch, 0)
-	}
+	// 	wg := sync.WaitGroup{}
+	// 	wg.Add(2)
+	// 	go func() {
+	// 		// TODO Is this delay value correct?
+	// 		// dc := 2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2
+	// 		n.lower.process(n.hfile, out, stretch, 1920)
+	// 		// n.lower.process(n.hfile, out, stretch, 0)
+	// 		wg.Done()
+	// 	}()
+	// 	go func() {
+	// 		n.upper.process(n.pfile, out, stretch, 0)
+	// 		wg.Done()
+	// 	}()
+	// 	wg.Wait()
+
+	// } else {
+	// 	// TODO Too lazy, do something more smart
+
+	// }
 }
 
 type warper struct {
@@ -96,6 +102,7 @@ type warper struct {
 	arm  []bool
 	norm float64
 	heap hp
+	img  [][]float64
 
 	a wbufs
 }
@@ -181,6 +188,7 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		if mag(a.X[j]) < 1e-6 {
 			return 0
 		}
+		// TODO osampc is wrong. Does not work with non-power of 2 FFT sizes?
 		osampc := float64(n.nfft/n.nbuf) / 2
 		return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
 
@@ -189,10 +197,12 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		if mag(a.X[j]) < 1e-6 {
 			return 0
 		}
-		// TODO This phase correction value is guaranteed to be wrong.
+		// TODO This phase correction value is guaranteed to be wrong but mostly correct.
 		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
 
 	}
+
+	// e := slices.Repeat([]float64{0}, n.nbins)
 
 	for len(n.heap) > 0 {
 		h := heap.Pop(&n.heap).(heaptriple)
@@ -217,6 +227,15 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 			}
 		}
 	}
+
+	// for w := 1; w < n.nbins-1; w++ {
+	// 	if princarg(fadv(w)) > math.Pi-1 &&
+	// 		princarg(fadv(w-1)) > math.Pi-1 &&
+	// 		princarg(fadv(w+1)) > math.Pi-1 {
+	// 		a.Phase[w] = cmplx.Phase(a.X[w])
+	// 	}
+	// }
+	// n.img = append(n.img, e)
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
@@ -288,6 +307,24 @@ func (n *warper) process(in []float64, out []float64, stretch float64, delay flo
 		add(out[j:min(len(out), j+n.nbuf)], outgrain)
 		j += n.hop
 	}
+
+	if n.nfft > 1000 {
+		floatMatrixToImage(n.img)
+		phasogram := func(name string) {
+			e := n.img
+			fmt.Println(name)
+			if len(e) == 0 {
+				fmt.Println(`<skipped>`)
+				return
+			}
+			file, err := os.Create(name)
+			if err != nil {
+				panic(err)
+			}
+			png.Encode(file, floatMatrixToImage(e))
+		}
+		phasogram(fmt.Sprint(rand.Int(), `a.png`))
+	}
 }
 
 type splitter struct {
@@ -329,13 +366,13 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
-		nhimp := 40 * int(filtcorr)
-		// nhimp := 21 * int(filtcorr)
-		qhimp := 0.5
+		// nhimp := 40 * int(filtcorr)
+		nhimp := 21 * int(filtcorr)
+		qhimp := 0.75
 		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
-	nvimp := 21 * int(filtcorr)
-	// nvimp := 15 * int(filtcorr)
+	// nvimp := 21 * int(filtcorr)
+	nvimp := 15 * int(filtcorr)
 	qvimp := 0.25
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
@@ -462,4 +499,49 @@ func windowT(w, out []float64) {
 	for i := range w {
 		out[i] = w[i] * mix(-n/2, n/2+1, float64(i)/n)
 	}
+}
+
+func floatMatrixToImage(data [][]float64) image.Image {
+	if len(data) == 0 || len(data[0]) == 0 {
+		return nil
+	}
+
+	height := len(data[0])
+	width := len(data)
+
+	// Find min and max
+	minVal := math.Inf(1)
+	maxVal := math.Inf(-1)
+	for _, row := range data {
+		for _, v := range row {
+			if v < minVal {
+				minVal = v
+			}
+			if v > maxVal {
+				maxVal = v
+			}
+		}
+	}
+	fmt.Println(minVal, maxVal)
+
+	scale := 1.
+	offset := 3.14
+	scale = 255.0 / (maxVal - minVal)
+	offset = -minVal * scale
+
+	img := image.NewGray(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			val := data[x][y]*scale + offset
+			if val < 0 {
+				val = 0
+			}
+			if val > 255 {
+				val = 255
+			}
+			img.SetGray(x, y, color.Gray{Y: uint8(val + 0.5)})
+		}
+	}
+
+	return img
 }
