@@ -5,6 +5,8 @@ package nanowarp
 //	- Good resampler is required
 // - Streaming
 // - Time and pitch envelopes
+// + Replace HPSS with phase-based impulse detection
+// - 2048 window, 4096 for bass
 // + Hop size dithering
 //	+ Harmonic-percussive desync fix (bubbling)
 // - Phase drift fix (try long impulse train signal to see it)
@@ -37,10 +39,8 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
 	"math"
 	"math/cmplx"
-	"math/rand"
 	"os"
 	"sync"
 
@@ -59,9 +59,10 @@ func New(samplerate int) (n *Nanowarp) {
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
-	n.lower = warperNew(4096 * w)                      // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(64 * w)                        // 256 (128) @ 48000 Hz
-	n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
+	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.upper = warperNew(64 * w)   // 256 (128) @ 48000 Hz
+	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
+	n.hpss = splitterNew(2048, float64(int(1)<<w)) // TODO Find optimal size
 	return
 }
 
@@ -137,6 +138,64 @@ func warperNew(nbuf int) (n *warper) {
 	n.fft = fourier.NewFFT(nfft)
 
 	return
+}
+
+func (n *warper) process(in []float64, out []float64, stretch float64, delay float64) {
+	inhop := float64(n.hop) / stretch
+	ih, fh := math.Modf(inhop)
+	fmt.Fprintln(os.Stderr, `(*warper).process`)
+	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
+	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
+
+	n.start(in, out)
+	outgrain := make([]float64, n.nfft)
+
+	id, fd := math.Modf(delay)
+	j := n.hop + int(id)
+	dh := fh
+	dd := fd
+	for i := int(ih); i < len(in); i += int(ih) {
+		if j > len(out) {
+			break
+		}
+		dh += fh
+		if dh > 0 {
+			i += 1
+			dh -= 1
+			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih+1))
+		} else {
+			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih))
+		}
+		dd += fd
+		if dh > 0 {
+			j += 1
+			dd -= 1
+		}
+		add(out[j:min(len(out), j+n.nbuf)], outgrain)
+		j += n.hop
+	}
+
+}
+
+func (n *warper) start(in []float64, out []float64) {
+	a := &n.a
+
+	clear(a.S)
+	copy(a.S, in[:min(len(in), n.nbuf)])
+	mul(a.S, a.W)
+	n.fft.Coefficients(a.X, a.S)
+
+	for w := range a.X {
+		a.M[w] = mag(a.X[w])
+		a.Pphase[w] = cmplx.Phase(a.X[w])
+	}
+	copy(a.P, a.M)
+
+	for j := range a.S[:n.nbuf] {
+		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
+	}
+	add(out[:min(len(out), n.nbuf)], a.S)
 }
 
 // advance adds to the phase of the output by one frame using
@@ -250,81 +309,6 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 	copy(outgrain, a.S)
 }
 
-func (n *warper) start(in []float64, out []float64) {
-	a := &n.a
-
-	clear(a.S)
-	copy(a.S, in[:min(len(in), n.nbuf)])
-	mul(a.S, a.W)
-	n.fft.Coefficients(a.X, a.S)
-
-	for w := range a.X {
-		a.M[w] = mag(a.X[w])
-		a.Pphase[w] = cmplx.Phase(a.X[w])
-	}
-	copy(a.P, a.M)
-
-	for j := range a.S[:n.nbuf] {
-		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
-	}
-	add(out[:min(len(out), n.nbuf)], a.S)
-}
-
-func (n *warper) process(in []float64, out []float64, stretch float64, delay float64) {
-	inhop := float64(n.hop) / stretch
-	ih, fh := math.Modf(inhop)
-	fmt.Fprintln(os.Stderr, `(*warper).process`)
-	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
-	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
-	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
-
-	n.start(in, out)
-	outgrain := make([]float64, n.nfft)
-
-	id, fd := math.Modf(delay)
-	j := n.hop + int(id)
-	dh := fh
-	dd := fd
-	for i := int(ih); i < len(in); i += int(ih) {
-		if j > len(out) {
-			break
-		}
-		dh += fh
-		if dh > 0 {
-			i += 1
-			dh -= 1
-			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih+1))
-		} else {
-			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih))
-		}
-		dd += fd
-		if dh > 0 {
-			j += 1
-			dd -= 1
-		}
-		add(out[j:min(len(out), j+n.nbuf)], outgrain)
-		j += n.hop
-	}
-
-	if n.nfft > 1000 {
-		floatMatrixToImage(n.img)
-		phasogram := func(name string) {
-			e := n.img
-			fmt.Println(name)
-			if len(e) == 0 {
-				fmt.Println(`<skipped>`)
-				return
-			}
-			file, err := os.Create(name)
-			if err != nil {
-				panic(err)
-			}
-			png.Encode(file, floatMatrixToImage(e))
-		}
-		phasogram(fmt.Sprint(rand.Int(), `a.png`))
-	}
-}
-
 type splitter struct {
 	nfft  int
 	nbuf  int
@@ -333,17 +317,16 @@ type splitter struct {
 	norm  float64
 	corr  float64
 
-	fft    *fourier.FFT
-	vimp   *mediator[float64, bang]
-	himp   []*mediator[float64, bang]
-	verode *mediator[float64, bang]
-	herode []*mediator[float64, bang]
+	fft  *fourier.FFT
+	vimp *mediator[float64, bang]
+	himp []*mediator[float64, bang]
+	img  [][]float64
 
 	a sbufs
 }
 type sbufs struct {
-	S, W, M, H, P, A []float64
-	X, Y             []complex128
+	S, W, Wt, M, H, P, A []float64
+	X, Xt, Y             []complex128
 }
 
 func splitterNew(nfft int, filtcorr float64) (n *splitter) {
@@ -360,7 +343,6 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 	}
 	makeslices(&n.a, nbins, nfft)
 	n.himp = make([]*mediator[float64, bang], nbins)
-	n.herode = make([]*mediator[float64, bang], nbins)
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
@@ -375,10 +357,107 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
 	hann(n.a.W)
+	windowT(n.a.W, n.a.Wt)
 	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.W)
 	n.fft = fourier.NewFFT(nfft)
 
 	return
+}
+
+// process performs harmonic-percussive source separation (HPSS).
+// See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
+// (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
+func (n *splitter) process(in []float64, pout []float64, hout []float64) {
+	fmt.Fprintln(os.Stderr, `(*splitter).process`)
+	for i := range n.himp {
+		n.himp[i].Reset(n.himp[i].N)
+	}
+
+	poutgrain := make([]float64, n.nfft)
+	houtgrain := make([]float64, n.nfft)
+
+	for i := 0; i < len(in); i += n.hop {
+		n.advanceAlt(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
+		add(pout[i:min(len(pout), i+n.nbuf)], poutgrain)
+		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
+	}
+
+	// floatMatrixToImage(n.img)
+	// phasogram := func(name string) {
+	// 	e := n.img
+	// 	fmt.Println(name)
+	// 	if len(e) == 0 {
+	// 		fmt.Println(`<skipped>`)
+	// 		return
+	// 	}
+	// 	file, err := os.Create(name)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	png.Encode(file, floatMatrixToImage(e))
+	// }
+	// phasogram(fmt.Sprint(rand.Int(), `a.png`))
+
+}
+
+func (n *splitter) advanceAlt(ingrain []float64, poutgrain []float64, houtgrain []float64) {
+	a := &n.a
+	enfft := func(x []complex128, w []float64) {
+		clear(a.S)
+		copy(a.S, ingrain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
+
+	enfft(a.X, a.W)
+	enfft(a.Xt, a.Wt)
+
+	fadv := func(j int) float64 {
+		if mag(a.X[j]) < 1e-6 {
+			return 0
+		}
+		// TODO This phase correction value is guaranteed to be wrong but mostly correct.
+		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi - math.Pi/2
+	}
+
+	q := 1.0
+	for w := 1; w < n.nbins-1; w++ {
+		if princarg(fadv(w)) > math.Pi-q &&
+			(princarg(fadv(w-1)) > math.Pi-q ||
+				princarg(fadv(w+1)) > math.Pi-q) {
+			a.A[w-1] = 4
+			a.A[w] = 4
+			a.A[w+1] = 4
+		} else {
+			a.A[w] = max(0, a.A[w]-1)
+		}
+		// if princarg(fadv(w)) > math.Pi-q &&
+		// 	princarg(fadv(w-1)) > math.Pi-q &&
+		// 	princarg(fadv(w+1)) > math.Pi-q {
+		// 	// e[w] = 1
+		// } else {
+		// 	a.X[w] = 0
+		// }
+	}
+	for w := 0; w < n.nbins; w++ {
+		if a.A[w] == 0 || w == 0 {
+			a.X[w] = 0
+		}
+	}
+
+	// n.img = append(n.img, slices.Clone(a.A))
+
+	n.fft.Sequence(a.S, a.X)
+	for w := range a.S {
+		a.S[w] /= n.norm
+	}
+	mul(a.S, a.W)
+	copy(poutgrain, a.S)
+
+	// Harmonic = original - percussive
+	for j := range ingrain {
+		houtgrain[j] = ingrain[j]*a.W[j]*a.W[j]/n.norm*float64(n.nfft) - a.S[j]
+	}
 }
 
 func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []float64) {
@@ -428,25 +507,6 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 	// Harmonic = original - percussive
 	for j := range ingrain {
 		houtgrain[j] = ingrain[j]*a.W[j]*a.W[j]/n.norm*float64(n.nfft) - a.S[j]
-	}
-}
-
-// process performs harmonic-percussive source separation (HPSS).
-// See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
-// (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
-func (n *splitter) process(in []float64, pout []float64, hout []float64) {
-	fmt.Fprintln(os.Stderr, `(*splitter).process`)
-	for i := range n.himp {
-		n.himp[i].Reset(n.himp[i].N)
-	}
-
-	poutgrain := make([]float64, n.nfft)
-	houtgrain := make([]float64, n.nfft)
-
-	for i := 0; i < len(in); i += n.hop {
-		n.advance(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
-		add(pout[i:min(len(pout), i+n.nbuf)], poutgrain)
-		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
 	}
 }
 
