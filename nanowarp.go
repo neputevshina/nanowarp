@@ -42,6 +42,7 @@ import (
 	"math/cmplx"
 	"math/rand"
 	"os"
+	"sync"
 
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -59,37 +60,34 @@ func New(samplerate int) (n *Nanowarp) {
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
 	n.lower = warperNew(4096 * w)                      // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(128 * w)                       // 256 (128) @ 48000 Hz
+	n.upper = warperNew(64 * w)                        // 256 (128) @ 48000 Hz
 	n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 	return
 }
 
 func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
-	n.lower.process(in, out, stretch, 0)
-	// if stretch >= 1 {
-	// 	n.hfile = make([]float64, len(in))
-	// 	n.pfile = make([]float64, len(in))
-	// 	n.hpss.process(in, n.pfile, n.hfile)
+	if stretch >= 1 {
+		n.hfile = make([]float64, len(in))
+		n.pfile = make([]float64, len(in))
+		n.hpss.process(in, n.pfile, n.hfile)
 
-	// 	wg := sync.WaitGroup{}
-	// 	wg.Add(2)
-	// 	go func() {
-	// 		// TODO Is this delay value correct?
-	// 		// dc := 2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2
-	// 		n.lower.process(n.hfile, out, stretch, 1920)
-	// 		// n.lower.process(n.hfile, out, stretch, 0)
-	// 		wg.Done()
-	// 	}()
-	// 	go func() {
-	// 		n.upper.process(n.pfile, out, stretch, 0)
-	// 		wg.Done()
-	// 	}()
-	// 	wg.Wait()
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			// TODO Is this delay value correct?
+			n.lower.process(n.hfile, out, stretch, float64(n.lower.hop-n.upper.hop)*(stretch-1)*2)
+			wg.Done()
+		}()
+		go func() {
+			n.upper.process(n.pfile, out, stretch, 0)
+			wg.Done()
+		}()
+		wg.Wait()
 
-	// } else {
-	// 	// TODO Too lazy, do something more smart
-
-	// }
+	} else {
+		// TODO Too lazy, do something more smart
+		n.lower.process(in, out, stretch, 0)
+	}
 }
 
 type warper struct {
@@ -167,7 +165,7 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 
 	for j := range a.X {
 		n.arm[j] = true
-		// Disabled, adds more pre-echo.
+		// // Disabled, adds more pre-echo.
 		// // Allow time-phase propagation only for local maxima.
 		// // Which is a simplest possible auditory masking model.
 		// if j == 0 || j == n.nbins-1 ||
