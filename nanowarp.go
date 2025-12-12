@@ -1,6 +1,8 @@
 package nanowarp
 
 // TODO
+// - Xsynth (nfft=1024) time-scaled with nearest-neighbor stretched magnitude spectrum
+//	to preserve tonal balance.
 // - Pitch
 //	- Good resampler is required
 // - Streaming
@@ -32,16 +34,19 @@ package nanowarp
 //	- Use only float32 (impossible with gonum)
 //	- SIMD?
 //		- dev.simd branch of Go compiler with intrinsics
-// - From tests, zplane Elastiqué seems to use 3072-point in time window for everything?
+// - From tests, zplane Elastiqué seems to use 3072-point-in-time window for everything?
 
 import (
 	"container/heap"
 	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 	"math"
 	"math/cmplx"
+	"math/rand"
 	"os"
+	"slices"
 	"sync"
 
 	"gonum.org/v1/gonum/dsp/fourier"
@@ -52,6 +57,9 @@ type Nanowarp struct {
 	lower, upper *warper
 	hpss         *splitter
 }
+
+const chu = true
+const cha = false
 
 func New(samplerate int) (n *Nanowarp) {
 	n = &Nanowarp{}
@@ -67,6 +75,8 @@ func New(samplerate int) (n *Nanowarp) {
 }
 
 func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
+	// n.lower.process(in, out, stretch, 0)
+	// return
 	if stretch >= 1 {
 		n.hfile = make([]float64, len(in))
 		n.pfile = make([]float64, len(in))
@@ -106,7 +116,9 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, M, P, Phase, Pphase []float64    // Scratch buffers
+	S, M, P, Phase, Pphase []float64 // Scratch buffers
+	Fadv, Pfadv            []float64
+	Xprevs                 []complex128 // Lookahead framebuffer
 	W, Wd, Wt              []float64    // Window functions
 	X, Xd, Xt, O           []complex128 // Complex spectra
 }
@@ -176,6 +188,24 @@ func (n *warper) process(in []float64, out []float64, stretch float64, delay flo
 		j += n.hop
 	}
 
+	if cha {
+		floatMatrixToImage(n.img)
+		phasogram := func(name string) {
+			e := n.img
+			fmt.Println(name)
+			if len(e) == 0 {
+				fmt.Println(`<skipped>`)
+				return
+			}
+			file, err := os.Create(name)
+			if err != nil {
+				panic(err)
+			}
+			png.Encode(file, floatMatrixToImage(e))
+		}
+		phasogram(fmt.Sprint(rand.Int(), `a.png`))
+	}
+
 }
 
 func (n *warper) start(in []float64, out []float64) {
@@ -186,9 +216,11 @@ func (n *warper) start(in []float64, out []float64) {
 	mul(a.S, a.W)
 	n.fft.Coefficients(a.X, a.S)
 
+	// fadv := getfadv(a.X, a.Xt, 1)
 	for w := range a.X {
 		a.M[w] = mag(a.X[w])
 		a.Pphase[w] = cmplx.Phase(a.X[w])
+		// a.Pfadv[w] =
 	}
 	copy(a.P, a.M)
 
@@ -196,6 +228,17 @@ func (n *warper) start(in []float64, out []float64) {
 		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
 	}
 	add(out[:min(len(out), n.nbuf)], a.S)
+}
+
+func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
+	return func(j int) float64 {
+		if mag(x[j]) < 1e-6 {
+			return 0
+		}
+		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
+		return -real(xt[j]/x[j])/float64(len(x))*math.Pi*stretch - math.Pi/2
+
+	}
 }
 
 // advance adds to the phase of the output by one frame using
@@ -254,12 +297,15 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		if mag(a.X[j]) < 1e-6 {
 			return 0
 		}
-		// TODO This phase correction value is guaranteed to be wrong but mostly correct.
+		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
 		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
 
 	}
 
 	// e := slices.Repeat([]float64{0}, n.nbins)
+	for w := range a.X {
+		a.Fadv[w] = princarg(fadv(w))
+	}
 
 	for len(n.heap) > 0 {
 		h := heap.Pop(&n.heap).(heaptriple)
@@ -273,25 +319,34 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 			}
 		case 0:
 			if w > 1 && n.arm[w-1] {
-				a.Phase[w-1] = a.Phase[w] - fadv(w-1)
+				a.Phase[w-1] = a.Phase[w] - a.Fadv[w-1]
 				n.arm[w-1] = false
 				heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
-				a.Phase[w+1] = a.Phase[w] + fadv(w+1)
+				a.Phase[w+1] = a.Phase[w] + a.Fadv[w+1]
 				n.arm[w+1] = false
 				heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 			}
 		}
 	}
 
+	// e := make([]float64, n.nbins)
+	// Match phase reset points.
+	// See “Axel Roebel. A new approach to transient processing in the phase vocoder.
+	// 6th International Conference on Digital Audio Effects (DAFx), Sep 2003”
 	// for w := 1; w < n.nbins-1; w++ {
-	// 	if princarg(fadv(w)) > math.Pi-1 &&
-	// 		princarg(fadv(w-1)) > math.Pi-1 &&
-	// 		princarg(fadv(w+1)) > math.Pi-1 {
+	// 	m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
+	// 	if m(w) && m(w-1) && m(w+1) {
+	// 		a.Phase[w-1] = cmplx.Phase(a.X[w-1])
+	// 		a.Phase[w+1] = cmplx.Phase(a.X[w+1])
 	// 		a.Phase[w] = cmplx.Phase(a.X[w])
+	// 		// e[w] = 1
+	// 		// e[w-1] = 1
+	// 		// e[w+1] = 1
 	// 	}
 	// }
+	copy(a.Pfadv, a.Fadv)
 	// n.img = append(n.img, e)
 
 	copy(a.P, a.M)
@@ -317,16 +372,16 @@ type splitter struct {
 	norm  float64
 	corr  float64
 
-	fft  *fourier.FFT
-	vimp *mediator[float64, bang]
-	himp []*mediator[float64, bang]
-	img  [][]float64
+	fft *fourier.FFT
+	img [][]float64
 
 	a sbufs
 }
 type sbufs struct {
-	S, W, Wt, M, H, P, A []float64
-	X, Xt, Y             []complex128
+	S, W, Wd, Wdt, Wt, M, H, P, A []float64
+	Fadv, Pfadv                   []float64
+	Xprevs                        [][]complex128 // Lookahead framebuffer
+	X, Xd, Xdt, Xt, Y             []complex128
 }
 
 func splitterNew(nfft int, filtcorr float64) (n *splitter) {
@@ -342,128 +397,51 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 		corr:  filtcorr,
 	}
 	makeslices(&n.a, nbins, nfft)
-	n.himp = make([]*mediator[float64, bang], nbins)
-
-	// TODO Log-scale for HPSS and erosion
-	for i := range n.himp {
-		// nhimp := 40 * int(filtcorr)
-		nhimp := 21 * int(filtcorr)
-		qhimp := 0.75
-		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
-	}
-	// nvimp := 21 * int(filtcorr)
-	nvimp := 15 * int(filtcorr)
-	qvimp := 0.25
-	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
 	hann(n.a.W)
 	windowT(n.a.W, n.a.Wt)
+
+	hannDx(n.a.Wd)
+	windowT(n.a.Wd, n.a.Wdt)
+
 	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.W)
 	n.fft = fourier.NewFFT(nfft)
 
 	return
 }
 
-// process performs harmonic-percussive source separation (HPSS).
-// See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
-// (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
 func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 	fmt.Fprintln(os.Stderr, `(*splitter).process`)
-	for i := range n.himp {
-		n.himp[i].Reset(n.himp[i].N)
-	}
 
 	poutgrain := make([]float64, n.nfft)
 	houtgrain := make([]float64, n.nfft)
 
 	for i := 0; i < len(in); i += n.hop {
-		n.advanceAlt(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
+		n.advance(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
 		add(pout[i:min(len(pout), i+n.nbuf)], poutgrain)
 		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
 	}
-
-	// floatMatrixToImage(n.img)
-	// phasogram := func(name string) {
-	// 	e := n.img
-	// 	fmt.Println(name)
-	// 	if len(e) == 0 {
-	// 		fmt.Println(`<skipped>`)
-	// 		return
-	// 	}
-	// 	file, err := os.Create(name)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	png.Encode(file, floatMatrixToImage(e))
-	// }
-	// phasogram(fmt.Sprint(rand.Int(), `a.png`))
-
-}
-
-func (n *splitter) advanceAlt(ingrain []float64, poutgrain []float64, houtgrain []float64) {
-	a := &n.a
-	enfft := func(x []complex128, w []float64) {
-		clear(a.S)
-		copy(a.S, ingrain)
-		mul(a.S, w)
-		n.fft.Coefficients(x, a.S)
-	}
-
-	enfft(a.X, a.W)
-	enfft(a.Xt, a.Wt)
-
-	fadv := func(j int) float64 {
-		if mag(a.X[j]) < 1e-6 {
-			return 0
+	if chu {
+		floatMatrixToImage(n.img)
+		phasogram := func(name string) {
+			e := n.img
+			fmt.Println(name)
+			if len(e) == 0 {
+				fmt.Println(`<skipped>`)
+				return
+			}
+			file, err := os.Create(name)
+			if err != nil {
+				panic(err)
+			}
+			png.Encode(file, floatMatrixToImage(e))
 		}
-		// TODO This phase correction value is guaranteed to be wrong but mostly correct.
-		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi - math.Pi/2
-	}
-
-	q := 1.0
-	for w := 1; w < n.nbins-1; w++ {
-		if princarg(fadv(w)) > math.Pi-q &&
-			(princarg(fadv(w-1)) > math.Pi-q ||
-				princarg(fadv(w+1)) > math.Pi-q) {
-			a.A[w-1] = 4
-			a.A[w] = 4
-			a.A[w+1] = 4
-		} else {
-			a.A[w] = max(0, a.A[w]-1)
-		}
-		// if princarg(fadv(w)) > math.Pi-q &&
-		// 	princarg(fadv(w-1)) > math.Pi-q &&
-		// 	princarg(fadv(w+1)) > math.Pi-q {
-		// 	// e[w] = 1
-		// } else {
-		// 	a.X[w] = 0
-		// }
-	}
-	for w := 0; w < n.nbins; w++ {
-		if a.A[w] == 0 || w == 0 {
-			a.X[w] = 0
-		}
-	}
-
-	// n.img = append(n.img, slices.Clone(a.A))
-
-	n.fft.Sequence(a.S, a.X)
-	for w := range a.S {
-		a.S[w] /= n.norm
-	}
-	mul(a.S, a.W)
-	copy(poutgrain, a.S)
-
-	// Harmonic = original - percussive
-	for j := range ingrain {
-		houtgrain[j] = ingrain[j]*a.W[j]*a.W[j]/n.norm*float64(n.nfft) - a.S[j]
+		phasogram(fmt.Sprint(rand.Int(), `a.png`))
 	}
 }
 
 func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []float64) {
-	n.vimp.Reset(n.vimp.N)
 	a := &n.a
-
 	enfft := func(x []complex128, w []float64) {
 		clear(a.S)
 		copy(a.S, ingrain)
@@ -471,30 +449,83 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 		n.fft.Coefficients(x, a.S)
 	}
 
+	const nTransientFrames = 4
+
 	enfft(a.X, a.W)
-
-	for w := range a.X {
-		a.M[w] = mag(a.X[w])
+	// Lookahead delay
+	if len(a.Xprevs) <= nTransientFrames {
+		a.Xprevs = append(a.Xprevs, a.X)
+		return
 	}
-	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
+	copy(a.Xprevs, a.Xprevs[1:])
+	copy(a.Xprevs[nTransientFrames-1], a.X)
+
+	enfft(a.Xt, a.Wt)
+	enfft(a.Xd, a.Wd)
+	enfft(a.Xdt, a.Wdt)
+
+	fadv := getfadv(a.X, a.Xt, 1)
 	for w := range a.X {
-		m := n.himp[w]
-		m.Insert(a.M[w], bang{})
-		a.H[w], _ = m.Take()
+		a.Fadv[w] = princarg(fadv(w))
+		// 	if mag(a.X[w]) == 0 {
+		// 		a.A[w] = 0
+		// 	} else {
+		// 		a.A[w] = real(a.Xdt[w]/a.X[w]) - real((a.Xd[w]*a.Xt[w])/(a.X[w]*a.X[w]))
+		// 		if a.A[w] > 0 {
+		// 			a.A[w] = math.Log(a.A[w])
+		// 		} else {
+		// 			a.A[w] = math.Log(-a.A[w])
+		// 		}
+		// 	}
 	}
 
-	for w := range a.X {
-		if a.P[w] > a.H[w] {
-			a.A[w] += 1
+	for w := 1; w < n.nbins-1; w++ {
+		// a.A[w] = a.Pfadv[w] - a.Fadv[w]
+		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
+		if m(w) && m(w-1) && m(w+1) {
+			n := float64(nTransientFrames)
+			a.A[w] = n
+			a.A[w-1] = n
+			a.A[w+1] = n
 		} else {
-			a.A[w] = 0
+			a.A[w] = max(0, a.A[w]-1)
 		}
 	}
+	copy(a.Pfadv, a.Fadv)
 
-	for w := range a.X {
-		if a.A[w] == 0 {
+	// for w := 1; w < n.nbins-1; w++ {
+	// 	m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
+	// 	if m(w) && m(w-1) && m(w+1) {
+	// 		n := float64(nTransientFrames)
+	// 		a.A[w] = n
+	// 		a.A[w-1] = n
+	// 		a.A[w+1] = n
+	// 	} else {
+	// 		a.A[w] = max(0, a.A[w]-1)
+	// 	}
+	// }
+	// copy(a.Pfadv, a.Fadv)
+
+	// q := 1.0
+	// for w := 1; w < n.nbins-1; w++ {
+	// 	if princarg(a.Fadv[w]) > math.Pi-q &&
+	// 		(princarg(a.Fadv[w-1]) > math.Pi-q ||
+	// 			princarg(a.Fadv[w+1]) > math.Pi-q) {
+	// 		a.A[w-1] = 4
+	// 		a.A[w] = 4
+	// 		a.A[w+1] = 4
+	// 	} else {
+	// 		a.A[w] = max(0, a.A[w]-1)
+	// 	}
+	// }
+	for w := 0; w < n.nbins; w++ {
+		a.X[w] = a.Xprevs[0][w]
+		if a.A[w] == 0 || w == 0 {
 			a.X[w] = 0
 		}
+	}
+	if chu {
+		n.img = append(n.img, slices.Clone(a.A))
 	}
 
 	n.fft.Sequence(a.S, a.X)
