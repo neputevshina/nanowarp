@@ -65,3 +65,17 @@ func makeslices(a any, nbins, nfft int) {
 		}
 	}
 }
+
+func blackman(out []float64) {
+	for i := range out {
+		x := float64(i) / float64(len(out))
+		out[i] = .42 - .5*math.Cos(math.Pi*x*2) + .08*math.Cos(math.Pi*x*4)
+	}
+}
+
+func blackmanDx(out []float64) {
+	for i := range out {
+		x := float64(i)/float64(len(out)) + .5
+		out[i] = -math.Pi*math.Sin(2*math.Pi*x) - .32*math.Pi*math.Sin(4*math.Pi*x)
+	}
+}

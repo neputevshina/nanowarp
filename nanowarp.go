@@ -56,6 +56,7 @@ type Nanowarp struct {
 	hfile, pfile []float64
 	lower, upper *warper
 	hpss         *splitter
+	xsynth       *xsynther
 }
 
 const chu = true
@@ -70,7 +71,11 @@ func New(samplerate int) (n *Nanowarp) {
 	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.upper = warperNew(64 * w)   // 256 (128) @ 48000 Hz
 	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
+
 	n.hpss = splitterNew(2048, float64(int(1)<<w)) // TODO Find optimal size
+
+	n.xsynth = xsyntherNew(1024)
+
 	return
 }
 
@@ -80,21 +85,26 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	if stretch >= 1 {
 		n.hfile = make([]float64, len(in))
 		n.pfile = make([]float64, len(in))
+		inout := make([]float64, len(out))
+
 		n.hpss.process(in, n.pfile, n.hfile)
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
 			// TODO Is this delay value correct?
-			n.lower.process(n.hfile, out, stretch, float64(n.lower.hop-n.upper.hop)*(stretch-1)*2)
+			n.lower.process(n.hfile, inout, stretch, float64(n.lower.hop-n.upper.hop)*(stretch-1)*2)
 			wg.Done()
 		}()
 		go func() {
-			n.upper.process(n.pfile, out, stretch, 0)
+			n.upper.process(n.pfile, inout, stretch, 0)
 			wg.Done()
 		}()
 		wg.Wait()
+		n.hfile = nil
+		n.pfile = nil
 
+		n.xsynth.process(inout, in, out, stretch)
 	} else {
 		// TODO Too lazy, do something more smart
 		n.lower.process(in, out, stretch, 0)
@@ -539,6 +549,95 @@ func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []f
 	for j := range ingrain {
 		houtgrain[j] = ingrain[j]*a.W[j]*a.W[j]/n.norm*float64(n.nfft) - a.S[j]
 	}
+}
+
+type xsynther struct {
+	nfft  int
+	nbuf  int
+	nbins int
+	hop   int
+
+	fft  *fourier.FFT
+	norm float64
+
+	a xbufs
+}
+type xbufs struct {
+	S, M []float64    // Scratch buffers
+	W    []float64    // Window functions
+	X, Y []complex128 // Complex spectra
+}
+
+func xsyntherNew(nfft int) (n *xsynther) {
+	nbuf := nfft
+	nbins := nfft/2 + 1
+	olap := 8
+
+	n = &xsynther{
+		nfft:  nfft,
+		nbins: nbins,
+		nbuf:  nbuf,
+		hop:   nbuf / olap,
+	}
+	makeslices(&n.a, nbins, nfft)
+
+	blackman(n.a.W)
+	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.W)
+	n.fft = fourier.NewFFT(nfft)
+
+	return
+}
+
+func (n *xsynther) process(inout []float64, in []float64, out []float64, stretch float64) {
+	inhop := float64(n.hop) / stretch
+	ih, fh := math.Modf(inhop)
+	fmt.Fprintln(os.Stderr, `(*warper).process`)
+	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
+	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
+
+	outgrain := make([]float64, n.nfft)
+
+	j := n.hop
+	dh := fh
+	for i := int(ih); i < len(in); i += int(ih) {
+		if j > len(out) {
+			break
+		}
+		dh += fh
+		if dh > 0 {
+			i += 1
+			dh -= 1
+		}
+		n.advance(in[i:min(len(in), i+n.nbuf)], inout[j:min(len(in), j+n.nbuf)], outgrain)
+		add(out[j:min(len(out), j+n.nbuf)], outgrain)
+		j += n.hop
+	}
+}
+
+func (n *xsynther) advance(inoutgrain []float64, ingrain []float64, outgrain []float64) {
+	a := &n.a
+
+	enfft := func(ingrain []float64, x []complex128, w []float64) {
+		clear(a.S)
+		copy(a.S, ingrain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
+
+	enfft(ingrain, a.X, a.W)
+	enfft(inoutgrain, a.Y, a.W)
+
+	for w := range a.X {
+		a.Y[w] = a.Y[w] * complex(mag(a.X[w])/mag(a.Y[w]), 0)
+	}
+
+	n.fft.Sequence(a.S, a.Y)
+	for w := range a.S {
+		a.S[w] /= n.norm
+	}
+	mul(a.S, a.W)
+	copy(outgrain, a.S)
 }
 
 type heaptriple struct {
