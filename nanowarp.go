@@ -1,6 +1,8 @@
 package nanowarp
 
 // TODO
+// - Xsynth (nfft=1024) time-scaled with nearest-neighbor stretched magnitude spectrum
+//	to preserve tonal balance.
 // - Pitch
 //	- Good resampler is required
 // - Streaming
@@ -32,16 +34,19 @@ package nanowarp
 //	- Use only float32 (impossible with gonum)
 //	- SIMD?
 //		- dev.simd branch of Go compiler with intrinsics
-// - From tests, zplane Elastiqué seems to use 3072-point in time window for everything?
+// - From tests, zplane Elastiqué seems to use 3072-point-in-time window for everything?
 
 import (
 	"container/heap"
 	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 	"math"
 	"math/cmplx"
+	"math/rand"
 	"os"
+	"sync"
 
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -52,51 +57,47 @@ type Nanowarp struct {
 	hpss         *splitter
 }
 
+const chu = false
+const cha = true
+
 func New(samplerate int) (n *Nanowarp) {
 	n = &Nanowarp{}
 	// TODO Fixed absolute bandwidth through zero-padding.
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
-<<<<<<< HEAD
 	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.upper = warperNew(64 * w)   // 256 (128) @ 48000 Hz
 	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
-	n.hpss = splitterNew(2048, float64(int(1)<<w)) // TODO Find optimal size
-=======
-	n.lower = warperNew(4096 * w)                      // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(128 * w)                       // 256 (128) @ 48000 Hz
-	n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
->>>>>>> parent of 56bf72b (ehh, better?)
+	n.hpss = splitterNew(512, float64(int(1)<<w)) // TODO Find optimal size
 	return
 }
 
 func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
-	n.lower.process(in, out, stretch, 0)
-	// if stretch >= 1 {
-	// 	n.hfile = make([]float64, len(in))
-	// 	n.pfile = make([]float64, len(in))
-	// 	n.hpss.process(in, n.pfile, n.hfile)
+	// n.lower.process(in, out, stretch, 0)
+	// return
+	if stretch >= 1 {
+		n.hfile = make([]float64, len(in))
+		n.pfile = make([]float64, len(in))
+		n.hpss.process(in, n.pfile, n.hfile)
 
-	// 	wg := sync.WaitGroup{}
-	// 	wg.Add(2)
-	// 	go func() {
-	// 		// TODO Is this delay value correct?
-	// 		// dc := 2048 - (2048-float64(n.lower.hop-n.upper.hop))/stretch*2
-	// 		n.lower.process(n.hfile, out, stretch, 1920)
-	// 		// n.lower.process(n.hfile, out, stretch, 0)
-	// 		wg.Done()
-	// 	}()
-	// 	go func() {
-	// 		n.upper.process(n.pfile, out, stretch, 0)
-	// 		wg.Done()
-	// 	}()
-	// 	wg.Wait()
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			// TODO Is this delay value correct?
+			n.lower.process(n.hfile, out, stretch, float64(n.lower.hop-n.upper.hop)*(stretch-1)*2)
+			wg.Done()
+		}()
+		go func() {
+			n.upper.process(n.pfile, out, stretch, 0)
+			wg.Done()
+		}()
+		wg.Wait()
 
-	// } else {
-	// 	// TODO Too lazy, do something more smart
-
-	// }
+	} else {
+		// TODO Too lazy, do something more smart
+		n.lower.process(in, out, stretch, 0)
+	}
 }
 
 type warper struct {
@@ -114,7 +115,9 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, M, P, Phase, Pphase []float64    // Scratch buffers
+	S, M, P, Phase, Pphase []float64 // Scratch buffers
+	Fadv, Pfadv            []float64
+	Xprevs                 []complex128 // Lookahead framebuffer
 	W, Wd, Wt              []float64    // Window functions
 	X, Xd, Xt, O           []complex128 // Complex spectra
 }
@@ -184,6 +187,24 @@ func (n *warper) process(in []float64, out []float64, stretch float64, delay flo
 		j += n.hop
 	}
 
+	if cha {
+		floatMatrixToImage(n.img)
+		phasogram := func(name string) {
+			e := n.img
+			fmt.Println(name)
+			if len(e) == 0 {
+				fmt.Println(`<skipped>`)
+				return
+			}
+			file, err := os.Create(name)
+			if err != nil {
+				panic(err)
+			}
+			png.Encode(file, floatMatrixToImage(e))
+		}
+		phasogram(fmt.Sprint(rand.Int(), `a.png`))
+	}
+
 }
 
 func (n *warper) start(in []float64, out []float64) {
@@ -194,9 +215,11 @@ func (n *warper) start(in []float64, out []float64) {
 	mul(a.S, a.W)
 	n.fft.Coefficients(a.X, a.S)
 
+	// fadv := getfadv(a.X, a.Xt, 1)
 	for w := range a.X {
 		a.M[w] = mag(a.X[w])
 		a.Pphase[w] = cmplx.Phase(a.X[w])
+		// a.Pfadv[w] =
 	}
 	copy(a.P, a.M)
 
@@ -204,6 +227,17 @@ func (n *warper) start(in []float64, out []float64) {
 		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
 	}
 	add(out[:min(len(out), n.nbuf)], a.S)
+}
+
+func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
+	return func(j int) float64 {
+		if mag(x[j]) < 1e-6 {
+			return 0
+		}
+		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
+		return -real(xt[j]/x[j])/float64(len(x))*math.Pi*stretch - math.Pi/2
+
+	}
 }
 
 // advance adds to the phase of the output by one frame using
@@ -232,7 +266,7 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 
 	for j := range a.X {
 		n.arm[j] = true
-		// Disabled, adds more pre-echo.
+		// // Disabled, adds more pre-echo.
 		// // Allow time-phase propagation only for local maxima.
 		// // Which is a simplest possible auditory masking model.
 		// if j == 0 || j == n.nbins-1 ||
@@ -262,12 +296,15 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		if mag(a.X[j]) < 1e-6 {
 			return 0
 		}
-		// TODO This phase correction value is guaranteed to be wrong but mostly correct.
+		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
 		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
 
 	}
 
 	// e := slices.Repeat([]float64{0}, n.nbins)
+	for w := range a.X {
+		a.Fadv[w] = princarg(fadv(w))
+	}
 
 	for len(n.heap) > 0 {
 		h := heap.Pop(&n.heap).(heaptriple)
@@ -281,26 +318,46 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 			}
 		case 0:
 			if w > 1 && n.arm[w-1] {
-				a.Phase[w-1] = a.Phase[w] - fadv(w-1)
+				a.Phase[w-1] = a.Phase[w] - a.Fadv[w-1]
 				n.arm[w-1] = false
 				heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
-				a.Phase[w+1] = a.Phase[w] + fadv(w+1)
+				a.Phase[w+1] = a.Phase[w] + a.Fadv[w+1]
 				n.arm[w+1] = false
 				heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 			}
 		}
 	}
 
-	// for w := 1; w < n.nbins-1; w++ {
-	// 	if princarg(fadv(w)) > math.Pi-1 &&
-	// 		princarg(fadv(w-1)) > math.Pi-1 &&
-	// 		princarg(fadv(w+1)) > math.Pi-1 {
-	// 		a.Phase[w] = cmplx.Phase(a.X[w])
+	// e := make([]float64, n.nbins)
+
+	// Match phase reset points.
+	// See “Axel Roebel. A new approach to transient processing in the phase vocoder.
+	// 6th International Conference on Digital Audio Effects (DAFx), Sep 2003”
+	// rst := 0
+	for w := 1; w < n.nbins-1; w++ {
+		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
+		if m(w) && m(w-1) && m(w+1) {
+			// rst++
+			a.Phase[w-1] = cmplx.Phase(a.X[w-1])
+			a.Phase[w+1] = cmplx.Phase(a.X[w+1])
+			a.Phase[w] = cmplx.Phase(a.X[w])
+			// 		// e[w] = 1
+			// 		// e[w-1] = 1
+			// 		// e[w+1] = 1
+		}
+	}
+	copy(a.Pfadv, a.Fadv)
+	// e[rst] = 1
+	// n.img = append(n.img, append(slices.Repeat([]float64{1}, rst), make([]float64, n.nbins-rst)...))
+
+	// if rst > n.nbins/8 {
+	// 	// println(`reset`)
+	// 	for i := range a.Phase {
+	// 		a.Phase[i] = cmplx.Phase(a.X[i])
 	// 	}
 	// }
-	// n.img = append(n.img, e)
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
@@ -326,15 +383,17 @@ type splitter struct {
 	corr  float64
 
 	fft  *fourier.FFT
+	img  [][]float64
 	vimp *mediator[float64, bang]
 	himp []*mediator[float64, bang]
-	img  [][]float64
 
 	a sbufs
 }
 type sbufs struct {
-	S, W, Wt, M, H, P, A []float64
-	X, Xt, Y             []complex128
+	S, W, Wd, Wdt, Wt, M, H, P, A []float64
+	Fadv, Pfadv                   []float64
+	Xprevs                        [][]complex128 // Lookahead framebuffer
+	X, Xd, Xdt, Xt, Y             []complex128
 }
 
 func splitterNew(nfft int, filtcorr float64) (n *splitter) {
@@ -385,7 +444,7 @@ func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 	houtgrain := make([]float64, n.nfft)
 
 	for i := 0; i < len(in); i += n.hop {
-		n.advanceAlt(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
+		n.advanceOld(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
 		add(pout[i:min(len(pout), i+n.nbuf)], poutgrain)
 		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
 	}
@@ -408,7 +467,7 @@ func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 
 }
 
-func (n *splitter) advanceAlt(ingrain []float64, poutgrain []float64, houtgrain []float64) {
+func (n *splitter) advanceNew(ingrain []float64, poutgrain []float64, houtgrain []float64) {
 	a := &n.a
 	enfft := func(x []complex128, w []float64) {
 		clear(a.S)
@@ -468,7 +527,7 @@ func (n *splitter) advanceAlt(ingrain []float64, poutgrain []float64, houtgrain 
 	}
 }
 
-func (n *splitter) advance(ingrain []float64, poutgrain []float64, houtgrain []float64) {
+func (n *splitter) advanceOld(ingrain []float64, poutgrain []float64, houtgrain []float64) {
 	n.vimp.Reset(n.vimp.N)
 	a := &n.a
 
