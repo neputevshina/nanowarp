@@ -85,7 +85,8 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 		wg.Add(2)
 		go func() {
 			// TODO Is this delay value correct?
-			n.lower.process(n.hfile, out, stretch, float64(n.lower.hop-n.upper.hop)*(stretch-1)*2)
+			dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
+			n.lower.process(n.hfile, out, stretch, dc)
 			wg.Done()
 		}()
 		go func() {
@@ -93,7 +94,7 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 			wg.Done()
 		}()
 		wg.Wait()
-
+		// copy(out, inout)
 	} else {
 		// TODO Too lazy, do something more smart
 		n.lower.process(in, out, stretch, 0)
