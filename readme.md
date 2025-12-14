@@ -20,9 +20,10 @@ advance can be obtained using only one windowed grain instead of two.
 
 To reduce smearing of transients, a variant of median harmonic-percussive source separation
 (HPSS)[3] with a very short window is first applied to the signal. Extracted impulsive components
-of the signal are then warped with smaller FFT grain (512 in this case), and harmonic portion
-is then warped using large grain (4096). Like in original implementation of PGHI-PV, FFT is
-oversampled by factor of 2 with zero-padding.
+of the signal are then warped with smaller FFT grain (64 in this case), and harmonic portion
+is then warped using large grain (2048). Like in original implementation of PGHI-PV, FFT is
+oversampled by factor of 2 with zero-padding. Phase is resetted on impulsive parts of the spectrum[4] 
+to hopefully make numerical errors from reassignment smaller.
 
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
@@ -32,10 +33,11 @@ oversampled by factor of 2 with zero-padding.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. Mostly from container/heap.
-- Bubbling artifacts and smeared transients. 
+- More smeared transients than in Elastiqué. Less smeared than any version of Rubber Band. 
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
 3. [Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.](https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
+4. [Röbel, A. (2003). A new approach to transient processing in the phase vocoder.](https://hal.science/hal-01161124/document)
 

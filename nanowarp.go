@@ -119,7 +119,7 @@ type wbufs struct {
 	Fadv, Pfadv            []float64
 	Xprevs                 []complex128 // Lookahead framebuffer
 	W, Wd, Wt              []float64    // Window functions
-	X, Xd, Xt, O           []complex128 // Complex spectra
+	X, Xd, Xt, O, F, Ft    []complex128 // Complex spectra
 }
 
 func warperNew(nbuf int) (n *warper) {
@@ -160,7 +160,7 @@ func (n *warper) process(in []float64, out []float64, stretch float64, delay flo
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
 	n.start(in, out)
-	outgrain := make([]float64, n.nfft)
+	grainbuf := make([]float64, n.nfft)
 
 	id, fd := math.Modf(delay)
 	j := n.hop + int(id)
@@ -170,20 +170,27 @@ func (n *warper) process(in []float64, out []float64, stretch float64, delay flo
 		if j > len(out) {
 			break
 		}
+		ingrain := in[i:min(len(in), i+n.nbuf)]
+		outgrain := out[j:min(len(out), j+n.nbuf)]
+
+		// Dither both input and output hop sizes to get
+		// fractional stretch.
+		// Snap stretch coefficient to the dithered input hop size
+		// to hopefully get more accurate phase.
 		dh += fh
 		if dh > 0 {
 			i += 1
 			dh -= 1
-			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih+1))
+			n.advance(ingrain, grainbuf, float64(n.hop)/(ih+1))
 		} else {
-			n.advance(in[i:min(len(in), i+n.nbuf)], outgrain, float64(n.hop)/(ih))
+			n.advance(ingrain, grainbuf, float64(n.hop)/(ih))
 		}
 		dd += fd
 		if dh > 0 {
 			j += 1
 			dd -= 1
 		}
-		add(out[j:min(len(out), j+n.nbuf)], outgrain)
+		add(outgrain, grainbuf)
 		j += n.hop
 	}
 
@@ -219,7 +226,6 @@ func (n *warper) start(in []float64, out []float64) {
 	for w := range a.X {
 		a.M[w] = mag(a.X[w])
 		a.Pphase[w] = cmplx.Phase(a.X[w])
-		// a.Pfadv[w] =
 	}
 	copy(a.P, a.M)
 
@@ -229,33 +235,22 @@ func (n *warper) start(in []float64, out []float64) {
 	add(out[:min(len(out), n.nbuf)], a.S)
 }
 
-func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
-	return func(j int) float64 {
-		if mag(x[j]) < 1e-6 {
-			return 0
-		}
-		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
-		return -real(xt[j]/x[j])/float64(len(x))*math.Pi*stretch - math.Pi/2
-
-	}
-}
-
 // advance adds to the phase of the output by one frame using
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64) {
+func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 	a := &n.a
-	enfft := func(x []complex128, w []float64) {
+	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
-		copy(a.S, ingrain)
+		copy(a.S, grain)
 		mul(a.S, w)
 		n.fft.Coefficients(x, a.S)
 	}
 
-	enfft(a.X, a.W)
-	enfft(a.Xd, a.Wd)
-	enfft(a.Xt, a.Wt)
+	enfft(a.X, a.W, ingrain)
+	enfft(a.Xd, a.Wd, ingrain)
+	enfft(a.Xt, a.Wt, ingrain)
 
 	for w := range a.X {
 		a.M[w] = mag(a.X[w])
@@ -292,19 +287,25 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
 
 	}
-	fadv := func(j int) float64 {
-		if mag(a.X[j]) < 1e-6 {
-			return 0
-		}
-		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
-		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi*stretch - math.Pi/2
 
-	}
-
-	// e := slices.Repeat([]float64{0}, n.nbins)
+	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 	for w := range a.X {
 		a.Fadv[w] = princarg(fadv(w))
 	}
+
+	// Match phase reset points.
+	for w := 1; w < n.nbins-1; w++ {
+		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
+		if m(w) && m(w-1) && m(w+1) {
+			a.Phase[w-1] = cmplx.Phase(a.X[w-1])
+			a.Phase[w+1] = cmplx.Phase(a.X[w+1])
+			a.Phase[w] = cmplx.Phase(a.X[w])
+			n.arm[w] = false
+			n.arm[w+1] = false
+			n.arm[w-1] = false
+		}
+	}
+	copy(a.Pfadv, a.Fadv)
 
 	for len(n.heap) > 0 {
 		h := heap.Pop(&n.heap).(heaptriple)
@@ -330,35 +331,6 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 		}
 	}
 
-	// e := make([]float64, n.nbins)
-
-	// Match phase reset points.
-	// See “Axel Roebel. A new approach to transient processing in the phase vocoder.
-	// 6th International Conference on Digital Audio Effects (DAFx), Sep 2003”
-	// rst := 0
-	for w := 1; w < n.nbins-1; w++ {
-		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
-		if m(w) && m(w-1) && m(w+1) {
-			// rst++
-			a.Phase[w-1] = cmplx.Phase(a.X[w-1])
-			a.Phase[w+1] = cmplx.Phase(a.X[w+1])
-			a.Phase[w] = cmplx.Phase(a.X[w])
-			// 		// e[w] = 1
-			// 		// e[w-1] = 1
-			// 		// e[w+1] = 1
-		}
-	}
-	copy(a.Pfadv, a.Fadv)
-	// e[rst] = 1
-	// n.img = append(n.img, append(slices.Repeat([]float64{1}, rst), make([]float64, n.nbins-rst)...))
-
-	// if rst > n.nbins/8 {
-	// 	// println(`reset`)
-	// 	for i := range a.Phase {
-	// 		a.Phase[i] = cmplx.Phase(a.X[i])
-	// 	}
-	// }
-
 	copy(a.P, a.M)
 	for w := range a.Phase {
 		a.O[w] = cmplx.Rect(a.M[w], a.Phase[w])
@@ -372,6 +344,16 @@ func (n *warper) advance(ingrain []float64, outgrain []float64, stretch float64)
 	mul(a.S, a.W)
 
 	copy(outgrain, a.S)
+}
+
+func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
+	return func(j int) float64 {
+		if mag(x[j]) < 1e-6 {
+			return 0
+		}
+		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
+		return -real(xt[j]/x[j])/float64(len(x))*math.Pi*stretch - math.Pi/2
+	}
 }
 
 type splitter struct {
