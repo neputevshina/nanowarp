@@ -119,6 +119,8 @@ func main() {
 			l, r := wavrd.FloatValue(sample, 0), wavrd.FloatValue(sample, 1)
 			mid = append(mid, l+r)
 			side = append(side, l-r)
+			// mid = append(mid, l)
+			// side = append(side, r)
 		}
 	}
 

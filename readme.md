@@ -22,7 +22,7 @@ To reduce smearing of transients, a variant of median harmonic-percussive source
 (HPSS)[3] with a very short window is first applied to the signal. Extracted impulsive components
 of the signal are then warped with smaller FFT grain (64 in this case), and harmonic portion
 is then warped using large grain (2048). Like in original implementation of PGHI-PV, FFT is
-oversampled by factor of 2 with zero-padding. Phase is resetted on impulsive parts of the spectrum[4] 
+oversampled by factor of 2 with zero-padding. Phase is reset on impulsive parts of the spectrum[4] 
 to hopefully make numerical errors from reassignment smaller.
 
 ## Demos
