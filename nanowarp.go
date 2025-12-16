@@ -55,6 +55,8 @@ type Nanowarp struct {
 	hfile, pfile []float64
 	lower, upper *warper
 	hpss         *splitter
+
+	Masking bool
 }
 
 const chu = false
@@ -67,7 +69,9 @@ func New(samplerate int) (n *Nanowarp) {
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
 	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.upper = warperNew(64 * w)   // 256 (128) @ 48000 Hz
+	n.lower.masking = n.Masking
+	n.upper = warperNew(64 * w) // 256 (128) @ 48000 Hz
+	n.upper.masking = n.Masking
 	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 	n.hpss = splitterNew(512, float64(int(1)<<w)) // TODO Find optimal size
 	return
@@ -94,10 +98,11 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 }
 
 type warper struct {
-	nfft  int
-	nbuf  int
-	nbins int
-	hop   int
+	nfft    int
+	nbuf    int
+	nbins   int
+	hop     int
+	masking bool
 
 	fft  *fourier.FFT
 	arm  []bool
@@ -254,13 +259,16 @@ func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 
 	for j := range a.X {
 		n.arm[j] = true
-		// Disabled, adds more pre-echo.
-		// // Allow time-phase propagation only for local maxima.
-		// // Which is a simplest possible auditory masking model.
-		// if j == 0 || j == n.nbins-1 ||
-		// 	a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
-		n.heap[j] = heaptriple{a.P[j], j, -1}
-		// }
+		if n.masking {
+			// Allow time-phase propagation only for local maxima.
+			// Which is a simplest possible auditory masking model.
+			if j == 0 || j == n.nbins-1 ||
+				a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
+				n.heap[j] = heaptriple{a.P[j], j, -1}
+			}
+		} else {
+			n.heap[j] = heaptriple{a.P[j], j, -1}
+		}
 	}
 	heap.Init(&n.heap)
 

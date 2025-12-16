@@ -33,7 +33,8 @@ to hopefully make numerical errors from reassignment smaller.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. Mostly from container/heap.
-- More smeared transients than in Elastiqué. Less smeared than any version of Rubber Band. 
+- Pre-echo artifacts. Prominent on drum loops, less perceptible on full tracks. 
+  Fixable by asymmetric windowing.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
