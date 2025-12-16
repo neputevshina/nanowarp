@@ -19,10 +19,10 @@ of phase are obtained through time-frequency reassignment[2]. This way accurate 
 advance can be obtained using only one windowed grain instead of two.
 
 To reduce smearing of transients, a variant of median harmonic-percussive source separation
-(HPSS)[3] with a very short window is first applied to the signal. Extracted impulsive components
+(HPSS)[3] with a very short (nfft=512) asymmetric[5] window is first applied to the signal. Extracted impulsive components
 of the signal are then warped with smaller FFT grain (64 in this case), and harmonic portion
 is then warped using large grain (2048). Like in original implementation of PGHI-PV, FFT is
-oversampled by factor of 2 with zero-padding. Phase is reset on impulsive parts of the spectrum[4] 
+oversampled by factor of 2 with zero-padding. Phase is reset on princarg({d\phi^2 \over d\omega dt}) > \pi[4]
 to hopefully make numerical errors from reassignment smaller.
 
 ## Demos
@@ -33,12 +33,11 @@ to hopefully make numerical errors from reassignment smaller.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. Mostly from container/heap.
-- Pre-echo artifacts. Prominent on drum loops, less perceptible on full tracks. 
-  Fixable by asymmetric windowing.
+- Artifacts. Artifacts artifacts artifacts. Different after each fix.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
 3. [Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.](https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
 4. [Röbel, A. (2003). A new approach to transient processing in the phase vocoder.](https://hal.science/hal-01161124/document)
-
+5. [Olli Niemitalo's asymmetric window.](https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing)

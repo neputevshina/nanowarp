@@ -19,7 +19,7 @@ package nanowarp
 // - Try to simply resample percussive content by stretch size
 //	- See Royer, T. (2019). Pitch-shifting algorithm design and applications in music.
 // + WAV float32 input and output
-// - Niemitalo asymmetric windowing?
+// + Niemitalo asymmetric windowing?
 //	- See sources of Rubber Band V3
 //	- Need dx/dt of it
 // + HPSS and lower-upper
@@ -84,7 +84,7 @@ func new(samplerate int, masking bool) (n *nanowarp) {
 	w := int(math.Ceil(float64(samplerate) / 48000))
 	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = masking
-	n.upper = warperNew(32 * w) // 128 (64) @ 48000 Hz
+	n.upper = warperNew(64 * w) // 128 (64) @ 48000 Hz
 	n.upper.masking = masking
 	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 	n.hpss = splitterNew(512, float64(int(1)<<w)) // TODO Find optimal size
