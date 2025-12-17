@@ -74,7 +74,8 @@ func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
 			return 0
 		}
 		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
-		return -real(xt[j]/x[j])/float64(len(x))*math.Pi*stretch - math.Pi/2
+		// len(x)-1 == nfft/2, this results in more clear sound than with nbins
+		return -real(xt[j]/x[j])/float64(len(x)-1)*math.Pi*stretch - math.Pi/2
 	}
 }
 

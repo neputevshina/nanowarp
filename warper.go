@@ -208,6 +208,12 @@ func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 	for w := range a.X {
 		a.Fadv[w] = princarg(fadv(w))
 	}
+	// for w := 1; w < len(a.X)-1; w++ {
+	// 	a.Fadv[w] = (cmplx.Phase(a.X[w])-cmplx.Phase(a.X[w-1]))/2 + (cmplx.Phase(a.X[w+1])-cmplx.Phase(a.X[w]))/2
+	// 	a.Fadv[w] /= 2
+	// }
+	// a.Fadv[0] = 0
+	// a.Fadv[len(a.X)-1] = 0
 
 	// Match phase reset points.
 	for w := 1; w < n.nbins-1; w++ {
