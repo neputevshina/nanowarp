@@ -31,10 +31,10 @@ type sbufs struct {
 	X, Xd, Xdt, Xt, Y                  []complex128
 }
 
-func splitterNew(nfft int, filtcorr float64) (n *splitter) {
+func splitterNew(nfft int, filtcorr float64, smooth bool) (n *splitter) {
 	nbuf := nfft
 	nbins := nfft/2 + 1
-	olap := 8
+	olap := 16
 
 	n = &splitter{
 		nfft:  nfft,
@@ -57,13 +57,15 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 	nvimp := 15 * int(filtcorr)
 	qvimp := 0.25
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
-
-	niemitalo(n.a.Wf)
-	// fmt.Println(n.a.Wf)
-	// Asymmetric window requires applying reversed copy of itself on synthesis stage.
-	copy(n.a.Wr, n.a.Wf)
-	slices.Reverse(n.a.Wr)
-
+	if smooth {
+		hann(n.a.Wf)
+		copy(n.a.Wr, n.a.Wf)
+	} else {
+		niemitalo(n.a.Wf)
+		// Asymmetric window requires applying reversed copy of itself on synthesis stage.
+		copy(n.a.Wr, n.a.Wf)
+		slices.Reverse(n.a.Wr)
+	}
 	windowT(n.a.Wf, n.a.Wt)
 	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.Wf)
 	n.fft = fourier.NewFFT(nfft)

@@ -48,7 +48,6 @@ type Nanowarp struct {
 
 	stretch   float64
 	semitones float64
-	Masking   bool
 }
 
 type nanowarp struct {
@@ -63,8 +62,13 @@ type nanowarp struct {
 const chu = false
 const cha = true
 
-func New(samplerate int) (n *Nanowarp) {
-	n = &Nanowarp{mid: new(samplerate, false), side: new(samplerate, false)}
+type Options struct {
+	Masking bool
+	Smooth  bool
+}
+
+func New(samplerate int, opts Options) (n *Nanowarp) {
+	n = &Nanowarp{mid: new(samplerate, &opts), side: new(samplerate, &opts)}
 	n.mid.root = n
 	n.side.root = n
 
@@ -76,18 +80,18 @@ func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
 	n.mid.Process(in, out, stretch)
 }
 
-func new(samplerate int, masking bool) (n *nanowarp) {
+func new(samplerate int, opts *Options) (n *nanowarp) {
 	n = &nanowarp{}
 	// TODO Fixed absolute bandwidth through zero-padding.
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
 	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.lower.masking = masking
+	n.lower.masking = opts.Masking
 	n.upper = warperNew(64 * w) // 128 (64) @ 48000 Hz
-	n.upper.masking = masking
+	n.upper.masking = opts.Masking
 	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
-	n.hpss = splitterNew(512, float64(int(1)<<w)) // TODO Find optimal size
+	n.hpss = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
 	return
 }
 

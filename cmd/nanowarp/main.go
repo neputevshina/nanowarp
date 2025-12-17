@@ -22,6 +22,7 @@ var println = fmt.Println
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var finput = flag.String("i", "", "input WAV (or anything else, if ffmpeg is present) `path`")
 var mask = flag.Bool("mask", false, "enable auditory masking in PGHI")
+var smooth = flag.Bool("smooth", false, "trade off pre-echo for more tonal clarity")
 var foutput = flag.String("o", "", "output WAV `path`")
 var coeff = flag.Float64("t", 0, "time stretch multiplier")
 
@@ -125,11 +126,12 @@ func main() {
 		}
 	}
 
-	mnw := nanowarp.New(int(wavfmt.SampleRate))
-	snw := nanowarp.New(int(wavfmt.SampleRate))
-
-	mnw.Masking = *mask
-	snw.Masking = *mask
+	opts := nanowarp.Options{
+		Masking: *mask,
+		Smooth:  *smooth,
+	}
+	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
+	snw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
 	mout := make([]float64, int(float64(len(mid))**coeff))
 	sout := make([]float64, int(float64(len(mid))**coeff))
