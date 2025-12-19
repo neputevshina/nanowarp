@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sync"
 )
 
@@ -54,7 +55,7 @@ type nanowarp struct {
 	file         []float64
 	hfile, pfile []float64
 	lower, upper *warper
-	hpss         *splitter
+	hpssl, hpssr *splitter
 
 	root *Nanowarp
 }
@@ -68,16 +69,15 @@ type Options struct {
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
-	n = &Nanowarp{mid: new(samplerate, &opts), side: new(samplerate, &opts)}
+	n = &Nanowarp{mid: new(samplerate, &opts)}
 	n.mid.root = n
-	n.side.root = n
 
 	return
 }
 
-func (n *Nanowarp) Process(in []float64, out []float64, stretch float64) {
+func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
-	n.mid.Process(in, out, stretch)
+	n.mid.Process(lin, rin, lout, rout, stretch)
 }
 
 func new(samplerate int, opts *Options) (n *nanowarp) {
@@ -91,7 +91,8 @@ func new(samplerate int, opts *Options) (n *nanowarp) {
 	n.upper = warperNew(64 * w) // 128 (64) @ 48000 Hz
 	n.upper.masking = opts.Masking
 	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
-	n.hpss = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
+	n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
+	n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
 	return
 }
 
@@ -99,24 +100,36 @@ func (n *nanowarp) nmustcollect() int {
 	lop := func(nbuf, hop int) int {
 		return nbuf + int(math.Ceil(float64(hop)/n.root.stretch))
 	}
-	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpss.nbuf, n.hpss.hop))
+	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpssl.nbuf, n.hpssl.hop))
 }
 
-func (n *nanowarp) Process(in []float64, out []float64, stretch float64) {
-	n.hfile = make([]float64, len(in))
-	n.pfile = make([]float64, len(in))
-	n.hpss.process(in, n.pfile, n.hfile)
+func (n *nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
+	lhfile := make([]float64, len(lin))
+	lpfile := slices.Clone(lhfile)
+	rhfile := slices.Clone(lhfile)
+	rpfile := slices.Clone(lhfile)
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		// TODO Is this delay value correct?
-		dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
-		n.lower.process(n.hfile, out, stretch, dc)
+		n.hpssl.process(lin, lpfile, lhfile)
 		wg.Done()
 	}()
 	go func() {
-		n.upper.process(n.pfile, out, stretch, 0)
+		n.hpssr.process(rin, rpfile, rhfile)
+		wg.Done()
+	}()
+	wg.Wait()
+
+	wg.Add(2)
+	go func() {
+		// TODO Is this delay value correct?
+		dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
+		n.lower.process(lhfile, rhfile, lout, rout, stretch, dc)
+		wg.Done()
+	}()
+	go func() {
+		n.upper.process(lpfile, rpfile, lout, rout, stretch, 0)
 		wg.Done()
 	}()
 	wg.Wait()
@@ -139,9 +152,24 @@ nw.SetPitch(semitones float64)
 New() *Nanowarp
 */
 
-func (n *Nanowarp) Push64(left []float64, right []float64) (nl, nr int) {
-
+func (n *Nanowarp) Push64(l []float64, r []float64) (nl, nr int) {
+	c := n.mid.nmustcollect()
+	diffa := func(a, b *[]float64) {
+		d := len(*a) - c
+		if d < 0 {
+			*a = append(*a, (*b)[:min(len(*b), -d)]...)
+		}
+	}
+	diffa(&n.left, &l)
+	diffa(&n.right, &r)
 	return 0, 0
+}
+
+func (n *Nanowarp) Ready() bool {
+	if len(n.left) != len(n.right) {
+		panic(`nanowarp, fatal: stereo buffer length mismatch`)
+	}
+	return len(n.left) == n.mid.nmustcollect()
 }
 
 func (n *Nanowarp) Pull64(left []float64, right []float64) (nl, nr int) {

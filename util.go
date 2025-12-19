@@ -13,6 +13,10 @@ import (
 
 var mag = cmplx.Abs
 
+func norm(c complex128) complex128 {
+	return c / complex(mag(c), 0)
+}
+
 type bang = struct{}
 
 var println = fmt.Println

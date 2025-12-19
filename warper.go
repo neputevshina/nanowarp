@@ -2,10 +2,8 @@ package nanowarp
 
 import (
 	"fmt"
-	"image/png"
 	"math"
 	"math/cmplx"
-	"math/rand"
 	"os"
 
 	"gonum.org/v1/gonum/dsp/fourier"
@@ -27,11 +25,11 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, M, P, Phase, Pphase []float64 // Scratch buffers
-	Fadv, Pfadv            []float64
-	Xprevs                 []complex128 // Lookahead framebuffer
-	W, Wd, Wt              []float64    // Window functions
-	X, Xd, Xt, O, F, Ft    []complex128 // Complex spectra
+	S, Mid, M, P, Phase, Pphase []float64 // Scratch buffers
+	Fadv, Pfadv                 []float64
+	Xprevs                      []complex128 // Lookahead framebuffer
+	W, Wd, Wt                   []float64    // Window functions
+	X, Xd, Xt, L, R, Lo, Ro     []complex128 // Complex spectra
 }
 
 func warperNew(nbuf int) (n *warper) {
@@ -63,67 +61,54 @@ func warperNew(nbuf int) (n *warper) {
 	return
 }
 
-func (n *warper) process(in []float64, out []float64, stretch float64, delay float64) {
+func (n *warper) process(lin, rin, lout, rout []float64, stretch float64, delay float64) {
 	inhop := float64(n.hop) / stretch
 	ih, fh := math.Modf(inhop)
 	fmt.Fprintln(os.Stderr, `(*warper).process`)
-	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(in), `nsampout:`, len(out))
+	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(lin), `nsampout:`, len(lout))
 	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
-	n.start(in, out)
-	grainbuf := make([]float64, n.nfft)
+	n.start(lin, lout)
+	n.start(rin, rout)
+	lgrainbuf := make([]float64, n.nfft)
+	rgrainbuf := make([]float64, n.nfft)
 
 	id, fd := math.Modf(delay)
 	j := n.hop + int(id)
 	dh := fh
 	dd := fd
-	for i := int(ih); i < len(in); i += int(ih) {
-		if j > len(out) {
+	for i := int(ih); i < len(lin); i += int(ih) {
+		if j > len(lout) {
 			break
 		}
-		ingrain := in[i:min(len(in), i+n.nbuf)]
-		outgrain := out[j:min(len(out), j+n.nbuf)]
+		lingrain := lin[i:min(len(lin), i+n.nbuf)]
+		ringrain := rin[i:min(len(lin), i+n.nbuf)]
+		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
+		routgrain := rout[j:min(len(lout), j+n.nbuf)]
 
 		// Dither both input and output hop sizes to get
 		// fractional stretch.
 		// Snap stretch coefficient to the dithered input hop size
 		// to hopefully get more accurate phase.
 		dh += fh
+		hop := float64(n.hop) / (ih)
 		if dh > 0 {
 			i += 1
 			dh -= 1
-			n.advance(ingrain, grainbuf, float64(n.hop)/(ih+1))
+			hop = float64(n.hop) / (ih + 1)
 		} else {
-			n.advance(ingrain, grainbuf, float64(n.hop)/(ih))
 		}
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, hop)
 		dd += fd
 		if dh > 0 {
 			j += 1
 			dd -= 1
 		}
-		add(outgrain, grainbuf)
+		add(loutgrain, lgrainbuf)
+		add(routgrain, rgrainbuf)
 		j += n.hop
 	}
-
-	if cha {
-		floatMatrixToImage(n.img)
-		phasogram := func(name string) {
-			e := n.img
-			fmt.Println(name)
-			if len(e) == 0 {
-				fmt.Println(`<skipped>`)
-				return
-			}
-			file, err := os.Create(name)
-			if err != nil {
-				panic(err)
-			}
-			png.Encode(file, floatMatrixToImage(e))
-		}
-		phasogram(fmt.Sprint(rand.Int(), `a.png`))
-	}
-
 }
 
 func (n *warper) start(in []float64, out []float64) {
@@ -134,9 +119,9 @@ func (n *warper) start(in []float64, out []float64) {
 	mul(a.S, a.W)
 	n.fft.Coefficients(a.X, a.S)
 
-	// fadv := getfadv(a.X, a.Xt, 1)
 	for w := range a.X {
 		a.M[w] = mag(a.X[w])
+		// FIXME Right phase (not sum) is the starting previous phase.
 		a.Pphase[w] = cmplx.Phase(a.X[w])
 	}
 	copy(a.P, a.M)
@@ -151,7 +136,7 @@ func (n *warper) start(in []float64, out []float64) {
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
+func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, stretch float64) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -160,12 +145,33 @@ func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 		n.fft.Coefficients(x, a.S)
 	}
 
-	enfft(a.X, a.W, ingrain)
-	enfft(a.Xd, a.Wd, ingrain)
-	enfft(a.Xt, a.Wt, ingrain)
+	for i := range lingrain {
+		a.Mid[i] = lingrain[i] + ringrain[i]
+	}
+
+	enfft(a.L, a.W, lingrain)
+	enfft(a.R, a.W, ringrain)
+
+	enfft(a.X, a.W, a.Mid)
+	enfft(a.Xd, a.Wd, a.Mid)
+	enfft(a.Xt, a.Wt, a.Mid)
 
 	for w := range a.X {
-		a.M[w] = mag(a.X[w])
+		// Encode stereo phase differences and stretch mid only, keep original magnitudes.
+		// NB: Phase difference in polar coordinates is complex division in cartesian.
+		//     Phase sum is conversely a multiply.
+		//     Hypot and multiplication are always cheaper than Atan2 and Sincos.
+		//
+		// See “Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
+		// real-time realization for a commercial music product.”
+		m := mag(a.X[w])
+		n := a.X[w] / complex(m, 0)
+		if m < 1e-6 {
+			n = complex(1, 0)
+		}
+		a.L[w] = a.L[w] / n
+		a.R[w] = a.R[w] / n
+		a.M[w] = m
 	}
 
 	n.heap = make(hp, n.nbins)
@@ -202,19 +208,12 @@ func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 		return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
 
 	}
-
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 	for w := range a.X {
 		a.Fadv[w] = princarg(fadv(w))
 	}
-	// for w := 1; w < len(a.X)-1; w++ {
-	// 	a.Fadv[w] = (cmplx.Phase(a.X[w])-cmplx.Phase(a.X[w-1]))/2 + (cmplx.Phase(a.X[w+1])-cmplx.Phase(a.X[w]))/2
-	// 	a.Fadv[w] /= 2
-	// }
-	// a.Fadv[0] = 0
-	// a.Fadv[len(a.X)-1] = 0
 
-	// Match phase reset points.
+	// Match phase reset points in stretched and original.
 	for w := 1; w < n.nbins-1; w++ {
 		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
 		if m(w) && m(w-1) && m(w+1) {
@@ -254,15 +253,21 @@ func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
-		a.O[w] = cmplx.Rect(a.M[w], a.Phase[w])
+		// Add stereo phase differences back through multiplication.
+		a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Phase[w])
+		a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Phase[w])
+		// a.Ro[w] = cmplx.Rect(mag(a.R[w]), a.Phase[w])
 		a.Pphase[w] = princarg(a.Phase[w])
 	}
 
-	n.fft.Sequence(a.S, a.O)
-	for j := range a.S {
-		a.S[j] /= n.norm
+	defft := func(x []complex128, grain []float64) {
+		n.fft.Sequence(a.S, x)
+		for j := range a.S {
+			a.S[j] /= n.norm
+		}
+		mul(a.S, a.W)
+		copy(grain, a.S)
 	}
-	mul(a.S, a.W)
-
-	copy(outgrain, a.S)
+	defft(a.Lo, loutgrain)
+	defft(a.Ro, routgrain)
 }

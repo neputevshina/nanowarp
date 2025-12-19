@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime/pprof"
-	"sync"
 
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/wav"
@@ -131,22 +130,11 @@ func main() {
 		Smooth:  *smooth,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
-	snw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
 	mout := make([]float64, int(float64(len(mid))**coeff))
 	sout := make([]float64, int(float64(len(mid))**coeff))
 
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		mnw.Process(mid, mout, *coeff)
-		wg.Done()
-	}()
-	go func() {
-		snw.Process(side, sout, *coeff)
-		wg.Done()
-	}()
-	wg.Wait()
+	mnw.Process(mid, side, mout, sout, *coeff)
 
 	file, err = os.Create(*foutput)
 

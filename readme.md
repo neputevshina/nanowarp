@@ -33,7 +33,7 @@ to hopefully make numerical errors from reassignment smaller.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. ~~Mostly from container/heap.~~ Done, now it's simply unoptimized and not vectorized.
-- Stereo is still broken. Phase must be propagated between channels.
+- Preserved stereo image at the cost of metallic artifacts. Must find another way of preserving stereo or enhance existing.
 - Artifacts. Artifacts artifacts artifacts. Different after each fix.
 
 
