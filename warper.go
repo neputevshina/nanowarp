@@ -256,7 +256,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		// Add stereo phase differences back through multiplication.
 		a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Phase[w])
 		a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Phase[w])
-		// a.Ro[w] = cmplx.Rect(mag(a.R[w]), a.Phase[w])
 		a.Pphase[w] = princarg(a.Phase[w])
 	}
 

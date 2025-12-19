@@ -23,7 +23,8 @@ To reduce smearing of transients, a variant of median harmonic-percussive source
 of the signal are then warped with smaller FFT grain (64 in this case), and harmonic portion
 is then warped using large grain (2048). Like in original implementation of PGHI-PV, FFT is
 oversampled by factor of 2 with zero-padding. Phase is reset on princarg({d\phi^2 \over d\omega dt}) > \pi[4]
-to hopefully make numerical errors from reassignment smaller.
+to hopefully make numerical errors from reassignment smaller. Stereo coherence is obtained through stretching 
+mono and adding phase difference of respective side channels to it[6]. It
 
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
@@ -33,7 +34,8 @@ to hopefully make numerical errors from reassignment smaller.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. ~~Mostly from container/heap.~~ Done, now it's simply unoptimized and not vectorized.
-- Preserved stereo image at the cost of metallic artifacts. Must find another way of preserving stereo or enhance existing.
+- Preserved stereo image at the cost of metallic artifacts. 
+  Must enhance existing or find another way of preserving stereo.
 - Artifacts. Artifacts artifacts artifacts. Different after each fix.
 
 
@@ -43,3 +45,4 @@ to hopefully make numerical errors from reassignment smaller.
 3. [Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.](https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
 4. [Röbel, A. (2003). A new approach to transient processing in the phase vocoder.](https://hal.science/hal-01161124/document)
 5. [Olli Niemitalo's asymmetric window.](https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing)
+6. [Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a real-time realization for a commercial music product.](https://thesis.unipd.it/bitstream/20.500.12608/16470/1/tesi.pdf)
