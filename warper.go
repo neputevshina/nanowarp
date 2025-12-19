@@ -1,7 +1,6 @@
 package nanowarp
 
 import (
-	"container/heap"
 	"fmt"
 	"image/png"
 	"math"
@@ -185,7 +184,7 @@ func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 			n.heap[j] = heaptriple{a.P[j], j, -1}
 		}
 	}
-	heap.Init(&n.heap)
+	heapInit(&n.heap)
 
 	// Here we are using time-frequency reassignment[¹] as a way of obtaining
 	// phase derivatives. Probably in future these derivatives will be replaced
@@ -230,25 +229,25 @@ func (n *warper) advance(ingrain, outgrain []float64, stretch float64) {
 	copy(a.Pfadv, a.Fadv)
 
 	for len(n.heap) > 0 {
-		h := heap.Pop(&n.heap).(heaptriple)
+		h := heapPop(&n.heap).(heaptriple)
 		w := h.w
 		switch h.t {
 		case -1:
 			if n.arm[w] {
 				a.Phase[w] = a.Pphase[w] + tadv(w)
 				n.arm[w] = false
-				heap.Push(&n.heap, heaptriple{a.M[w], w, 0})
+				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
 		case 0:
 			if w > 1 && n.arm[w-1] {
 				a.Phase[w-1] = a.Phase[w] - a.Fadv[w-1]
 				n.arm[w-1] = false
-				heap.Push(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
+				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
 				a.Phase[w+1] = a.Phase[w] + a.Fadv[w+1]
 				n.arm[w+1] = false
-				heap.Push(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
+				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 			}
 		}
 	}

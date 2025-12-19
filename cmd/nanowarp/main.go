@@ -119,10 +119,10 @@ func main() {
 
 		for _, sample := range samples {
 			l, r := wavrd.FloatValue(sample, 0), wavrd.FloatValue(sample, 1)
-			mid = append(mid, l+r)
-			side = append(side, l-r)
-			// mid = append(mid, l)
-			// side = append(side, r)
+			// mid = append(mid, l+r)
+			// side = append(side, l-r)
+			mid = append(mid, l)
+			side = append(side, r)
 		}
 	}
 
@@ -155,8 +155,9 @@ func main() {
 	}
 	wr := wav.NewWriter(file, uint32(len(mout)), 2, wavfmt.SampleRate, 32, true)
 	for i := range mout {
-		msa, ssa := mout[i]/2, sout[i]/2
-		lsa, rsa := msa+ssa, msa-ssa
+		// msa, ssa := mout[i]/2, sout[i]/2
+		// lsa, rsa := msa+ssa, msa-ssa
+		lsa, rsa := mout[i], sout[i]
 		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{
 			int(math.Float32bits(float32(lsa))),
 			int(math.Float32bits(float32(rsa)))}}})

@@ -79,26 +79,6 @@ func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
 	}
 }
 
-type heaptriple struct {
-	mag  float64
-	w, t int
-}
-type hp []heaptriple
-
-func (h hp) Len() int           { return len(h) }
-func (h hp) Less(i, j int) bool { return h[i].mag > h[j].mag }
-func (h hp) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *hp) Push(x any) {
-	*h = append(*h, x.(heaptriple))
-}
-func (h *hp) Pop() any {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
-}
-
 func hann(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out))

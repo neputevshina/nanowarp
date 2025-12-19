@@ -95,8 +95,11 @@ func new(samplerate int, opts *Options) (n *nanowarp) {
 	return
 }
 
-func (n *nanowarp) highestdelay() int {
-	return max(n.lower.nbuf, n.upper.nbuf, n.hpss.nbuf)
+func (n *nanowarp) nmustcollect() int {
+	lop := func(nbuf, hop int) int {
+		return nbuf + int(math.Ceil(float64(hop)/n.root.stretch))
+	}
+	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpss.nbuf, n.hpss.hop))
 }
 
 func (n *nanowarp) Process(in []float64, out []float64, stretch float64) {
@@ -138,5 +141,9 @@ New() *Nanowarp
 
 func (n *Nanowarp) Push64(left []float64, right []float64) (nl, nr int) {
 
+	return 0, 0
+}
+
+func (n *Nanowarp) Pull64(left []float64, right []float64) (nl, nr int) {
 	return 0, 0
 }

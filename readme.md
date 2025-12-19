@@ -32,8 +32,10 @@ to hopefully make numerical errors from reassignment smaller.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
-- Slow. Mostly from container/heap.
+- Slow. ~~Mostly from container/heap.~~ Done, now it's simply unoptimized and not vectorized.
+- Stereo is still broken. Phase must be propagated between channels.
 - Artifacts. Artifacts artifacts artifacts. Different after each fix.
+
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
