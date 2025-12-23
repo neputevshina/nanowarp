@@ -29,6 +29,13 @@ mono and adding phase difference of respective side channels to it[6].
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
 
+## TODO Testing strategy
+- Various impulse train signals
+- LFO FM Sine
+- Vocals under hard saturation
+- Drum loops
+- Full tracks: pop, electronica, acoustica, black metal
+
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.

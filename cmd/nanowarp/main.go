@@ -13,6 +13,7 @@ import (
 	"runtime/pprof"
 
 	"github.com/neputevshina/nanowarp"
+	"github.com/neputevshina/nanowarp/oscope"
 	"github.com/neputevshina/nanowarp/wav"
 )
 
@@ -21,6 +22,7 @@ var println = fmt.Println
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var finput = flag.String("i", "", "input WAV (or anything else, if ffmpeg is present) `path`")
 var mask = flag.Bool("mask", false, "enable auditory masking in PGHI")
+var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
 var smooth = flag.Bool("smooth", false, "trade off pre-echo for more tonal clarity")
 var foutput = flag.String("o", "", "output WAV `path`")
 var coeff = flag.Float64("t", 0, "time stretch multiplier")
@@ -28,7 +30,8 @@ var coeff = flag.Float64("t", 0, "time stretch multiplier")
 func main() {
 	flag.Parse()
 	if *cpuprofile != "" {
-		fmt.Fprintln(os.Stderr, `profiling`)
+		fmt.Fprintln(os.Stderr, `profiling, oscope enabled`)
+		oscope.Enable = true
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
 			log.Fatal("could not create CPU profile: ", err)
@@ -128,6 +131,7 @@ func main() {
 	opts := nanowarp.Options{
 		Masking: *mask,
 		Smooth:  *smooth,
+		Diffadv: *diffadv,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
@@ -153,5 +157,10 @@ func main() {
 			panic(err)
 		}
 	}
-	file.Close()
+
+	wd, err := os.Getwd()
+	err = oscope.Dump(err, wd)
+	if err != nil {
+		panic(err)
+	}
 }

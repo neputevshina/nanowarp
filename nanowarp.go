@@ -25,10 +25,10 @@ package nanowarp
 // + HPSS and lower-upper
 // - Optimizations
 //	+ Calculate mag(a.X) once
-//	- Replace container.Heap with rankfilt
+//	+ Replace container.Heap with rankfilt
 //	+ Parallelize
 //		- Parallelize in streaming
-//	- Use/port a vectorized FFT library (e.g. SLEEF)
+//	- Use/port a vectorized FFT library (e.g. SLEEF/PFFFT)
 //	- Use only float32 (impossible with gonum)
 //	- SIMD?
 //		- dev.simd branch of Go compiler with intrinsics
@@ -66,6 +66,7 @@ const cha = true
 type Options struct {
 	Masking bool
 	Smooth  bool
+	Diffadv bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -88,8 +89,10 @@ func new(samplerate int, opts *Options) (n *nanowarp) {
 	w := int(math.Ceil(float64(samplerate) / 48000))
 	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
+	n.lower.diffadv = opts.Diffadv
 	n.upper = warperNew(64 * w) // 128 (64) @ 48000 Hz
 	n.upper.masking = opts.Masking
+	n.lower.diffadv = opts.Diffadv
 	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 	n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
 	n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size

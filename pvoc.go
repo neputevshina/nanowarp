@@ -6,6 +6,7 @@ import (
 	"math/cmplx"
 	"os"
 
+	"github.com/neputevshina/nanowarp/oscope"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
@@ -15,6 +16,7 @@ type warper struct {
 	nbins   int
 	hop     int
 	masking bool
+	diffadv bool
 
 	fft  *fourier.FFT
 	arm  []bool
@@ -25,11 +27,11 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, Mid, M, P, Phase, Pphase []float64 // Scratch buffers
-	Fadv, Pfadv                 []float64
-	Xprevs                      []complex128 // Lookahead framebuffer
-	W, Wd, Wt                   []float64    // Window functions
-	X, Xd, Xt, L, R, Lo, Ro     []complex128 // Complex spectra
+	S, Mid, M, P, Phase, Pphase     []float64 // Scratch buffers
+	Fadv, Pfadv, Ldiff, Rdiff       []float64
+	Xprevs                          []complex128 // Lookahead framebuffer
+	W, Wd, Wt                       []float64    // Window functions
+	X, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
 }
 
 func warperNew(nbuf int) (n *warper) {
@@ -151,10 +153,31 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 
 	enfft(a.L, a.W, lingrain)
 	enfft(a.R, a.W, ringrain)
+	if n.diffadv {
+		enfft(a.Ld, a.W, lingrain)
+		enfft(a.Rd, a.W, ringrain)
+	}
 
 	enfft(a.X, a.W, a.Mid)
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
+
+	// Here we are using time-frequency reassignment[¹] as a way of obtaining
+	// phase derivatives. Probably in future these derivatives will be replaced
+	// with differences because currently phase is leaking in time domain and
+	// finite differences guarrantee idempotency at stretch=1.
+	//
+	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+	olap := float64(n.nbuf / n.hop)
+	// TODO osampc is wrong. Does not work with non-power of 2 FFT sizes?
+	osampc := float64(n.nfft / n.nbuf)
+	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
+	ltadv := gettadv(a.L[:n.nbins], a.Ld, osampc, olap)
+	rtadv := gettadv(a.R[:n.nbins], a.Rd, osampc, olap)
+	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
+	for w := range a.X {
+		a.Fadv[w] = princarg(fadv(w))
+	}
 
 	for w := range a.X {
 		// Encode stereo phase differences and stretch mid only, keep original magnitudes.
@@ -165,13 +188,18 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		// See “Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
 		// real-time realization for a commercial music product.”
 		m := mag(a.X[w])
-		n := a.X[w] / complex(m, 0)
+		p := a.X[w] / complex(m, 0)
 		if m < 1e-6 {
-			n = complex(1, 0)
+			p = complex(1, 0)
 		}
-		a.L[w] = a.L[w] / n
-		a.R[w] = a.R[w] / n
 		a.M[w] = m
+		if n.diffadv {
+			a.Ldiff[w] = tadv(w) - ltadv(w)
+			a.Rdiff[w] = tadv(w) - rtadv(w)
+		} else {
+			a.L[w] /= p
+			a.R[w] /= p
+		}
 	}
 
 	n.heap = make(hp, n.nbins)
@@ -192,30 +220,11 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	}
 	heapInit(&n.heap)
 
-	// Here we are using time-frequency reassignment[¹] as a way of obtaining
-	// phase derivatives. Probably in future these derivatives will be replaced
-	// with differences because currently phase is leaking in time domain and
-	// finite differences guarrantee idempotency at stretch=1.
-	//
-	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
-	olap := float64(n.nbuf / n.hop)
-	tadv := func(j int) float64 {
-		if mag(a.X[j]) < 1e-6 {
-			return 0
-		}
-		// TODO osampc is wrong. Does not work with non-power of 2 FFT sizes?
-		osampc := float64(n.nfft/n.nbuf) / 2
-		return (math.Pi*float64(j) + imag(a.Xd[j]/a.X[j])) / (olap * osampc)
-
-	}
-	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
-	for w := range a.X {
-		a.Fadv[w] = princarg(fadv(w))
-	}
-
 	// Match phase reset points in stretched and original.
+	dif := make([]float64, n.nbins)
 	for w := 1; w < n.nbins-1; w++ {
 		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
+		dif[w] = a.Pfadv[w] - a.Fadv[w]
 		if m(w) && m(w-1) && m(w+1) {
 			a.Phase[w-1] = cmplx.Phase(a.X[w-1])
 			a.Phase[w+1] = cmplx.Phase(a.X[w+1])
@@ -225,6 +234,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 			n.arm[w-1] = false
 		}
 	}
+	oscope.Oscope(dif)
 	copy(a.Pfadv, a.Fadv)
 
 	for len(n.heap) > 0 {
@@ -253,9 +263,14 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
-		// Add stereo phase differences back through multiplication.
-		a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Phase[w])
-		a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Phase[w])
+		if n.diffadv {
+			a.Lo[w] = cmplx.Rect(mag(a.L[w]), a.Phase[w]+a.Ldiff[w])
+			a.Ro[w] = cmplx.Rect(mag(a.R[w]), a.Phase[w]+a.Rdiff[w])
+		} else {
+			// Add stereo phase differences back through multiplication.
+			a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Phase[w])
+			a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Phase[w])
+		}
 		a.Pphase[w] = princarg(a.Phase[w])
 	}
 

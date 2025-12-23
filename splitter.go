@@ -121,13 +121,7 @@ func (n *splitter) advanceNew(ingrain []float64, poutgrain []float64, houtgrain 
 	enfft(a.X, a.Wf)
 	enfft(a.Xt, a.Wt)
 
-	fadv := func(j int) float64 {
-		if mag(a.X[j]) < 1e-6 {
-			return 0
-		}
-		// TODO This phase correction value is guaranteed to be wrong but mostly correct.
-		return -real(a.Xt[j]/a.X[j])/float64(n.nbins)*math.Pi - math.Pi/2
-	}
+	fadv := getfadv(a.X, a.Xt, 1)
 
 	q := 1.0
 	for w := 1; w < n.nbins-1; w++ {

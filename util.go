@@ -83,6 +83,15 @@ func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
 	}
 }
 
+func gettadv(x, xd []complex128, osampc, olap float64) func(w int) float64 {
+	return func(j int) float64 {
+		if mag(x[j]) < 1e-6 {
+			return 0
+		}
+		return (math.Pi*float64(j) + imag(xd[j]/x[j])) / (olap * osampc / 2)
+	}
+}
+
 func hann(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out))
