@@ -9,6 +9,7 @@ import (
 	"reflect"
 
 	"golang.org/x/exp/constraints"
+	"gonum.org/v1/gonum/dsp/fourier"
 )
 
 var mag = cmplx.Abs
@@ -95,14 +96,14 @@ func gettadv(x, xd []complex128, osampc, olap float64) func(w int) float64 {
 func hann(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out))
-		out[i] = 0.5 * (1.0 - math.Cos(2.0*math.Pi*x))
+		out[i] = 0.5 * (1 - math.Cos(2*math.Pi*x))
 	}
 }
 
-func hannDx(out []float64) {
+func blackmanHarris(out []float64) {
 	for i := range out {
-		x := float64(i)/float64(len(out)) + .5
-		out[i] = math.Pi * math.Sin(2*math.Pi*x)
+		x := float64(i) / float64(len(out))
+		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
 	}
 }
 
@@ -129,10 +130,6 @@ func niemitalo(out []float64) {
 	clear(out[int(nfft)*6/8:])
 }
 
-func niemitaloDx(out []float64) {
-	panic(`unimplemented`)
-}
-
 func windowGain(w []float64) (a float64) {
 	for _, e := range w {
 		a += e * e
@@ -145,6 +142,20 @@ func windowT(w, out []float64) {
 	n := float64(len(w))
 	for i := range w {
 		out[i] = w[i] * mix(-n/2, n/2+1, float64(i)/n)
+	}
+}
+
+func windowDx(w, out []float64) {
+	f := fourier.NewFFT(len(w))
+	s := f.Coefficients(nil, w)
+	for i := range s {
+		s[i] *= complex(0, float64(i))
+		s[i] /= complex(float64(len(w)), 0)
+	}
+	s[len(w)/2] = 0
+	f.Sequence(out, s)
+	for i := range out {
+		out[i] = -out[i] * math.Pi * 2
 	}
 }
 
