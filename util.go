@@ -100,6 +100,13 @@ func hann(out []float64) {
 	}
 }
 
+func hannDx(out []float64) {
+	for i := range out {
+		x := float64(i)/float64(len(out)) + .5
+		out[i] = math.Pi * math.Sin(2*math.Pi*x)
+	}
+}
+
 func blackmanHarris(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out))

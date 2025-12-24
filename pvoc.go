@@ -53,12 +53,10 @@ func warperNew(nbuf int) (n *warper) {
 	a.Phase = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
-	blackmanHarris(a.W[:nbuf])
+	// hann(a.W[:nbuf])
+	// blackmanHarris(a.W[:nbuf])
+	niemitalo(a.W[:nbuf])
 	windowDx(a.W[:nbuf], a.Wd[:nbuf])
-	for i := range a.Wd {
-		// oscope.Oscope(w2[i])
-		oscope.Oscope(a.Wd[i])
-	}
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
 
