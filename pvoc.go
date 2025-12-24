@@ -169,8 +169,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	//
 	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	olap := float64(n.nbuf / n.hop)
-	// TODO osampc is wrong. Does not work with non-power of 2 FFT sizes?
-	osampc := float64(n.nfft / n.nbuf)
+	osampc := float64(n.nfft / n.nbuf) // TODO osampc is wrong. Does not work with non-power of 2 FFT sizes?
 	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
 	ltadv := gettadv(a.L[:n.nbins], a.Ld, osampc, olap)
 	rtadv := gettadv(a.R[:n.nbins], a.Rd, osampc, olap)

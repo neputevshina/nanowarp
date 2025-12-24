@@ -87,7 +87,7 @@ func new(samplerate int, opts *Options) (n *nanowarp) {
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
-	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.lower = warperNew(2048 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
 	n.upper = warperNew(64 * w) // 128 (64) @ 48000 Hz
