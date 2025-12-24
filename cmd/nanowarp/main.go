@@ -26,6 +26,9 @@ var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not
 var smooth = flag.Bool("smooth", false, "trade off pre-echo for more tonal clarity")
 var foutput = flag.String("o", "", "output WAV `path`")
 var coeff = flag.Float64("t", 0, "time stretch multiplier")
+var from = flag.Float64("from", 0, "source `bpm`")
+var to = flag.Float64("to", 0, "target `bpm`")
+var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 
 func main() {
 	flag.Parse()
@@ -43,6 +46,9 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	if *coeff <= 0 && *from > 0 && *to > 0 {
+		*coeff = *from / *to * math.Pow(2, *pitch/12)
+	}
 	if *finput == "" || *coeff <= 0 {
 		flag.Usage()
 		os.Exit(1)
