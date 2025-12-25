@@ -44,69 +44,65 @@ import (
 
 type Nanowarp struct {
 	left, right []float64
-	mid         *nanowarp
-	side        *nanowarp
 
-	stretch   float64
-	semitones float64
-}
-
-type nanowarp struct {
 	file         []float64
 	hfile, pfile []float64
 	lower, upper *warper
 	hpssl, hpssr *splitter
 
-	root *Nanowarp
+	opts      Options
+	stretch   float64
+	semitones float64
 }
-
-const chu = false
-const cha = true
 
 type Options struct {
 	Masking bool
 	Smooth  bool
 	Diffadv bool
+	Single  bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
-	n = &Nanowarp{mid: new(samplerate, &opts)}
-	n.mid.root = n
+	n = new(samplerate, &opts)
+	n.opts = opts
 
 	return
 }
 
-func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
-	n.mid.Process(lin, rin, lout, rout, stretch)
-}
-
-func new(samplerate int, opts *Options) (n *nanowarp) {
-	n = &nanowarp{}
+func new(samplerate int, opts *Options) (n *Nanowarp) {
+	n = &Nanowarp{}
 	// TODO Fixed absolute bandwidth through zero-padding.
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
-	n.lower = warperNew(4096 * w) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.lower = warperNew(4096*w, opts.Single) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
-	n.upper = warperNew(64 * w) // 128 (64) @ 48000 Hz
-	n.upper.masking = opts.Masking
-	n.lower.diffadv = opts.Diffadv
-	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
-	n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
-	n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
+	if !opts.Single {
+		n.upper = warperNew(64*w, true) // 128 (64) @ 48000 Hz
+		n.upper.masking = opts.Masking
+		n.lower.diffadv = opts.Diffadv
+		// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
+		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
+		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
+	}
 	return
 }
 
-func (n *nanowarp) nmustcollect() int {
+func (n *Nanowarp) nmustcollect() int {
 	lop := func(nbuf, hop int) int {
-		return nbuf + int(math.Ceil(float64(hop)/n.root.stretch))
+		return nbuf + int(math.Ceil(float64(hop)/n.stretch))
 	}
 	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpssl.nbuf, n.hpssl.hop))
 }
 
-func (n *nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
+func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
+	if n.opts.Single {
+		n.lower.process(lin, rin, lout, rout, stretch, 0)
+		return
+	}
+
 	lhfile := make([]float64, len(lin))
 	lpfile := slices.Clone(lhfile)
 	rhfile := slices.Clone(lhfile)
@@ -156,7 +152,7 @@ New() *Nanowarp
 */
 
 func (n *Nanowarp) Push64(l []float64, r []float64) (nl, nr int) {
-	c := n.mid.nmustcollect()
+	c := n.nmustcollect()
 	diffa := func(a, b *[]float64) {
 		d := len(*a) - c
 		if d < 0 {
@@ -172,7 +168,7 @@ func (n *Nanowarp) Ready() bool {
 	if len(n.left) != len(n.right) {
 		panic(`nanowarp, fatal: stereo buffer length mismatch`)
 	}
-	return len(n.left) == n.mid.nmustcollect()
+	return len(n.left) == n.nmustcollect()
 }
 
 func (n *Nanowarp) Pull64(left []float64, right []float64) (nl, nr int) {

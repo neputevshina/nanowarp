@@ -29,6 +29,7 @@ var coeff = flag.Float64("t", 0, "time stretch multiplier")
 var from = flag.Float64("from", 0, "source `bpm`")
 var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
+var single = flag.Bool("single", false, "stretch without HPSS and using only the largest window")
 
 func main() {
 	flag.Parse()
@@ -138,6 +139,7 @@ func main() {
 		Masking: *mask,
 		Smooth:  *smooth,
 		Diffadv: *diffadv,
+		Single:  *single,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 

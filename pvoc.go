@@ -34,7 +34,7 @@ type wbufs struct {
 	X, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
 }
 
-func warperNew(nbuf int) (n *warper) {
+func warperNew(nbuf int, single bool) (n *warper) {
 	nextpow2 := int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(nbuf))))))
 	nfft := nextpow2 * 2
 	nbins := nfft/2 + 1
@@ -53,9 +53,11 @@ func warperNew(nbuf int) (n *warper) {
 	a.Phase = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
-	// hann(a.W[:nbuf])
-	// blackmanHarris(a.W[:nbuf])
-	niemitalo(a.W[:nbuf])
+	if single {
+		niemitalo(a.W[:nbuf])
+	} else {
+		blackmanHarris(a.W[:nbuf])
+	}
 	windowDx(a.W[:nbuf], a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
@@ -222,10 +224,12 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	heapInit(&n.heap)
 
 	// Match phase reset points in stretched and original.
-	dif := make([]float64, n.nbins)
+	var dif []float64
+	if oscope.Enable {
+		dif = make([]float64, n.nbins)
+	}
 	for w := 1; w < n.nbins-1; w++ {
-		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi }
-		dif[w] = a.Pfadv[w] - a.Fadv[w]
+		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi/2 }
 		if m(w) && m(w-1) && m(w+1) {
 			a.Phase[w-1] = cmplx.Phase(a.X[w-1])
 			a.Phase[w+1] = cmplx.Phase(a.X[w+1])
@@ -233,11 +237,17 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 			n.arm[w] = false
 			n.arm[w+1] = false
 			n.arm[w-1] = false
+			if oscope.Enable {
+				dif[w] = 1
+				dif[w+1] = 1
+				dif[w-1] = 1
+			}
 		}
 	}
-	oscope.Oscope(dif)
 	copy(a.Pfadv, a.Fadv)
+	oscope.Oscope(dif)
 
+	x := 0
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap).(heaptriple)
 		w := h.w
@@ -253,14 +263,17 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 				a.Phase[w-1] = a.Phase[w] - a.Fadv[w-1]
 				n.arm[w-1] = false
 				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
+				x++
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
 				a.Phase[w+1] = a.Phase[w] + a.Fadv[w+1]
 				n.arm[w+1] = false
 				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
+				x++
 			}
 		}
 	}
+	oscope.Oscope(x)
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
