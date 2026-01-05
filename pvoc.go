@@ -17,6 +17,7 @@ type warper struct {
 	hop     int
 	masking bool
 	diffadv bool
+	root    *Nanowarp
 
 	fft  *fourier.FFT
 	arm  []bool
@@ -34,7 +35,7 @@ type wbufs struct {
 	X, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
 }
 
-func warperNew(nbuf int, single bool) (n *warper) {
+func warperNew(nbuf int, single bool, nanowarp *Nanowarp) (n *warper) {
 	nextpow2 := int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(nbuf))))))
 	nfft := nextpow2 * 2
 	nbins := nfft/2 + 1
@@ -44,6 +45,7 @@ func warperNew(nbuf int, single bool) (n *warper) {
 		nbins: nbins,
 		nbuf:  nbuf,
 		hop:   nbuf / olap,
+		root:  nanowarp,
 	}
 	a := &n.a
 
@@ -223,29 +225,31 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	}
 	heapInit(&n.heap)
 
-	// Match phase reset points in stretched and original.
-	var dif []float64
-	if oscope.Enable {
-		dif = make([]float64, n.nbins)
-	}
-	for w := 1; w < n.nbins-1; w++ {
-		m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi/2 }
-		if m(w) && m(w-1) && m(w+1) {
-			a.Phase[w-1] = cmplx.Phase(a.X[w-1])
-			a.Phase[w+1] = cmplx.Phase(a.X[w+1])
-			a.Phase[w] = cmplx.Phase(a.X[w])
-			n.arm[w] = false
-			n.arm[w+1] = false
-			n.arm[w-1] = false
-			if oscope.Enable {
-				dif[w] = 1
-				dif[w+1] = 1
-				dif[w-1] = 1
+	if !n.root.opts.Noreset {
+		// Match phase reset points in stretched and original.
+		var dif []float64
+		if oscope.Enable {
+			dif = make([]float64, n.nbins)
+		}
+		for w := 1; w < n.nbins-1; w++ {
+			m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi/2 }
+			if m(w) && m(w-1) && m(w+1) {
+				a.Phase[w-1] = cmplx.Phase(a.X[w-1])
+				a.Phase[w+1] = cmplx.Phase(a.X[w+1])
+				a.Phase[w] = cmplx.Phase(a.X[w])
+				n.arm[w] = false
+				n.arm[w+1] = false
+				n.arm[w-1] = false
+				if oscope.Enable {
+					dif[w] = 1
+					dif[w+1] = 1
+					dif[w-1] = 1
+				}
 			}
 		}
+		copy(a.Pfadv, a.Fadv)
+		oscope.Oscope(dif)
 	}
-	copy(a.Pfadv, a.Fadv)
-	oscope.Oscope(dif)
 
 	x := 0
 	for len(n.heap) > 0 {

@@ -60,6 +60,7 @@ type Options struct {
 	Smooth  bool
 	Diffadv bool
 	Single  bool
+	Noreset bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -75,11 +76,11 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	w := int(math.Ceil(float64(samplerate) / 48000))
-	n.lower = warperNew(4096*w, opts.Single) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.lower = warperNew(4096*w, opts.Single, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
 	if !opts.Single {
-		n.upper = warperNew(64*w, true) // 128 (64) @ 48000 Hz
+		n.upper = warperNew(64*w, true, n) // 128 (64) @ 48000 Hz
 		n.upper.masking = opts.Masking
 		n.lower.diffadv = opts.Diffadv
 		// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
