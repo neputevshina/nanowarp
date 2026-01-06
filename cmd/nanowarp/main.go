@@ -31,6 +31,7 @@ var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 var single = flag.Bool("single", false, "stretch without HPSS and using only the largest window")
 var noreset = flag.Bool("noreset", false, "disable impulsive phase reset")
+var asdf = flag.Bool("asdf", false, "export onset detection function")
 
 func main() {
 	flag.Parse()
@@ -142,6 +143,7 @@ func main() {
 		Diffadv: *diffadv,
 		Single:  *single,
 		Noreset: *noreset,
+		Asdf:    *asdf,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 

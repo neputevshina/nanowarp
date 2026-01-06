@@ -10,17 +10,21 @@ import (
 )
 
 type splitter struct {
-	nfft  int
-	nbuf  int
-	nbins int
-	hop   int
-	norm  float64
-	corr  float64
+	nfft     int
+	nbuf     int
+	nbins    int
+	hop      int
+	norm     float64
+	corr     float64
+	detector bool
 
-	fft  *fourier.FFT
-	img  [][]float64
-	vimp *mediator[float64, bang]
-	himp []*mediator[float64, bang]
+	fft   *fourier.FFT
+	img   [][]float64
+	vimp  *mediator[float64, bang]
+	himp  []*mediator[float64, bang]
+	timp1 *mediator[float64, bang]
+	timp2 *mediator[float64, bang]
+	timp3 *mediator[float64, bang]
 
 	a sbufs
 }
@@ -31,41 +35,59 @@ type sbufs struct {
 	X, Xd, Xdt, Xt, Y                  []complex128
 }
 
-func splitterNew(nfft int, filtcorr float64, smooth bool) (n *splitter) {
+func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
+	fc := int(filtcorr)
 
 	n = &splitter{
-		nfft:  nfft,
-		nbins: nbins,
-		nbuf:  nbuf,
-		hop:   nbuf / olap,
-		corr:  filtcorr,
+		nfft:     nfft,
+		nbins:    nbins,
+		nbuf:     nbuf,
+		hop:      nbuf / olap,
+		corr:     filtcorr,
+		detector: detector,
 	}
 	makeslices(&n.a, nbins, nfft)
 	n.himp = make([]*mediator[float64, bang], nbins)
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
-		// nhimp := 40 * int(filtcorr)
-		nhimp := 21 * int(filtcorr)
+		// nhimp := 40 * fc
+		nhimp := 21 * fc
 		qhimp := 0.75
 		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
-	// nvimp := 21 * int(filtcorr)
-	nvimp := 15 * int(filtcorr)
+	// nvimp := 21 * fc
+	nvimp := 15 * fc
 	qvimp := 0.25
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
-	if smooth {
-		hann(n.a.Wf)
-		copy(n.a.Wr, n.a.Wf)
-	} else {
-		niemitalo(n.a.Wf)
-		// Asymmetric window requires applying reversed copy of itself on synthesis stage.
-		copy(n.a.Wr, n.a.Wf)
-		slices.Reverse(n.a.Wr)
+
+	if detector {
+		// TODO Use dedicated and faster dilate filters.
+		// Amplitude smoothing filter.
+		ntimp1 := 48000 / 50 * fc // Slew wave amplitudes at 50 Hz
+		qtimp1 := 0.998           // ≈ Dilate filter
+		n.timp1 = MediatorNew[float64, bang](ntimp1, ntimp1, qtimp1)
+
+		// Smoothing quantile filter.
+		ntimp2 := 250 * 48 * fc // Release is 250 ms
+		qtimp2 := 0.7
+		n.timp2 = MediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
+
+		// Minimum spacing filter.
+		// TODO This filter uses only 1s and 0s, optimize appropriately.
+		ntimp3 := 20 * 48 * fc
+		qtimp3 := 0.99
+		n.timp3 = MediatorNew[float64, bang](ntimp3, ntimp3, qtimp3)
 	}
+
+	niemitalo(n.a.Wf)
+	// Asymmetric window requires applying reversed copy of itself on synthesis stage.
+	copy(n.a.Wr, n.a.Wf)
+	slices.Reverse(n.a.Wr)
+
 	windowT(n.a.Wf, n.a.Wt)
 	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.Wf)
 	n.fft = fourier.NewFFT(nfft)
@@ -91,22 +113,78 @@ func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
 	}
 
-	// floatMatrixToImage(n.img)
-	// phasogram := func(name string) {
-	// 	e := n.img
-	// 	fmt.Println(name)
-	// 	if len(e) == 0 {
-	// 		fmt.Println(`<skipped>`)
-	// 		return
-	// 	}
-	// 	file, err := os.Create(name)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	png.Encode(file, floatMatrixToImage(e))
-	// }
-	// phasogram(fmt.Sprint(rand.Int(), `a.png`))
+	if n.detector {
+		prev := 0.
+		for i := range in {
+			a := math.Abs(pout[i])
+			n.timp1.Insert(a, bang{})
+			t1, _ := n.timp1.Take()
+			n.timp2.Insert(t1, bang{})
+			t2, _ := n.timp2.Take()
+			a2 := 0.
+			if t1 > t2 {
+				a2 = 1
+			}
+			n.timp3.Insert(a2, bang{})
+			c, _ := n.timp3.Take()
+			if c <= prev {
+				pout[i] = 0
+			} else {
+				pout[i] = 1
+			}
+			prev = c
+		}
+	}
+}
 
+func (n *splitter) advanceOld(ingrain []float64, poutgrain []float64, houtgrain []float64) {
+	n.vimp.Reset(n.vimp.N)
+	a := &n.a
+
+	enfft := func(x []complex128, w []float64) {
+		clear(a.S)
+		copy(a.S, ingrain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
+
+	enfft(a.X, a.Wf)
+
+	for w := range a.X {
+		a.M[w] = mag(a.X[w])
+	}
+	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
+	for w := range a.X {
+		m := n.himp[w]
+		m.Insert(a.M[w], bang{})
+		a.H[w], _ = m.Take()
+	}
+
+	for w := range a.X {
+		if a.P[w] > a.H[w] {
+			a.A[w] += 1
+		} else {
+			a.A[w] = 0
+		}
+	}
+
+	for w := range a.X {
+		if a.A[w] == 0 {
+			a.X[w] = 0
+		}
+	}
+
+	n.fft.Sequence(a.S, a.X)
+	for w := range a.S {
+		a.S[w] /= n.norm
+	}
+	mul(a.S, a.Wr)
+	copy(poutgrain, a.S)
+
+	// Harmonic = original - percussive
+	for j := range ingrain {
+		houtgrain[j] = ingrain[j]*a.Wf[j]*a.Wf[j]/n.norm*float64(n.nfft) - a.S[j]
+	}
 }
 
 func (n *splitter) advanceNew(ingrain []float64, poutgrain []float64, houtgrain []float64) {
@@ -149,56 +227,6 @@ func (n *splitter) advanceNew(ingrain []float64, poutgrain []float64, houtgrain 
 	}
 
 	// n.img = append(n.img, slices.Clone(a.A))
-
-	n.fft.Sequence(a.S, a.X)
-	for w := range a.S {
-		a.S[w] /= n.norm
-	}
-	mul(a.S, a.Wr)
-	copy(poutgrain, a.S)
-
-	// Harmonic = original - percussive
-	for j := range ingrain {
-		houtgrain[j] = ingrain[j]*a.Wf[j]*a.Wf[j]/n.norm*float64(n.nfft) - a.S[j]
-	}
-}
-
-func (n *splitter) advanceOld(ingrain []float64, poutgrain []float64, houtgrain []float64) {
-	n.vimp.Reset(n.vimp.N)
-	a := &n.a
-
-	enfft := func(x []complex128, w []float64) {
-		clear(a.S)
-		copy(a.S, ingrain)
-		mul(a.S, w)
-		n.fft.Coefficients(x, a.S)
-	}
-
-	enfft(a.X, a.Wf)
-
-	for w := range a.X {
-		a.M[w] = mag(a.X[w])
-	}
-	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
-	for w := range a.X {
-		m := n.himp[w]
-		m.Insert(a.M[w], bang{})
-		a.H[w], _ = m.Take()
-	}
-
-	for w := range a.X {
-		if a.P[w] > a.H[w] {
-			a.A[w] += 1
-		} else {
-			a.A[w] = 0
-		}
-	}
-
-	for w := range a.X {
-		if a.A[w] == 0 {
-			a.X[w] = 0
-		}
-	}
 
 	n.fft.Sequence(a.S, a.X)
 	for w := range a.S {

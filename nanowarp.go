@@ -61,6 +61,7 @@ type Options struct {
 	Diffadv bool
 	Single  bool
 	Noreset bool
+	Asdf    bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -71,21 +72,29 @@ func New(samplerate int, opts Options) (n *Nanowarp) {
 }
 
 func new(samplerate int, opts *Options) (n *Nanowarp) {
-	n = &Nanowarp{}
 	// TODO Fixed absolute bandwidth through zero-padding.
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
+	n = &Nanowarp{}
 	w := int(math.Ceil(float64(samplerate) / 48000))
+
+	if opts.Asdf {
+		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
+		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
+		return
+	}
+
 	n.lower = warperNew(4096*w, opts.Single, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
+
 	if !opts.Single {
 		n.upper = warperNew(64*w, true, n) // 128 (64) @ 48000 Hz
 		n.upper.masking = opts.Masking
 		n.lower.diffadv = opts.Diffadv
 		// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
-		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
-		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth) // TODO Find optimal size
+		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
+		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
 	}
 	return
 }
@@ -99,6 +108,7 @@ func (n *Nanowarp) nmustcollect() int {
 
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
+
 	if n.opts.Single {
 		n.lower.process(lin, rin, lout, rout, stretch, 0)
 		return
@@ -108,6 +118,11 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	lpfile := slices.Clone(lhfile)
 	rhfile := slices.Clone(lhfile)
 	rpfile := slices.Clone(lhfile)
+
+	if n.opts.Asdf {
+		lpfile = lout
+		rpfile = rout
+	}
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
@@ -120,6 +135,10 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		wg.Done()
 	}()
 	wg.Wait()
+
+	if n.opts.Asdf {
+		return
+	}
 
 	wg.Add(2)
 	go func() {
