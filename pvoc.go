@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/cmplx"
 	"os"
+	"slices"
 
 	"github.com/neputevshina/nanowarp/oscope"
 	"gonum.org/v1/gonum/dsp/fourier"
@@ -31,7 +32,7 @@ type wbufs struct {
 	S, Mid, M, P, Phase, Pphase     []float64 // Scratch buffers
 	Fadv, Pfadv, Ldiff, Rdiff       []float64
 	Xprevs                          []complex128 // Lookahead framebuffer
-	W, Wd, Wt                       []float64    // Window functions
+	W, Wr, Wd, Wt                   []float64    // Window functions
 	X, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
 }
 
@@ -55,13 +56,15 @@ func warperNew(nbuf int, single bool, nanowarp *Nanowarp) (n *warper) {
 	a.Phase = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
-	if single {
-		niemitalo(a.W[:nbuf])
-	} else {
-		blackmanHarris(a.W[:nbuf])
-	}
+	niemitalo(a.W[:nbuf])
+	// if single {
+	// } else {
+	// 	blackmanHarris(a.W[:nbuf])
+	// }
 	windowDx(a.W[:nbuf], a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
+	copy(a.Wr[:nbuf], a.W[:nbuf])
+	slices.Reverse(a.Wr[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
 
 	n.fft = fourier.NewFFT(nfft)
@@ -297,7 +300,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		for j := range a.S {
 			a.S[j] /= n.norm
 		}
-		mul(a.S, a.W)
+		mul(a.S, a.Wr)
 		copy(grain, a.S)
 	}
 	defft(a.Lo, loutgrain)

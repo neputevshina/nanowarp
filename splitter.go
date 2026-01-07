@@ -54,12 +54,10 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
-		// nhimp := 40 * fc
 		nhimp := 21 * fc
 		qhimp := 0.75
 		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
-	// nvimp := 21 * fc
 	nvimp := 15 * fc
 	qvimp := 0.25
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
@@ -99,6 +97,11 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 // See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
 // (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
 func (n *splitter) process(in []float64, pout []float64, hout []float64) {
+	if n.detector {
+		n.extract(in, pout)
+		return
+	}
+
 	fmt.Fprintln(os.Stderr, `(*splitter).process`)
 	for i := range n.himp {
 		n.himp[i].Reset(n.himp[i].N)
@@ -112,11 +115,27 @@ func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 		add(pout[i:min(len(pout), i+n.nbuf)], poutgrain)
 		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
 	}
+}
 
+// extract performs HPSS with transient extraction.
+func (n *splitter) extract(in []float64, ons []float64) {
+	fmt.Fprintln(os.Stderr, `(*splitter).extract`)
+	for i := range n.himp {
+		n.himp[i].Reset(n.himp[i].N)
+	}
+
+	poutgrain := make([]float64, n.nfft)
+	houtgrain := make([]float64, n.nfft)
+
+	for i := 0; i < len(in); i += n.hop {
+		n.advanceOld(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
+		add(ons[i:min(len(ons), i+n.nbuf)], poutgrain)
+		// add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
+	}
 	if n.detector {
 		prev := 0.
 		for i := range in {
-			a := math.Abs(pout[i])
+			a := math.Abs(ons[i])
 			n.timp1.Insert(a, bang{})
 			t1, _ := n.timp1.Take()
 			n.timp2.Insert(t1, bang{})
@@ -128,11 +147,29 @@ func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 			n.timp3.Insert(a2, bang{})
 			c, _ := n.timp3.Take()
 			if c <= prev {
-				pout[i] = 0
+				ons[i] = 0
 			} else {
-				pout[i] = 1
+				ons[i] = 1
 			}
 			prev = c
+		}
+
+		const lenphasedropms = 20
+		const lahphasedropms = 10
+		// Somehow we get 50 ms of trigger with these parameters.
+
+		pdln := int(math.Floor(lenphasedropms * 48 * n.corr))
+		pdlah := int(math.Floor(lahphasedropms * 48 * n.corr))
+
+		count := 0
+		for i := range ons {
+			if ons[min(len(ons)-1, i+pdlah)] > 0.5 {
+				count = pdln
+			}
+			if count > 0 {
+				ons[i] = 1
+			}
+			count--
 		}
 	}
 }
