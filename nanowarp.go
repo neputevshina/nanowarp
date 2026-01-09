@@ -78,16 +78,17 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n = &Nanowarp{}
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
-	if opts.Asdf {
+	if !opts.Asdf {
 		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
 		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
-		return
 	}
 
 	n.lower = warperNew(4096*w, opts.Single, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
-
+	if !opts.Asdf {
+		return
+	}
 	if !opts.Single {
 		n.upper = warperNew(64*w, true, n) // 128 (64) @ 48000 Hz
 		n.upper.masking = opts.Masking
@@ -109,49 +110,69 @@ func (n *Nanowarp) nmustcollect() int {
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
-	if n.opts.Single {
-		n.lower.process(lin, rin, lout, rout, stretch, 0)
-		return
+	if !n.opts.Asdf {
+		lpfile := make([]float64, len(lin))
+		rpfile := slices.Clone(lpfile)
+
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			n.hpssl.process(lin, lpfile, nil)
+			wg.Done()
+		}()
+		go func() {
+			n.hpssr.process(rin, rpfile, nil)
+			wg.Done()
+		}()
+		wg.Wait()
+
+		for i := range lpfile {
+			lpfile[i] = 1 - min(lpfile[i], rpfile[i])
+		}
+		if n.opts.Single {
+			copy(lout, lpfile)
+			copy(rout, lpfile)
+			return
+		}
+
+		n.lower.process1(lin, rin, lout, rout, lpfile, slices.Repeat([]float64{stretch}, len(lpfile)))
+	} else {
+		if n.opts.Single {
+			n.lower.process(lin, rin, lout, rout, stretch, 0)
+			return
+		}
+
+		lhfile := make([]float64, len(lin))
+		lpfile := slices.Clone(lhfile)
+		rhfile := slices.Clone(lhfile)
+		rpfile := slices.Clone(lhfile)
+
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			n.hpssl.process(lin, lpfile, lhfile)
+			wg.Done()
+		}()
+		go func() {
+			n.hpssr.process(rin, rpfile, rhfile)
+			wg.Done()
+		}()
+		wg.Wait()
+
+		wg.Add(2)
+		go func() {
+			// TODO Is this delay value correct?
+			dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
+			n.lower.process(lhfile, rhfile, lout, rout, stretch, dc)
+			wg.Done()
+		}()
+		go func() {
+			n.upper.process(lpfile, rpfile, lout, rout, stretch, 0)
+			wg.Done()
+		}()
+		wg.Wait()
 	}
 
-	lhfile := make([]float64, len(lin))
-	lpfile := slices.Clone(lhfile)
-	rhfile := slices.Clone(lhfile)
-	rpfile := slices.Clone(lhfile)
-
-	if n.opts.Asdf {
-		lpfile = lout
-		rpfile = rout
-	}
-
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		n.hpssl.process(lin, lpfile, lhfile)
-		wg.Done()
-	}()
-	go func() {
-		n.hpssr.process(rin, rpfile, rhfile)
-		wg.Done()
-	}()
-	wg.Wait()
-
-	if n.opts.Asdf {
-		return
-	}
-
-	wg.Add(2)
-	go func() {
-		// TODO Is this delay value correct?
-		dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
-		n.lower.process(lhfile, rhfile, lout, rout, stretch, dc)
-		wg.Done()
-	}()
-	go func() {
-		n.upper.process(lpfile, rpfile, lout, rout, stretch, 0)
-		wg.Done()
-	}()
-	wg.Wait()
 }
 
 /*

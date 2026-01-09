@@ -75,7 +75,7 @@ func makeslices(a any, nbins, nfft int) {
 
 func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
 	return func(j int) float64 {
-		if mag(x[j]) < 1e-6 {
+		if mag(x[j]) == 0 {
 			return 0
 		}
 		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.

@@ -31,7 +31,7 @@ var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 var single = flag.Bool("single", false, "stretch without HPSS and using only the largest window")
 var noreset = flag.Bool("noreset", false, "disable impulsive phase reset")
-var asdf = flag.Bool("asdf", false, "export onset detection function")
+var asdf = flag.Bool("asdf", false, "use old (less quality) process")
 
 func main() {
 	flag.Parse()

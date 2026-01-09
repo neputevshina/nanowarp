@@ -57,10 +57,6 @@ func warperNew(nbuf int, single bool, nanowarp *Nanowarp) (n *warper) {
 	n.arm = make([]bool, nbins)
 
 	niemitalo(a.W[:nbuf])
-	// if single {
-	// } else {
-	// 	blackmanHarris(a.W[:nbuf])
-	// }
 	windowDx(a.W[:nbuf], a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	copy(a.Wr[:nbuf], a.W[:nbuf])
@@ -108,7 +104,6 @@ func (n *warper) process(lin, rin, lout, rout []float64, stretch float64, delay 
 			i += 1
 			dh -= 1
 			hop = float64(n.hop) / (ih + 1)
-		} else {
 		}
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, hop)
 		dd += fd
@@ -119,6 +114,48 @@ func (n *warper) process(lin, rin, lout, rout []float64, stretch float64, delay 
 		add(loutgrain, lgrainbuf)
 		add(routgrain, rgrainbuf)
 		j += n.hop
+	}
+}
+
+func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []float64) {
+	fmt.Fprintln(os.Stderr, `(*warper).process1`)
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
+
+	n.start(lin, lout)
+	n.start(rin, rout)
+	lgrainbuf := make([]float64, n.nfft)
+	rgrainbuf := make([]float64, n.nfft)
+
+	hop := float64(n.hop)
+	ih, dh, fh := 0., 0., 0.
+	j := n.hop
+	k := 0.
+
+	for i := int(ih); i < len(lin); i += int(ih) {
+		debt := 1 + (float64(i)-k)/hop
+		inhop := hop / (1 + (stretch[i]*debt-1)*onsets[i])
+		ih, fh = math.Modf(inhop)
+		if j > len(lout) {
+			break
+		}
+		lingrain := lin[i:min(len(lin), i+n.nbuf)]
+		ringrain := rin[i:min(len(lin), i+n.nbuf)]
+		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
+		routgrain := rout[j:min(len(lout), j+n.nbuf)]
+
+		dh += fh
+		h := hop / ih
+		if dh > 0 {
+			i += 1
+			dh -= 1
+			h = hop / (ih + 1)
+		}
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, h)
+		add(loutgrain, lgrainbuf)
+		add(routgrain, rgrainbuf)
+
+		j += n.hop
+		k += hop / stretch[i]
 	}
 }
 
@@ -173,17 +210,37 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 
 	// Here we are using time-frequency reassignment[¹] as a way of obtaining
 	// phase derivatives. Probably in future these derivatives will be replaced
-	// with differences because currently phase is leaking in time domain and
-	// finite differences guarrantee idempotency at stretch=1.
+	// with differences because finite differences guarrantee idempotency at stretch=1.
+	//
+	// See also https://github.com/y-fujii/mini_pvdr/, which uses finite differences and
+	// achieves less phase noise than current method. It both sounds clearer and on the
+	// reassigned point density spectrogram there are almost no ”squiggly” trajectories.
+	//
+	// Elastiqué, however, behaves similarly, but it is a 20 year old algorithm.
 	//
 	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	olap := float64(n.nbuf / n.hop)
-	osampc := float64(n.nfft / n.nbuf) // TODO osampc is wrong. Does not work with non-power of 2 FFT sizes?
+	osampc := float64(n.nfft / n.nbuf) // TODO osampc is wrong. Does not work with zero padded non-power of 2 FFT sizes?
 	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
 	ltadv := gettadv(a.L[:n.nbins], a.Ld, osampc, olap)
 	rtadv := gettadv(a.R[:n.nbins], a.Rd, osampc, olap)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
+
+	// Force reset on a no-op stretch, including detected transients.
+	if stretch == 1 {
+		for w := range a.Phase {
+			a.Pphase[w] = cmplx.Phase(a.X[w])
+		}
+		copy(a.P, a.M)
+		copy(a.Lo, a.L)
+		copy(a.Ro, a.R)
+		goto skip
+	}
+
 	for w := range a.X {
+		// TODO Probably it will be more numerically stable to limit the phase accuum to
+		// 0..1 and scale back to -π..π range at the poltocar conversion.
+		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
 		a.Fadv[w] = princarg(fadv(w))
 	}
 
@@ -254,7 +311,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		oscope.Oscope(dif)
 	}
 
-	x := 0
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap).(heaptriple)
 		w := h.w
@@ -270,17 +326,14 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 				a.Phase[w-1] = a.Phase[w] - a.Fadv[w-1]
 				n.arm[w-1] = false
 				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
-				x++
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
 				a.Phase[w+1] = a.Phase[w] + a.Fadv[w+1]
 				n.arm[w+1] = false
 				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
-				x++
 			}
 		}
 	}
-	oscope.Oscope(x)
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
@@ -295,14 +348,15 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		a.Pphase[w] = princarg(a.Phase[w])
 	}
 
-	defft := func(x []complex128, grain []float64) {
+skip:
+	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {
 			a.S[j] /= n.norm
 		}
 		mul(a.S, a.Wr)
-		copy(grain, a.S)
+		copy(out, a.S)
 	}
-	defft(a.Lo, loutgrain)
-	defft(a.Ro, routgrain)
+	defft(loutgrain, a.Lo)
+	defft(routgrain, a.Ro)
 }

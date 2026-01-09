@@ -39,7 +39,7 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
-	fc := int(filtcorr)
+	corr := int(filtcorr)
 
 	n = &splitter{
 		nfft:     nfft,
@@ -54,29 +54,29 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
-		nhimp := 21 * fc
+		nhimp := 21 * corr
 		qhimp := 0.75
 		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
-	nvimp := 15 * fc
+	nvimp := 15 * corr
 	qvimp := 0.25
 	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
 	if detector {
 		// TODO Use dedicated and faster dilate filters.
 		// Amplitude smoothing filter.
-		ntimp1 := 48000 / 50 * fc // Slew wave amplitudes at 50 Hz
-		qtimp1 := 0.998           // ≈ Dilate filter
+		ntimp1 := 48000 / 50 * corr // Slew wave amplitudes at 50 Hz
+		qtimp1 := 0.998             // ≈ Dilate filter
 		n.timp1 = MediatorNew[float64, bang](ntimp1, ntimp1, qtimp1)
 
 		// Smoothing quantile filter.
-		ntimp2 := 250 * 48 * fc // Release is 250 ms
+		ntimp2 := 250 * 48 * corr // Release is 250 ms
 		qtimp2 := 0.7
 		n.timp2 = MediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
 
 		// Minimum spacing filter.
 		// TODO This filter uses only 1s and 0s, optimize appropriately.
-		ntimp3 := 20 * 48 * fc
+		ntimp3 := 20 * 48 * corr
 		qtimp3 := 0.99
 		n.timp3 = MediatorNew[float64, bang](ntimp3, ntimp3, qtimp3)
 	}
@@ -154,7 +154,7 @@ func (n *splitter) extract(in []float64, ons []float64) {
 			prev = c
 		}
 
-		const lenphasedropms = 20
+		const lenphasedropms = 10
 		const lahphasedropms = 10
 		// Somehow we get 50 ms of trigger with these parameters.
 
@@ -163,7 +163,7 @@ func (n *splitter) extract(in []float64, ons []float64) {
 
 		count := 0
 		for i := range ons {
-			if ons[min(len(ons)-1, i+pdlah)] > 0.5 {
+			if ons[clamp(0, len(ons)-1, i+pdlah)] > 0.5 {
 				count = pdln
 			}
 			if count > 0 {
