@@ -80,7 +80,6 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 
 	if !opts.Asdf {
 		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
-		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
 	}
 
 	n.lower = warperNew(4096*w, opts.Single, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
@@ -112,23 +111,8 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 	if !n.opts.Asdf {
 		lpfile := make([]float64, len(lin))
-		rpfile := slices.Clone(lpfile)
 
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			n.hpssl.process(lin, lpfile, nil)
-			wg.Done()
-		}()
-		go func() {
-			n.hpssr.process(rin, rpfile, nil)
-			wg.Done()
-		}()
-		wg.Wait()
-
-		for i := range lpfile {
-			lpfile[i] = 1 - min(lpfile[i], rpfile[i])
-		}
+		n.hpssl.extract(lin, rin, lpfile)
 		if n.opts.Single {
 			copy(lout, lpfile)
 			copy(rout, lpfile)

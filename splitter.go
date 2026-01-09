@@ -32,7 +32,7 @@ type sbufs struct {
 	S, Wf, Wr, Wd, Wdt, Wt, M, H, P, A []float64
 	Fadv, Pfadv                        []float64
 	Xprevs                             [][]complex128 // Lookahead framebuffer
-	X, Xd, Xdt, Xt, Y                  []complex128
+	L, R, X, Y                         []complex128
 }
 
 func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
@@ -97,11 +97,6 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 // See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
 // (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
 func (n *splitter) process(in []float64, pout []float64, hout []float64) {
-	if n.detector {
-		n.extract(in, pout)
-		return
-	}
-
 	fmt.Fprintln(os.Stderr, `(*splitter).process`)
 	for i := range n.himp {
 		n.himp[i].Reset(n.himp[i].N)
@@ -118,59 +113,57 @@ func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 }
 
 // extract performs HPSS with transient extraction.
-func (n *splitter) extract(in []float64, ons []float64) {
+func (n *splitter) extract(lin, rin []float64, ons []float64) {
 	fmt.Fprintln(os.Stderr, `(*splitter).extract`)
 	for i := range n.himp {
 		n.himp[i].Reset(n.himp[i].N)
 	}
 
 	poutgrain := make([]float64, n.nfft)
-	houtgrain := make([]float64, n.nfft)
 
-	for i := 0; i < len(in); i += n.hop {
-		n.advanceOld(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
+	for i := 0; i < len(lin); i += n.hop {
+		n.advanceExtract(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)], poutgrain)
 		add(ons[i:min(len(ons), i+n.nbuf)], poutgrain)
-		// add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
 	}
-	if n.detector {
-		prev := 0.
-		for i := range in {
-			a := math.Abs(ons[i])
-			n.timp1.Insert(a, bang{})
-			t1, _ := n.timp1.Take()
-			n.timp2.Insert(t1, bang{})
-			t2, _ := n.timp2.Take()
-			a2 := 0.
-			if t1 > t2 {
-				a2 = 1
-			}
-			n.timp3.Insert(a2, bang{})
-			c, _ := n.timp3.Take()
-			if c <= prev {
-				ons[i] = 0
-			} else {
-				ons[i] = 1
-			}
-			prev = c
+	prev := 0.
+	for i := range lin {
+		a := math.Abs(ons[i])
+		n.timp1.Insert(a, bang{})
+		t1, _ := n.timp1.Take()
+		n.timp2.Insert(t1, bang{})
+		t2, _ := n.timp2.Take()
+		a2 := 0.
+		if t1 > t2 {
+			a2 = 1
 		}
-
-		const lenphasedropms = 10
-		const lahphasedropms = 10
-		// Somehow we get 50 ms of trigger with these parameters.
-
-		pdln := int(math.Floor(lenphasedropms * 48 * n.corr))
-		pdlah := int(math.Floor(lahphasedropms * 48 * n.corr))
-
-		count := 0
-		for i := range ons {
-			if ons[clamp(0, len(ons)-1, i+pdlah)] > 0.5 {
-				count = pdln
-			}
-			if count > 0 {
-				ons[i] = 1
-			}
-			count--
+		n.timp3.Insert(a2, bang{})
+		c, _ := n.timp3.Take()
+		if c <= prev {
+			ons[i] = 0
+		} else {
+			ons[i] = 1
 		}
+		prev = c
+	}
+
+	const lenphasedropms = 20
+	const lahphasedropms = 10
+	// Somehow we get 50 ms of trigger with these parameters.
+
+	pdln := int(math.Floor(lenphasedropms * 48 * n.corr))
+	pdlah := int(math.Floor(lahphasedropms * 48 * n.corr))
+
+	count := 0
+	for i := range ons {
+		if ons[clamp(0, len(ons)-1, i+pdlah)] > 0.5 {
+			count = pdln
+		}
+		if count > 0 {
+			ons[i] = 0
+		} else {
+			ons[i] = 1
+		}
+		count--
 	}
 }
 
@@ -224,46 +217,44 @@ func (n *splitter) advanceOld(ingrain []float64, poutgrain []float64, houtgrain 
 	}
 }
 
-func (n *splitter) advanceNew(ingrain []float64, poutgrain []float64, houtgrain []float64) {
+func (n *splitter) advanceExtract(lingrain, ringrain []float64, poutgrain []float64) {
+	n.vimp.Reset(n.vimp.N)
 	a := &n.a
-	enfft := func(x []complex128, w []float64) {
+
+	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
-		copy(a.S, ingrain)
+		copy(a.S, grain)
 		mul(a.S, w)
 		n.fft.Coefficients(x, a.S)
 	}
 
-	enfft(a.X, a.Wf)
-	enfft(a.Xt, a.Wt)
+	enfft(a.L, a.Wf, lingrain)
+	enfft(a.R, a.Wf, ringrain)
 
-	fadv := getfadv(a.X, a.Xt, 1)
-
-	q := 1.0
-	for w := 1; w < n.nbins-1; w++ {
-		if princarg(fadv(w)) > math.Pi-q &&
-			(princarg(fadv(w-1)) > math.Pi-q ||
-				princarg(fadv(w+1)) > math.Pi-q) {
-			a.A[w-1] = 4
-			a.A[w] = 4
-			a.A[w+1] = 4
-		} else {
-			a.A[w] = max(0, a.A[w]-1)
-		}
-		// if princarg(fadv(w)) > math.Pi-q &&
-		// 	princarg(fadv(w-1)) > math.Pi-q &&
-		// 	princarg(fadv(w+1)) > math.Pi-q {
-		// 	// e[w] = 1
-		// } else {
-		// 	a.X[w] = 0
-		// }
+	for w := range a.X {
+		a.M[w] = (mag(a.L[w]) + mag(a.R[w])) / 2
 	}
-	for w := 0; w < n.nbins; w++ {
-		if a.A[w] == 0 || w == 0 {
+	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
+	for w := range a.X {
+		m := n.himp[w]
+		m.Insert(a.M[w], bang{})
+		a.H[w], _ = m.Take()
+	}
+
+	for w := range a.X {
+		if a.P[w] > a.H[w] {
+			a.A[w] += 1
+		} else {
+			a.A[w] = 0
+		}
+	}
+
+	for w := range a.X {
+		a.X[w] = complex(a.M[w]/mag(a.L[w]), 0) * a.L[w]
+		if a.A[w] == 0 {
 			a.X[w] = 0
 		}
 	}
-
-	// n.img = append(n.img, slices.Clone(a.A))
 
 	n.fft.Sequence(a.S, a.X)
 	for w := range a.S {
@@ -271,9 +262,4 @@ func (n *splitter) advanceNew(ingrain []float64, poutgrain []float64, houtgrain 
 	}
 	mul(a.S, a.Wr)
 	copy(poutgrain, a.S)
-
-	// Harmonic = original - percussive
-	for j := range ingrain {
-		houtgrain[j] = ingrain[j]*a.Wf[j]*a.Wf[j]/n.norm*float64(n.nfft) - a.S[j]
-	}
 }
