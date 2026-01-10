@@ -36,7 +36,7 @@ type mediator[T constraints.Ordered, I any] struct {
 }
 
 // Creates new Mediator: to calculate `nItems` running rank.
-func MediatorNew[T constraints.Ordered, I any](maxnItems, nItems int, rank float64) *mediator[T, I] {
+func mediatorNew[T constraints.Ordered, I any](maxnItems, nItems int, rank float64) *mediator[T, I] {
 	if nItems > maxnItems {
 		panic("nItems > maxnItems")
 	}

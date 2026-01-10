@@ -127,13 +127,18 @@ func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []floa
 	rgrainbuf := make([]float64, n.nfft)
 
 	hop := float64(n.hop)
-	ih, dh, fh := 0., 0., 0.
+	ih, dh, fh := hop, 0., 0.
 	j := n.hop
 	k := 0.
 
 	for i := int(ih); i < len(lin); i += int(ih) {
 		debt := 1 + (float64(i)-k)/hop
-		inhop := hop / (1 + (stretch[i]*debt-1)*onsets[i])
+		// inhop := hop / (1 + (stretch[i]*debt-1)*onsets[max(0, pi)])
+		inhop := hop / (stretch[i] * debt)
+		// if onsets[min(len(onsets)-1, i+n.hop)] == 0 {
+		if onsets[min(len(onsets)-1, i)] == 0 {
+			inhop = hop
+		}
 		ih, fh = math.Modf(inhop)
 		if j > len(lout) {
 			break
@@ -150,7 +155,18 @@ func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []floa
 			dh -= 1
 			h = hop / (ih + 1)
 		}
+
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, h)
+		// for i := range lgrainbuf {
+		// 	lgrainbuf[i] = debt / 4
+		// 	rgrainbuf[i] = debt / 4
+		// }
+		// if onsets[i] > 0 {
+		// 	for i := range lgrainbuf {
+		// 		lgrainbuf[i] = 0
+		// 		rgrainbuf[i] = 0
+		// 	}
+		// }
 		add(loutgrain, lgrainbuf)
 		add(routgrain, rgrainbuf)
 

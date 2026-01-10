@@ -25,6 +25,7 @@ type splitter struct {
 	timp1 *mediator[float64, bang]
 	timp2 *mediator[float64, bang]
 	timp3 *mediator[float64, bang]
+	tbox  *boxfilt
 
 	a sbufs
 }
@@ -56,29 +57,28 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 	for i := range n.himp {
 		nhimp := 21 * corr
 		qhimp := 0.75
-		n.himp[i] = MediatorNew[float64, bang](nhimp, nhimp, qhimp)
+		n.himp[i] = mediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
 	nvimp := 15 * corr
 	qvimp := 0.25
-	n.vimp = MediatorNew[float64, bang](nvimp, nvimp, qvimp)
+	n.vimp = mediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
 	if detector {
-		// TODO Use dedicated and faster dilate filters.
-		// Amplitude smoothing filter.
-		ntimp1 := 48000 / 50 * corr // Slew wave amplitudes at 50 Hz
-		qtimp1 := 0.998             // ≈ Dilate filter
-		n.timp1 = MediatorNew[float64, bang](ntimp1, ntimp1, qtimp1)
+		ntimp1 := 50 * 48 * corr
+		qtimp1 := 0.5
+		n.timp1 = mediatorNew[float64, bang](ntimp1, ntimp1, qtimp1)
 
-		// Smoothing quantile filter.
-		ntimp2 := 250 * 48 * corr // Release is 250 ms
-		qtimp2 := 0.7
-		n.timp2 = MediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
+		ntimp2 := 50 * 48 * corr
+		qtimp2 := 0.98
+		n.timp2 = mediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
 
 		// Minimum spacing filter.
 		// TODO This filter uses only 1s and 0s, optimize appropriately.
-		ntimp3 := 20 * 48 * corr
+		ntimp3 := 100 * 48 * corr
 		qtimp3 := 0.99
-		n.timp3 = MediatorNew[float64, bang](ntimp3, ntimp3, qtimp3)
+		n.timp3 = mediatorNew[float64, bang](ntimp3, ntimp3, qtimp3)
+
+		n.tbox = boxfiltNew(10 * 48 * corr)
 	}
 
 	niemitalo(n.a.Wf)
@@ -125,27 +125,47 @@ func (n *splitter) extract(lin, rin []float64, ons []float64) {
 		n.advanceExtract(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)], poutgrain)
 		add(ons[i:min(len(ons), i+n.nbuf)], poutgrain)
 	}
-	prev := 0.
+
+	prev1 := 0.
+	prev2 := 0.
+	_ = prev1
+	_ = prev2
+	ca := 0.
 	for i := range lin {
-		a := math.Abs(ons[i])
-		n.timp1.Insert(a, bang{})
-		t1, _ := n.timp1.Take()
-		n.timp2.Insert(t1, bang{})
-		t2, _ := n.timp2.Take()
-		a2 := 0.
-		if t1 > t2 {
-			a2 = 1
+		// _ = t1
+		// ons[i] = a
+		fi := float64(i)
+		if i > 0 {
+			ca = (ons[i] + (fi-1)*ca) / fi
 		}
-		n.timp3.Insert(a2, bang{})
-		c, _ := n.timp3.Take()
-		if c <= prev {
-			ons[i] = 0
-		} else {
-			ons[i] = 1
-		}
-		prev = c
+
+		ons[i] -= ca
+		ons[i] = max(0, ons[i])
+		t := ons[i]
+		ons[i] -= prev1
+		prev1 = t
+
+		n.tbox.Insert(ons[i])
+		t1, _ := n.tbox.Take()
+		ons[i] = t1 * float64(n.tbox.n)
 	}
 
+	for i := range ons {
+		if i < 2 {
+			continue
+		}
+		if !(ons[i-1] > ons[i-2] && ons[i-1] > ons[i]) {
+			ons[i-2] = 0
+		}
+		ons[i-2] = max(0, ons[i-2])
+	}
+
+	nhop := int(50 * 48 * n.corr)
+	for i := 0; i < len(ons); i += nhop {
+
+	}
+
+	return
 	const lenphasedropms = 20
 	const lahphasedropms = 10
 	// Somehow we get 50 ms of trigger with these parameters.
@@ -249,16 +269,23 @@ func (n *splitter) advanceExtract(lingrain, ringrain []float64, poutgrain []floa
 		}
 	}
 
-	for w := range a.X {
-		a.X[w] = complex(a.M[w]/mag(a.L[w]), 0) * a.L[w]
-		if a.A[w] == 0 {
-			a.X[w] = 0
-		}
+	ssum := 0.
+	for w := range a.A {
+		ssum += a.A[w]
 	}
+	// for w := range a.X {
+	// 	a.X[w] = complex(a.M[w]/mag(a.L[w]), 0) * a.L[w]
+	// 	if a.A[w] == 0 {
+	// 		a.X[w] = 0
+	// 	}
+	// }
 
-	n.fft.Sequence(a.S, a.X)
+	// n.fft.Sequence(a.S, a.X)
+	// for w := range a.S {
+	// 	a.S[w] /= n.norm
+	// }
 	for w := range a.S {
-		a.S[w] /= n.norm
+		a.S[w] = ssum / n.norm
 	}
 	mul(a.S, a.Wr)
 	copy(poutgrain, a.S)
