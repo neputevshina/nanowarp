@@ -33,6 +33,13 @@ func add[T constraints.Float](dst, src []T) {
 	}
 }
 
+func sum[T constraints.Float](src []T) (s T) {
+	for i := 0; i < len(src); i++ {
+		s += src[i]
+	}
+	return
+}
+
 func sub[T constraints.Float](dst, src []T) {
 	for i := 0; i < min(len(dst), len(src)); i++ {
 		dst[i] -= src[i]

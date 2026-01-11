@@ -36,7 +36,7 @@ type wbufs struct {
 	X, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
 }
 
-func warperNew(nbuf int, single bool, nanowarp *Nanowarp) (n *warper) {
+func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	nextpow2 := int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(nbuf))))))
 	nfft := nextpow2 * 2
 	nbins := nfft/2 + 1
@@ -117,7 +117,7 @@ func (n *warper) process(lin, rin, lout, rout []float64, stretch float64, delay 
 	}
 }
 
-func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []float64) {
+func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []float64, align int, stretchout []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process1`)
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
@@ -126,20 +126,30 @@ func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []floa
 	lgrainbuf := make([]float64, n.nfft)
 	rgrainbuf := make([]float64, n.nfft)
 
+	delay := func(stretch float64) float64 {
+		return float64(align) * (stretch - 1) * 2
+	}
+
 	hop := float64(n.hop)
-	ih, dh, fh := hop, 0., 0.
-	j := n.hop
+	ih, dh, fh := 0., 0., 0.
+	id, fd := math.Modf(delay(stretch[0]))
+	j := n.hop + int(id)
+	dd := fd
 	k := 0.
 
-	for i := int(ih); i < len(lin); i += int(ih) {
-		debt := 1 + (float64(i)-k)/hop
-		// inhop := hop / (1 + (stretch[i]*debt-1)*onsets[max(0, pi)])
-		inhop := hop / (stretch[i] * debt)
-		// if onsets[min(len(onsets)-1, i+n.hop)] == 0 {
-		if onsets[min(len(onsets)-1, i)] == 0 {
+	for i := 0; i < len(lin); i += int(ih) {
+		s := max(0, (stretch[i]*float64(i)-float64(j)+stretch[i]*4096)/4096)
+		inhop := hop / s
+		// Add 2 hop sizes to center the window.
+		if onsets[clamp(0, len(onsets)-1, i+2*n.hop)] == 0 {
 			inhop = hop
 		}
 		ih, fh = math.Modf(inhop)
+		id, fd = math.Modf(delay(stretch[i]))
+
+		if i > len(lin) {
+			break
+		}
 		if j > len(lout) {
 			break
 		}
@@ -150,28 +160,24 @@ func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []floa
 
 		dh += fh
 		h := hop / ih
+		_ = h
 		if dh > 0 {
 			i += 1
 			dh -= 1
 			h = hop / (ih + 1)
 		}
-
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, h)
-		// for i := range lgrainbuf {
-		// 	lgrainbuf[i] = debt / 4
-		// 	rgrainbuf[i] = debt / 4
-		// }
-		// if onsets[i] > 0 {
-		// 	for i := range lgrainbuf {
-		// 		lgrainbuf[i] = 0
-		// 		rgrainbuf[i] = 0
-		// 	}
-		// }
+		dd += fd
+		if dh > 0 {
+			j += 1
+			dd -= 1
+		}
+
 		add(loutgrain, lgrainbuf)
 		add(routgrain, rgrainbuf)
 
-		j += n.hop
 		k += hop / stretch[i]
+		j += n.hop
 	}
 }
 
@@ -216,8 +222,8 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	enfft(a.L, a.W, lingrain)
 	enfft(a.R, a.W, ringrain)
 	if n.diffadv {
-		enfft(a.Ld, a.W, lingrain)
-		enfft(a.Rd, a.W, ringrain)
+		enfft(a.Ld, a.Wd, lingrain)
+		enfft(a.Rd, a.Wd, ringrain)
 	}
 
 	enfft(a.X, a.W, a.Mid)
@@ -232,7 +238,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	// achieves less phase noise than current method. It both sounds clearer and on the
 	// reassigned point density spectrogram there are almost no ”squiggly” trajectories.
 	//
-	// Elastiqué, however, behaves similarly, but it is a 20 year old algorithm.
+	// Elastiqué, however, behaves similarly to the current Nanowarp, but it is a 20 year old algorithm.
 	//
 	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	olap := float64(n.nbuf / n.hop)

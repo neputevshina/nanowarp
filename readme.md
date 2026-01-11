@@ -40,11 +40,10 @@ mono and adding phase difference of respective side channels to it[6].
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
-- Slow. ~~Mostly from container/heap.~~ Done, now it's simply unoptimized and not vectorized.
-- Preserved stereo image at the cost of metallic artifacts. 
-  Must enhance existing or find another way of preserving stereo.
-  Still sounds better than Elastiqué though.
+- Slow.
 - Smaller dynamic range comparing to original audio. Related to phase.
+- Wrong timing.
+- Sometimes transients are not detected and thus getting smeared.
 - Artifacts. Artifacts artifacts artifacts. Different after each fix.
 
 

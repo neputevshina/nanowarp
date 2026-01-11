@@ -4,25 +4,26 @@ package nanowarp
 // - Pitch
 //	- Good resampler is required
 // - Streaming
-// - Time and pitch envelopes
-// + Replace HPSS with phase-based impulse detection
-// - 2048 window, 4096 for bass
+// - Identical stretch curve for any hop size OR stretch curve sync.
+//	- Needed to bring HPSS back for higher quality.
+// - Offline dynamic stretch size processing, the last step to high quality
+//	- Reset hop near the each transient
+//	- Repay time debt after each onset by even parts, do not use exponential decay
+//	- Classify material using existing HPSS info by “mostly percussive” and “mostly harmonic”
+//		- Simply by summing each sample's amplitude in a windowed grain
+//		- Repay more debt on mostly harmonic grains
+// - Finite difference scheme for PGHI instead of reassigned
+// ~ Time and pitch envelopes
+// 	- The internal machinery is already there, just glue pieces together and add UI
 // + Hop size dithering
 //	+ Harmonic-percussive desync fix (bubbling)
-// - Phase drift fix (try long impulse train signal to see it)
+// + Phase drift fix (try long impulse train signal to see it)
 // 	+ Time-domain correctness
 //	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
-// - HPSS erosion
-//	- Empty frame elimination
+//	+ Fixed with transient sync
 // - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
-// - Reset phase accuum sometimes to counteract numerical errors
-// - Try to simply resample percussive content by stretch size
-//	- See Royer, T. (2019). Pitch-shifting algorithm design and applications in music.
-// + WAV float32 input and output
-// + Niemitalo asymmetric windowing?
-//	- See sources of Rubber Band V3
-//	- Need dx/dt of it
-// + HPSS and lower-upper
+// + Reset phase accuum sometimes to counteract numerical errors
+//	- Fixed with transient sync
 // - Optimizations
 //	+ Calculate mag(a.X) once
 //	+ Replace container.Heap with rankfilt
@@ -32,7 +33,7 @@ package nanowarp
 //	- Use only float32 (impossible with gonum)
 //	- SIMD?
 //		- dev.simd branch of Go compiler with intrinsics
-// - From tests, zplane Elastiqué seems to use 3072-point-in-time window for everything?
+//	 - Silent percussive frame elimination
 
 import (
 	"fmt"
@@ -82,16 +83,16 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
 	}
 
-	n.lower = warperNew(4096*w, opts.Single, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
+	n.lower = warperNew(4096*w, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
+	n.lower.diffadv = opts.Diffadv
+	n.upper = warperNew(64*w, n) // 128 (64) @ 48000 Hz
+	n.upper.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
 	if !opts.Asdf {
 		return
 	}
 	if !opts.Single {
-		n.upper = warperNew(64*w, true, n) // 128 (64) @ 48000 Hz
-		n.upper.masking = opts.Masking
-		n.lower.diffadv = opts.Diffadv
 		// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
 		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
 		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
@@ -110,16 +111,29 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
 	if !n.opts.Asdf {
-		lpfile := make([]float64, len(lin))
+		onsetfile := make([]float64, len(lin))
+		// lpercfile := make([]float64, len(lin))
+		// rpercfile := make([]float64, len(lin))
+		// lharmfile := make([]float64, len(lin))
+		// rharmfile := make([]float64, len(lin))
 
-		n.hpssl.extract(lin, rin, lpfile)
-		if n.opts.Single {
-			copy(lout, lpfile)
-			copy(rout, lpfile)
+		// n.hpssl.extract(lin, rin, lpercfile, rpercfile, lharmfile, rharmfile, onsetfile)
+		n.hpssl.extract(lin, rin, nil, nil, nil, nil, onsetfile)
+		if false /* test onset detector */ {
+			copy(lout, onsetfile)
+			copy(rout, onsetfile)
 			return
 		}
 
-		n.lower.process1(lin, rin, lout, rout, lpfile, slices.Repeat([]float64{stretch}, len(lpfile)))
+		stretchfile := slices.Repeat([]float64{stretch}, len(onsetfile))
+
+		n.lower.process1(lin, rin, lout, rout, onsetfile, stretchfile, n.lower.hop-n.upper.hop, nil)
+		// n.upper.process1(lpercfile, rpercfile, lout, rout, onsetfile, stretchfile, 0, nil)
+
+		// clear(lout)
+		// clear(rout)
+		// copy(lout, stretchoutfile)
+		// copy(rout, stretchoutfile)
 	} else {
 		if n.opts.Single {
 			n.lower.process(lin, rin, lout, rout, stretch, 0)
@@ -145,7 +159,6 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 		wg.Add(2)
 		go func() {
-			// TODO Is this delay value correct?
 			dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
 			n.lower.process(lhfile, rhfile, lout, rout, stretch, dc)
 			wg.Done()

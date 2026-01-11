@@ -10,13 +10,13 @@ import (
 )
 
 type splitter struct {
-	nfft     int
-	nbuf     int
-	nbins    int
-	hop      int
-	norm     float64
-	corr     float64
-	detector bool
+	nfft        int
+	nbuf        int
+	nbins       int
+	hop         int
+	norm, wgain float64
+	corr        float64
+	detector    bool
 
 	fft   *fourier.FFT
 	img   [][]float64
@@ -78,7 +78,7 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 		qtimp3 := 0.99
 		n.timp3 = mediatorNew[float64, bang](ntimp3, ntimp3, qtimp3)
 
-		n.tbox = boxfiltNew(10 * 48 * corr)
+		n.tbox = boxfiltNew(9 * 48 * corr)
 	}
 
 	niemitalo(n.a.Wf)
@@ -87,7 +87,8 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 	slices.Reverse(n.a.Wr)
 
 	windowT(n.a.Wf, n.a.Wt)
-	n.norm = float64(nfft) * float64(olap) * windowGain(n.a.Wf)
+	n.wgain = windowGain(n.a.Wf)
+	n.norm = float64(nfft) * float64(olap) * n.wgain
 	n.fft = fourier.NewFFT(nfft)
 
 	return
@@ -113,37 +114,50 @@ func (n *splitter) process(in []float64, pout []float64, hout []float64) {
 }
 
 // extract performs HPSS with transient extraction.
-func (n *splitter) extract(lin, rin []float64, ons []float64) {
+func (n *splitter) extract(lin, rin []float64, lperc, rperc, lharm, rharm, ons []float64) {
 	fmt.Fprintln(os.Stderr, `(*splitter).extract`)
 	for i := range n.himp {
 		n.himp[i].Reset(n.himp[i].N)
 	}
 
-	poutgrain := make([]float64, n.nfft)
+	onsgrain := make([]float64, n.nfft)
+	nf := n.nfft
+	if lperc == nil {
+		nf = 0
+	}
+	lpercgrain := make([]float64, nf)
+	rpercgrain := make([]float64, nf)
+	lharmgrain := make([]float64, nf)
+	rharmgrain := make([]float64, nf)
 
 	for i := 0; i < len(lin); i += n.hop {
-		n.advanceExtract(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)], poutgrain)
-		add(ons[i:min(len(ons), i+n.nbuf)], poutgrain)
+		n.advanceExtract(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)],
+			lpercgrain,
+			rpercgrain,
+			lharmgrain,
+			rharmgrain,
+			onsgrain)
+		if lperc != nil {
+			add(lperc[i:min(len(ons), i+n.nbuf)], lpercgrain)
+			add(rperc[i:min(len(ons), i+n.nbuf)], rpercgrain)
+			add(lharm[i:min(len(ons), i+n.nbuf)], lharmgrain)
+			add(rharm[i:min(len(ons), i+n.nbuf)], rharmgrain)
+		}
+		add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
 	}
 
-	prev1 := 0.
-	prev2 := 0.
-	_ = prev1
-	_ = prev2
+	n.extractOnsetCurve(ons)
+}
+
+func (n *splitter) extractOnsetCurve(ons []float64) {
 	ca := 0.
-	for i := range lin {
-		// _ = t1
-		// ons[i] = a
+	for i := range ons {
 		fi := float64(i)
 		if i > 0 {
 			ca = (ons[i] + (fi-1)*ca) / fi
 		}
 
 		ons[i] -= ca
-		ons[i] = max(0, ons[i])
-		t := ons[i]
-		ons[i] -= prev1
-		prev1 = t
 
 		n.tbox.Insert(ons[i])
 		t1, _ := n.tbox.Take()
@@ -161,14 +175,23 @@ func (n *splitter) extract(lin, rin []float64, ons []float64) {
 	}
 
 	nhop := int(50 * 48 * n.corr)
-	for i := 0; i < len(ons); i += nhop {
 
+	for i := 0; i < len(ons); i += nhop {
+		win := ons[i:min(len(ons)-1, i+nhop)]
+		empty := true
+		for j := range win {
+			if win[j] > 0 && empty {
+				empty = false
+				win[j] = 1
+			} else {
+				win[j] = 0
+			}
+		}
 	}
 
-	return
+	// Somehow we get 50 ms of trigger with these parameters.
 	const lenphasedropms = 20
 	const lahphasedropms = 10
-	// Somehow we get 50 ms of trigger with these parameters.
 
 	pdln := int(math.Floor(lenphasedropms * 48 * n.corr))
 	pdlah := int(math.Floor(lahphasedropms * 48 * n.corr))
@@ -185,6 +208,78 @@ func (n *splitter) extract(lin, rin []float64, ons []float64) {
 		}
 		count--
 	}
+}
+
+func (n *splitter) advanceExtract(lingrain, ringrain []float64, lpercgrain, rpercgrain, lharmgrain, rharmgrain, noveltygrain []float64) {
+	n.vimp.Reset(n.vimp.N)
+	a := &n.a
+
+	enfft := func(x []complex128, w, grain []float64) {
+		clear(a.S)
+		copy(a.S, grain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
+
+	enfft(a.L, a.Wf, lingrain)
+	enfft(a.R, a.Wf, ringrain)
+
+	for w := range a.X {
+		a.M[w] = (mag(a.L[w]) + mag(a.R[w])) / 2
+	}
+	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
+	for w := range a.X {
+		m := n.himp[w]
+		m.Insert(a.M[w], bang{})
+		a.H[w], _ = m.Take()
+	}
+
+	for w := range a.X {
+		if a.P[w] > a.H[w] {
+			a.A[w] += 1
+		} else {
+			a.A[w] = 0
+		}
+	}
+
+	ssum := 0.
+	for w := range a.A {
+		ssum += a.A[w]
+	}
+	for w := range a.L {
+		if a.A[w] == 0 {
+			a.L[w] = 0
+			a.R[w] = 0
+		}
+	}
+
+	for w := range a.S {
+		noveltygrain[w] = ssum / n.norm
+	}
+	mul(noveltygrain, a.Wr)
+
+	if len(lpercgrain) == 0 {
+		return
+	}
+
+	defft := func(out []float64, x []complex128) {
+		n.fft.Sequence(a.S, x)
+		for j := range a.S {
+			a.S[j] /= n.norm
+		}
+		mul(a.S, a.Wr)
+		copy(out, a.S)
+	}
+	defft(lpercgrain, a.L)
+	defft(rpercgrain, a.R)
+
+	// Harmonic = original - percussive
+	for i := range lingrain {
+		w := a.Wf[i] * a.Wr[i] / n.norm * float64(n.nfft)
+		lharmgrain[i] = lingrain[i]*w - lpercgrain[i]
+		rharmgrain[i] = ringrain[i]*w - rpercgrain[i]
+	}
+
 }
 
 func (n *splitter) advanceOld(ingrain []float64, poutgrain []float64, houtgrain []float64) {
@@ -233,60 +328,6 @@ func (n *splitter) advanceOld(ingrain []float64, poutgrain []float64, houtgrain 
 
 	// Harmonic = original - percussive
 	for j := range ingrain {
-		houtgrain[j] = ingrain[j]*a.Wf[j]*a.Wf[j]/n.norm*float64(n.nfft) - a.S[j]
+		houtgrain[j] = ingrain[j]*a.Wf[j]*a.Wr[j]/n.norm*float64(n.nfft) - a.S[j]
 	}
-}
-
-func (n *splitter) advanceExtract(lingrain, ringrain []float64, poutgrain []float64) {
-	n.vimp.Reset(n.vimp.N)
-	a := &n.a
-
-	enfft := func(x []complex128, w, grain []float64) {
-		clear(a.S)
-		copy(a.S, grain)
-		mul(a.S, w)
-		n.fft.Coefficients(x, a.S)
-	}
-
-	enfft(a.L, a.Wf, lingrain)
-	enfft(a.R, a.Wf, ringrain)
-
-	for w := range a.X {
-		a.M[w] = (mag(a.L[w]) + mag(a.R[w])) / 2
-	}
-	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
-	for w := range a.X {
-		m := n.himp[w]
-		m.Insert(a.M[w], bang{})
-		a.H[w], _ = m.Take()
-	}
-
-	for w := range a.X {
-		if a.P[w] > a.H[w] {
-			a.A[w] += 1
-		} else {
-			a.A[w] = 0
-		}
-	}
-
-	ssum := 0.
-	for w := range a.A {
-		ssum += a.A[w]
-	}
-	// for w := range a.X {
-	// 	a.X[w] = complex(a.M[w]/mag(a.L[w]), 0) * a.L[w]
-	// 	if a.A[w] == 0 {
-	// 		a.X[w] = 0
-	// 	}
-	// }
-
-	// n.fft.Sequence(a.S, a.X)
-	// for w := range a.S {
-	// 	a.S[w] /= n.norm
-	// }
-	for w := range a.S {
-		a.S[w] = ssum / n.norm
-	}
-	mul(a.S, a.Wr)
-	copy(poutgrain, a.S)
 }
