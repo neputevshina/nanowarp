@@ -313,8 +313,9 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		if oscope.Enable {
 			dif = make([]float64, n.nbins)
 		}
+		vertical := 0
 		for w := 1; w < n.nbins-1; w++ {
-			m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi/2 }
+			m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi*3/2 }
 			if m(w) && m(w-1) && m(w+1) {
 				a.Phase[w-1] = cmplx.Phase(a.X[w-1])
 				a.Phase[w+1] = cmplx.Phase(a.X[w+1])
@@ -327,9 +328,18 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 					dif[w+1] = 1
 					dif[w-1] = 1
 				}
+				vertical++
 			}
 		}
 		copy(a.Pfadv, a.Fadv)
+		// if vertical > n.nbins/4 {
+		// 	for w := range a.Phase {
+		// 		a.Pphase[w] = cmplx.Phase(a.X[w])
+		// 	}
+		// 	copy(a.P, a.M)
+		// 	copy(a.Lo, a.L)
+		// 	copy(a.Ro, a.R)
+		// }
 		oscope.Oscope(dif)
 	}
 

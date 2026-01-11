@@ -26,6 +26,8 @@ oversampled by factor of 2 with zero-padding. Phase is reset on princarg({d\phi^
 to hopefully make numerical errors from reassignment smaller. Stereo coherence is obtained through stretching 
 mono and adding phase difference of respective side channels to it[6].
 
+Currently experimenting with dynamic stretch size.
+
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
 
@@ -42,8 +44,8 @@ mono and adding phase difference of respective side channels to it[6].
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
 - Smaller dynamic range comparing to original audio. Related to phase.
-- Wrong timing.
-- Sometimes transients are not detected and thus getting smeared.
+- (-asdf=false) Wrong timing.
+- (-asdf=false) Sometimes transients are not detected and thus getting smeared.
 - Artifacts. Artifacts artifacts artifacts. Different after each fix.
 
 
