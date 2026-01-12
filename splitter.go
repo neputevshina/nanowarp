@@ -61,7 +61,7 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 	qvimp := 0.25
 	n.vimp = mediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
-	ntimp2 := 100 * 48 * corr
+	ntimp2 := 80 * 48 * corr
 	qtimp2 := 1.
 	n.dilate = mediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
 

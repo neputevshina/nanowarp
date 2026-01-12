@@ -186,7 +186,6 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 	inhop := float64(n.hop) / stretch
 	ih, fh := math.Modf(inhop)
 	fmt.Fprintln(os.Stderr, `(*warper).process2`)
-	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(lin), `nsampout:`, len(lout))
 	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
@@ -224,14 +223,15 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 		}
 
 		// Phase reset on transients.
-		sl := onsets[max(0, i-n.hop*n.olap/2):min(len(lin), i)]
-		if trig {
-			if slices.Contains(sl, 1) {
+		f := min(len(lin)-1, i+1024*3/2)
+		sl := onsets[max(0, f-n.nfft):f]
+		if slices.Contains(sl, 1) {
+			if trig {
 				hop = 1
-				trig = false
-			} else {
-				trig = true
 			}
+			trig = false
+		} else {
+			trig = true
 		}
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, hop)
 		dd += fd
