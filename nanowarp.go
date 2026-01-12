@@ -86,17 +86,17 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n.lower = warperNew(4096*w, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
 	n.lower.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
-	n.upper = warperNew(64*w, n) // 128 (64) @ 48000 Hz
+	n.upper = warperNew(128*w, n) // 128 (64) @ 48000 Hz
 	n.upper.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
 	if !opts.Asdf {
 		return
 	}
-	if !opts.Single {
-		// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
-		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
-		n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
-	}
+
+	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
+	n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
+	n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
+
 	return
 }
 
@@ -127,7 +127,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 		stretchfile := slices.Repeat([]float64{stretch}, len(onsetfile))
 
-		n.lower.process1(lin, rin, lout, rout, onsetfile, stretchfile, n.lower.hop-n.upper.hop, nil)
+		n.lower.process1(lin, rin, lout, rout, onsetfile, stretchfile, n.lower.hop-n.upper.hop)
 		// n.upper.process1(lpercfile, rpercfile, lout, rout, onsetfile, stretchfile, 0, nil)
 
 		// clear(lout)
@@ -135,39 +135,33 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		// copy(lout, stretchoutfile)
 		// copy(rout, stretchoutfile)
 	} else {
+		lhfile := make([]float64, len(lin))
+		lpfile := make([]float64, len(lin))
+		rhfile := make([]float64, len(lin))
+		rpfile := make([]float64, len(lin))
+		onsetfile := make([]float64, len(lin))
+
+		n.hpssl.extract(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile)
+
 		if n.opts.Single {
-			n.lower.process(lin, rin, lout, rout, stretch, 0)
+			copy(lout, onsetfile)
+			copy(rout, onsetfile)
 			return
 		}
-
-		lhfile := make([]float64, len(lin))
-		lpfile := slices.Clone(lhfile)
-		rhfile := slices.Clone(lhfile)
-		rpfile := slices.Clone(lhfile)
 
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
-			n.hpssl.process(lin, lpfile, lhfile)
+			dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
+			n.lower.process2(lhfile, rhfile, lout, rout, onsetfile, stretch, dc)
 			wg.Done()
 		}()
 		go func() {
-			n.hpssr.process(rin, rpfile, rhfile)
+			n.upper.process2(lpfile, rpfile, lout, rout, onsetfile, stretch, 0)
 			wg.Done()
 		}()
 		wg.Wait()
 
-		wg.Add(2)
-		go func() {
-			dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
-			n.lower.process(lhfile, rhfile, lout, rout, stretch, dc)
-			wg.Done()
-		}()
-		go func() {
-			n.upper.process(lpfile, rpfile, lout, rout, stretch, 0)
-			wg.Done()
-		}()
-		wg.Wait()
 	}
 
 }

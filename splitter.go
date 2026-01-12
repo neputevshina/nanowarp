@@ -18,14 +18,12 @@ type splitter struct {
 	corr        float64
 	detector    bool
 
-	fft   *fourier.FFT
-	img   [][]float64
-	vimp  *mediator[float64, bang]
-	himp  []*mediator[float64, bang]
-	timp1 *mediator[float64, bang]
-	timp2 *mediator[float64, bang]
-	timp3 *mediator[float64, bang]
-	tbox  *boxfilt
+	fft    *fourier.FFT
+	img    [][]float64
+	vimp   *mediator[float64, bang]
+	himp   []*mediator[float64, bang]
+	dilate *mediator[float64, bang]
+	tbox   *boxfilt
 
 	a sbufs
 }
@@ -63,23 +61,11 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 	qvimp := 0.25
 	n.vimp = mediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
-	if detector {
-		ntimp1 := 50 * 48 * corr
-		qtimp1 := 0.5
-		n.timp1 = mediatorNew[float64, bang](ntimp1, ntimp1, qtimp1)
+	ntimp2 := 100 * 48 * corr
+	qtimp2 := 1.
+	n.dilate = mediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
 
-		ntimp2 := 50 * 48 * corr
-		qtimp2 := 0.98
-		n.timp2 = mediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
-
-		// Minimum spacing filter.
-		// TODO This filter uses only 1s and 0s, optimize appropriately.
-		ntimp3 := 100 * 48 * corr
-		qtimp3 := 0.99
-		n.timp3 = mediatorNew[float64, bang](ntimp3, ntimp3, qtimp3)
-
-		n.tbox = boxfiltNew(9 * 48 * corr)
-	}
+	n.tbox = boxfiltNew(200 * 48 * corr)
 
 	niemitalo(n.a.Wf)
 	// Asymmetric window requires applying reversed copy of itself on synthesis stage.
@@ -146,7 +132,21 @@ func (n *splitter) extract(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 		add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
 	}
 
-	n.extractOnsetCurve(ons)
+	n.extractOnsetCurveForReal(ons)
+}
+
+func (n *splitter) extractOnsetCurveForReal(ons []float64) {
+	for i := range ons {
+		j := i + n.dilate.N/2 // Center the window.
+		n.dilate.Insert(ons[min(len(ons)-1, j)], bang{})
+		q, _ := n.dilate.Take()
+		if ons[i] < q {
+			ons[i] = 0
+		} else {
+			ons[i] = 1
+		}
+
+	}
 }
 
 func (n *splitter) extractOnsetCurve(ons []float64) {

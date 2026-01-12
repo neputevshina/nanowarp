@@ -41,10 +41,10 @@ func mediatorNew[T constraints.Ordered, I any](maxnItems, nItems int, rank float
 		panic("nItems > maxnItems")
 	}
 	m := &mediator[T, I]{}
-	m.pos = make([]int, maxnItems)
-	m.heap = make([]int, maxnItems)
-	m.data = make([]T, maxnItems)
-	m.more = make([]I, maxnItems)
+	m.pos = make([]int, maxnItems*2)
+	m.heap = make([]int, maxnItems*2)
+	m.data = make([]T, maxnItems*2)
+	m.more = make([]I, maxnItems*2)
 	m.maxN = maxnItems
 	m.N = nItems
 	m.rawrank = rank

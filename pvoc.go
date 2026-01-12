@@ -7,7 +7,6 @@ import (
 	"os"
 	"slices"
 
-	"github.com/neputevshina/nanowarp/oscope"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
@@ -16,6 +15,7 @@ type warper struct {
 	nbuf    int
 	nbins   int
 	hop     int
+	olap    int
 	masking bool
 	diffadv bool
 	root    *Nanowarp
@@ -46,6 +46,7 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 		nbins: nbins,
 		nbuf:  nbuf,
 		hop:   nbuf / olap,
+		olap:  olap,
 		root:  nanowarp,
 	}
 	a := &n.a
@@ -117,7 +118,7 @@ func (n *warper) process(lin, rin, lout, rout []float64, stretch float64, delay 
 	}
 }
 
-func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []float64, align int, stretchout []float64) {
+func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []float64, align int) {
 	fmt.Fprintln(os.Stderr, `(*warper).process1`)
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
@@ -177,6 +178,69 @@ func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []floa
 		add(routgrain, rgrainbuf)
 
 		k += hop / stretch[i]
+		j += n.hop
+	}
+}
+
+func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float64, delay float64) {
+	inhop := float64(n.hop) / stretch
+	ih, fh := math.Modf(inhop)
+	fmt.Fprintln(os.Stderr, `(*warper).process2`)
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
+	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(lin), `nsampout:`, len(lout))
+	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
+
+	n.start(lin, lout)
+	n.start(rin, rout)
+	lgrainbuf := make([]float64, n.nfft)
+	rgrainbuf := make([]float64, n.nfft)
+
+	id, fd := math.Modf(delay)
+	j := n.hop + int(id)
+	dh := fh
+	dd := fd
+
+	trig := true
+	for i := int(ih); i < len(lin); i += int(ih) {
+		if j > len(lout) {
+			break
+		}
+		lingrain := lin[i:min(len(lin), i+n.nbuf)]
+		ringrain := rin[i:min(len(lin), i+n.nbuf)]
+		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
+		routgrain := rout[j:min(len(lout), j+n.nbuf)]
+
+		// Dither both input and output hop sizes to get
+		// fractional stretch.
+		// Snap stretch coefficient to the dithered input hop size
+		// to hopefully get more accurate phase.
+		dh += fh
+		hop := float64(n.hop) / (ih)
+		if dh > 0 {
+			i += 1
+			dh -= 1
+			hop = float64(n.hop) / (ih + 1)
+		}
+
+		// Phase reset on transients.
+		sl := onsets[max(0, i-n.hop*n.olap/2):min(len(lin), i)]
+		if trig {
+			if slices.Contains(sl, 1) {
+				hop = 1
+				trig = false
+			} else {
+				trig = true
+			}
+		}
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, hop)
+		dd += fd
+		if dh > 0 {
+			j += 1
+			dd -= 1
+		}
+		add(loutgrain, lgrainbuf)
+		add(routgrain, rgrainbuf)
 		j += n.hop
 	}
 }
@@ -306,42 +370,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		}
 	}
 	heapInit(&n.heap)
-
-	if !n.root.opts.Noreset {
-		// Match phase reset points in stretched and original.
-		var dif []float64
-		if oscope.Enable {
-			dif = make([]float64, n.nbins)
-		}
-		vertical := 0
-		for w := 1; w < n.nbins-1; w++ {
-			m := func(j int) bool { return a.Pfadv[j]-a.Fadv[j] > math.Pi*3/2 }
-			if m(w) && m(w-1) && m(w+1) {
-				a.Phase[w-1] = cmplx.Phase(a.X[w-1])
-				a.Phase[w+1] = cmplx.Phase(a.X[w+1])
-				a.Phase[w] = cmplx.Phase(a.X[w])
-				n.arm[w] = false
-				n.arm[w+1] = false
-				n.arm[w-1] = false
-				if oscope.Enable {
-					dif[w] = 1
-					dif[w+1] = 1
-					dif[w-1] = 1
-				}
-				vertical++
-			}
-		}
-		copy(a.Pfadv, a.Fadv)
-		// if vertical > n.nbins/4 {
-		// 	for w := range a.Phase {
-		// 		a.Pphase[w] = cmplx.Phase(a.X[w])
-		// 	}
-		// 	copy(a.P, a.M)
-		// 	copy(a.Lo, a.L)
-		// 	copy(a.Ro, a.R)
-		// }
-		oscope.Oscope(dif)
-	}
 
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap).(heaptriple)
