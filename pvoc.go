@@ -31,14 +31,13 @@ type warper struct {
 type wbufs struct {
 	S, Mid, M, P, Phase, Pphase     []float64 // Scratch buffers
 	Fadv, Pfadv, Ldiff, Rdiff       []float64
-	Xprevs                          []complex128 // Lookahead framebuffer
 	W, Wr, Wd, Wt                   []float64    // Window functions
 	X, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
+	Pha, Px                         []complex128
 }
 
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
-	nextpow2 := int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(nbuf))))))
-	nfft := nextpow2 * 2
+	nfft := nextpow2(nbuf) * 2
 	nbins := nfft/2 + 1
 	olap := 4
 	n = &warper{
@@ -73,7 +72,7 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 	inhop := float64(n.hop) / stretch
 	ih, fh := math.Modf(inhop)
 	fmt.Fprintln(os.Stderr, `(*warper).process2`)
-	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(lin), `nsampout:`, len(lout))
+	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(lin), `nfft:`, n.nfft)
 	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
@@ -110,8 +109,7 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 		}
 
 		// Phase reset on transients.
-		f := min(len(lin)-1, i+3*int(float64(n.root.hpss.nfft)*n.root.hpss.corr))
-		sl := onsets[max(0, f-n.nfft):f]
+		sl := onsets[clamp(0, len(lin)-1, i+n.hop):clamp(0, len(lin)-1, i+3*n.hop)]
 		if slices.Contains(sl, 1) {
 			if trig {
 				hop = 1
@@ -120,6 +118,7 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 		} else {
 			trig = true
 		}
+
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, hop)
 		dd += fd
 		if dh > 0 {
@@ -144,6 +143,7 @@ func (n *warper) start(in []float64, out []float64) {
 		a.M[w] = mag(a.X[w])
 		// FIXME Right phase (not sum) is the starting previous phase.
 		a.Pphase[w] = cmplx.Phase(a.X[w])
+		a.Pha[w] = norm(a.X[w])
 	}
 	copy(a.P, a.M)
 
@@ -178,8 +178,10 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	}
 
 	enfft(a.X, a.W, a.Mid)
-	enfft(a.Xd, a.Wd, a.Mid)
-	enfft(a.Xt, a.Wt, a.Mid)
+	if !n.root.opts.Finite {
+		enfft(a.Xd, a.Wd, a.Mid)
+		enfft(a.Xt, a.Wt, a.Mid)
+	}
 
 	// Here we are using time-frequency reassignment[¹] as a way of obtaining
 	// phase derivatives. Probably in future these derivatives will be replaced
@@ -192,8 +194,10 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	// Elastiqué, however, behaves similarly to the current Nanowarp, but it is a 20 year old algorithm.
 	//
 	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+	//
+	// TODO Works ONLY with 2x FFT oversampling.
 	olap := float64(n.nbuf / n.hop)
-	osampc := float64(n.nfft / n.nbuf) // TODO osampc is wrong. Does not work with zero padded non-power of 2 FFT sizes?
+	osampc := 2.
 	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
 	ltadv := gettadv(a.L[:n.nbins], a.Ld, osampc, olap)
 	rtadv := gettadv(a.R[:n.nbins], a.Rd, osampc, olap)
@@ -210,11 +214,13 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		goto skip
 	}
 
-	for w := range a.X {
-		// TODO Probably it will be more numerically stable to limit the phase accuum to
-		// 0..1 and scale back to -π..π range at the poltocar conversion.
-		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
-		a.Fadv[w] = princarg(fadv(w))
+	if !n.root.opts.Finite {
+		for w := range a.X {
+			// TODO Probably it will be more numerically stable to limit the phase accuum to
+			// 0..1 and scale back to -π..π range at the poltocar conversion.
+			// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
+			a.Fadv[w] = princarg(fadv(w))
+		}
 	}
 
 	for w := range a.X {
@@ -261,21 +267,44 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap).(heaptriple)
 		w := h.w
+		d := func(p, q complex128) complex128 {
+			if q == 0 {
+				return 0
+			}
+			return p / q
+		}
 		switch h.t {
 		case -1:
 			if n.arm[w] {
-				a.Phase[w] = a.Pphase[w] + tadv(w)
+				adv := tadv(w)
+				if n.root.opts.Finite {
+					ramp1 := cmplx.Exp(-2i * math.Pi * complex(float64(n.hop*w)/stretch, 0))
+					// FIXME Use complex phase math. Atan2 is slow.
+					adv = cmplx.Phase(d(a.Px[w]*ramp1, a.X[w])) + 2*math.Pi*float64(n.hop*w)
+				} else {
+					a.Phase[w] = a.Pphase[w] + adv
+				}
 				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
 		case 0:
 			if w > 1 && n.arm[w-1] {
-				a.Phase[w-1] = a.Phase[w] - a.Fadv[w-1]
+				adv := -a.Fadv[w-1]
+				if n.root.opts.Finite {
+					// FIXME Use complex phase math. Atan2 is slow.
+					adv = cmplx.Phase(d(a.X[w-1], a.X[w])) * stretch
+				}
+				a.Phase[w-1] = a.Phase[w] + adv
 				n.arm[w-1] = false
 				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
-				a.Phase[w+1] = a.Phase[w] + a.Fadv[w+1]
+				adv := a.Fadv[w+1]
+				if n.root.opts.Finite {
+					// FIXME Use complex phase math. Atan2 is slow.
+					adv = cmplx.Phase(d(a.X[w+1], a.X[w])) * stretch
+				}
+				a.Phase[w+1] = a.Phase[w] + adv
 				n.arm[w+1] = false
 				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 			}
@@ -296,6 +325,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	}
 
 skip:
+	copy(a.Px, a.X)
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {

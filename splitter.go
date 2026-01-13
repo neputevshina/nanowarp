@@ -172,11 +172,18 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 			a.A[w] = 0
 		}
 	}
-
 	ssum := 0.
 	for w := range a.A {
 		ssum += a.A[w]
 	}
+	// Make “fizzinness” less severe by excluding mostly harmonic frames.
+	// TODO Skip stretching empty frames.
+	for w := range a.A {
+		if ssum < float64(n.nbins)/4 {
+			a.A[w] = 0
+		}
+	}
+
 	for w := range a.L {
 		if a.A[w] == 0 {
 			a.L[w] = 0

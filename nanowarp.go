@@ -58,6 +58,7 @@ type Nanowarp struct {
 type Options struct {
 	Diffadv bool
 	Onsets  bool
+	Finite  bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {

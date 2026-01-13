@@ -14,10 +14,6 @@ import (
 
 var mag = cmplx.Abs
 
-func norm(c complex128) complex128 {
-	return c / complex(mag(c), 0)
-}
-
 type bang = struct{}
 
 var println = fmt.Println
@@ -171,6 +167,18 @@ func windowDx(w, out []float64) {
 	for i := range out {
 		out[i] = -out[i] * math.Pi * 2
 	}
+}
+
+func nextpow2(i int) int {
+	return int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(i))))))
+}
+
+func norm(c complex128) complex128 {
+	m := mag(c)
+	if m == 0 {
+		return 0
+	}
+	return c / complex(mag(c), 0)
 }
 
 func floatMatrixToImage(data [][]float64) image.Image {

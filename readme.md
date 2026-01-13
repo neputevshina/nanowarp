@@ -46,9 +46,8 @@ Currently experimenting with dynamic stretch size.
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
-- Smaller dynamic range comparing to original audio. Related to phase.
-- (-asdf=false) Wrong timing.
-- (-asdf=false) Sometimes transients are not detected and thus getting smeared.
+- Smaller dynamic range comparing to original audio. Related to phase accuracy.
+- Amplidude modulation on transients. A consequence of the previous issue.
 - Artifacts. Artifacts artifacts artifacts. Different after each fix.
 
 
