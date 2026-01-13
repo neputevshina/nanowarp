@@ -1,10 +1,12 @@
 # Nanowarp
-An ongoing attempt of professional grade audio time stretching algorithm.
+An ongoing attempt to create a professional grade audio time stretching algorithm.
 Reference implementation is going to be in Go, and a possible C implementation will share
 this repo with a Go version.
 
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export.
+
+Current state: not ready. Algorithm is still in the state of polishing, user-facing API does not exist.
 
 ## Installation and usage
 
@@ -19,12 +21,13 @@ of phase are obtained through time-frequency reassignment[2]. This way accurate 
 advance can be obtained using only one windowed grain instead of two.
 
 To reduce smearing of transients, a variant of median harmonic-percussive source separation
-(HPSS)[3] with a very short (nfft=512) asymmetric[5] window is first applied to the signal. Extracted impulsive components
-of the signal are then warped with smaller FFT grain (64 in this case), and harmonic portion
-is then warped using large grain (2048). Like in original implementation of PGHI-PV, FFT is
-oversampled by factor of 2 with zero-padding. Phase is reset on princarg({d\phi^2 \over d\omega dt}) > \pi[4]
-to hopefully make numerical errors from reassignment smaller. Stereo coherence is obtained through stretching 
-mono and adding phase difference of respective side channels to it[6].
+(HPSS)[3] with a very short (nfft=512) asymmetric[5] window is first applied to the signal. 
+Extracted impulsive components of the signal are then warped with smaller FFT grain (64 in 
+this case), and harmonic portion is then warped using large grain (2048). Like in original 
+implementation of PGHI-PV, FFT is oversampled by factor of 2 with zero-padding. Phase is 
+fully reset on onsets, which does not help with quality, but makes numerical errors smaller. 
+Stereo coherence is obtained through stretching mono and adding phase difference of 
+respective side channels to it after stretching to get stereo signals back[6].
 
 Currently experimenting with dynamic stretch size.
 

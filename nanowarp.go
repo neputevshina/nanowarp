@@ -39,7 +39,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"slices"
 	"sync"
 )
 
@@ -49,7 +48,7 @@ type Nanowarp struct {
 	file         []float64
 	hfile, pfile []float64
 	lower, upper *warper
-	hpssl, hpssr *splitter
+	hpss         *splitter
 
 	opts      Options
 	stretch   float64
@@ -57,12 +56,8 @@ type Nanowarp struct {
 }
 
 type Options struct {
-	Masking bool
-	Smooth  bool
 	Diffadv bool
-	Single  bool
-	Noreset bool
-	Asdf    bool
+	Onsets  bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -79,23 +74,12 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n = &Nanowarp{}
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
-	if !opts.Asdf {
-		n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, true)
-	}
-
 	n.lower = warperNew(4096*w, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.lower.masking = opts.Masking
 	n.lower.diffadv = opts.Diffadv
-	n.upper = warperNew(128*w, n) // 128 (64) @ 48000 Hz
-	n.upper.masking = opts.Masking
+	n.upper = warperNew(64*w, n) // 128 (64) @ 48000 Hz
 	n.lower.diffadv = opts.Diffadv
-	if !opts.Asdf {
-		return
-	}
 
-	// n.hpss = splitterNew(1<<(9+w), float64(int(1)<<w)) // TODO Find optimal size
-	n.hpssl = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
-	n.hpssr = splitterNew(512, float64(int(1)<<w), opts.Smooth, false) // TODO Find optimal size
+	n.hpss = splitterNew(512, float64(int(1)<<w))
 
 	return
 }
@@ -104,65 +88,38 @@ func (n *Nanowarp) nmustcollect() int {
 	lop := func(nbuf, hop int) int {
 		return nbuf + int(math.Ceil(float64(hop)/n.stretch))
 	}
-	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpssl.nbuf, n.hpssl.hop))
+	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpss.nbuf, n.hpss.hop))
 }
 
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
-	if !n.opts.Asdf {
-		onsetfile := make([]float64, len(lin))
-		// lpercfile := make([]float64, len(lin))
-		// rpercfile := make([]float64, len(lin))
-		// lharmfile := make([]float64, len(lin))
-		// rharmfile := make([]float64, len(lin))
+	lhfile := make([]float64, len(lin))
+	lpfile := make([]float64, len(lin))
+	rhfile := make([]float64, len(lin))
+	rpfile := make([]float64, len(lin))
+	onsetfile := make([]float64, len(lin))
 
-		// n.hpssl.extract(lin, rin, lpercfile, rpercfile, lharmfile, rharmfile, onsetfile)
-		n.hpssl.extract(lin, rin, nil, nil, nil, nil, onsetfile)
-		if false /* test onset detector */ {
-			copy(lout, onsetfile)
-			copy(rout, onsetfile)
-			return
-		}
+	n.hpss.process(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile)
 
-		stretchfile := slices.Repeat([]float64{stretch}, len(onsetfile))
-
-		n.lower.process1(lin, rin, lout, rout, onsetfile, stretchfile, n.lower.hop-n.upper.hop)
-		// n.upper.process1(lpercfile, rpercfile, lout, rout, onsetfile, stretchfile, 0, nil)
-
-		// clear(lout)
-		// clear(rout)
-		// copy(lout, stretchoutfile)
-		// copy(rout, stretchoutfile)
-	} else {
-		lhfile := make([]float64, len(lin))
-		lpfile := make([]float64, len(lin))
-		rhfile := make([]float64, len(lin))
-		rpfile := make([]float64, len(lin))
-		onsetfile := make([]float64, len(lin))
-
-		n.hpssl.extract(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile)
-
-		if n.opts.Single {
-			copy(lout, onsetfile)
-			copy(rout, onsetfile)
-			return
-		}
-
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
-			n.lower.process2(lhfile, rhfile, lout, rout, onsetfile, stretch, dc)
-			wg.Done()
-		}()
-		go func() {
-			n.upper.process2(lpfile, rpfile, lout, rout, onsetfile, stretch, 0)
-			wg.Done()
-		}()
-		wg.Wait()
-
+	if n.opts.Onsets {
+		copy(lout, onsetfile)
+		copy(rout, onsetfile)
+		return
 	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
+		n.lower.process2(lhfile, rhfile, lout, rout, onsetfile, stretch, dc)
+		wg.Done()
+	}()
+	go func() {
+		n.upper.process2(lpfile, rpfile, lout, rout, onsetfile, stretch, 0)
+		wg.Done()
+	}()
+	wg.Wait()
 
 }
 
@@ -198,7 +155,7 @@ func (n *Nanowarp) Push64(l []float64, r []float64) (nl, nr int) {
 
 func (n *Nanowarp) Ready() bool {
 	if len(n.left) != len(n.right) {
-		panic(`nanowarp, fatal: stereo buffer length mismatch`)
+		panic(`nanowarp: unreachable, stereo buffer length mismatch`)
 	}
 	return len(n.left) == n.nmustcollect()
 }

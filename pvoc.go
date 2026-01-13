@@ -69,119 +69,6 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process(lin, rin, lout, rout []float64, stretch float64, delay float64) {
-	inhop := float64(n.hop) / stretch
-	ih, fh := math.Modf(inhop)
-	fmt.Fprintln(os.Stderr, `(*warper).process`)
-	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(lin), `nsampout:`, len(lout))
-	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
-	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
-
-	n.start(lin, lout)
-	n.start(rin, rout)
-	lgrainbuf := make([]float64, n.nfft)
-	rgrainbuf := make([]float64, n.nfft)
-
-	id, fd := math.Modf(delay)
-	j := n.hop + int(id)
-	dh := fh
-	dd := fd
-	for i := int(ih); i < len(lin); i += int(ih) {
-		if j > len(lout) {
-			break
-		}
-		lingrain := lin[i:min(len(lin), i+n.nbuf)]
-		ringrain := rin[i:min(len(lin), i+n.nbuf)]
-		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
-		routgrain := rout[j:min(len(lout), j+n.nbuf)]
-
-		// Dither both input and output hop sizes to get
-		// fractional stretch.
-		// Snap stretch coefficient to the dithered input hop size
-		// to hopefully get more accurate phase.
-		dh += fh
-		hop := float64(n.hop) / (ih)
-		if dh > 0 {
-			i += 1
-			dh -= 1
-			hop = float64(n.hop) / (ih + 1)
-		}
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, hop)
-		dd += fd
-		if dh > 0 {
-			j += 1
-			dd -= 1
-		}
-		add(loutgrain, lgrainbuf)
-		add(routgrain, rgrainbuf)
-		j += n.hop
-	}
-}
-
-func (n *warper) process1(lin, rin, lout, rout []float64, onsets, stretch []float64, align int) {
-	fmt.Fprintln(os.Stderr, `(*warper).process1`)
-	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
-
-	n.start(lin, lout)
-	n.start(rin, rout)
-	lgrainbuf := make([]float64, n.nfft)
-	rgrainbuf := make([]float64, n.nfft)
-
-	delay := func(stretch float64) float64 {
-		return float64(align) * (stretch - 1) * 2
-	}
-
-	hop := float64(n.hop)
-	ih, dh, fh := 0., 0., 0.
-	id, fd := math.Modf(delay(stretch[0]))
-	j := n.hop + int(id)
-	dd := fd
-	k := 0.
-
-	for i := 0; i < len(lin); i += int(ih) {
-		s := max(0, (stretch[i]*float64(i)-float64(j)+stretch[i]*4096)/4096)
-		inhop := hop / s
-		// Add 2 hop sizes to center the window.
-		if onsets[clamp(0, len(onsets)-1, i+2*n.hop)] == 0 {
-			inhop = hop
-		}
-		ih, fh = math.Modf(inhop)
-		id, fd = math.Modf(delay(stretch[i]))
-
-		if i > len(lin) {
-			break
-		}
-		if j > len(lout) {
-			break
-		}
-		lingrain := lin[i:min(len(lin), i+n.nbuf)]
-		ringrain := rin[i:min(len(lin), i+n.nbuf)]
-		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
-		routgrain := rout[j:min(len(lout), j+n.nbuf)]
-
-		dh += fh
-		h := hop / ih
-		_ = h
-		if dh > 0 {
-			i += 1
-			dh -= 1
-			h = hop / (ih + 1)
-		}
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, h)
-		dd += fd
-		if dh > 0 {
-			j += 1
-			dd -= 1
-		}
-
-		add(loutgrain, lgrainbuf)
-		add(routgrain, rgrainbuf)
-
-		k += hop / stretch[i]
-		j += n.hop
-	}
-}
-
 func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float64, delay float64) {
 	inhop := float64(n.hop) / stretch
 	ih, fh := math.Modf(inhop)
@@ -223,7 +110,7 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 		}
 
 		// Phase reset on transients.
-		f := min(len(lin)-1, i+1024*3/2)
+		f := min(len(lin)-1, i+3*int(float64(n.root.hpss.nfft)*n.root.hpss.corr))
 		sl := onsets[max(0, f-n.nfft):f]
 		if slices.Contains(sl, 1) {
 			if trig {
@@ -419,4 +306,68 @@ skip:
 	}
 	defft(loutgrain, a.Lo)
 	defft(routgrain, a.Ro)
+}
+
+func (n *warper) processBroken(lin, rin, lout, rout []float64, onsets, stretch []float64, align int) {
+	fmt.Fprintln(os.Stderr, `(*warper).process1`)
+	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
+
+	n.start(lin, lout)
+	n.start(rin, rout)
+	lgrainbuf := make([]float64, n.nfft)
+	rgrainbuf := make([]float64, n.nfft)
+
+	delay := func(stretch float64) float64 {
+		return float64(align) * (stretch - 1) * 2
+	}
+
+	hop := float64(n.hop)
+	ih, dh, fh := 0., 0., 0.
+	id, fd := math.Modf(delay(stretch[0]))
+	j := n.hop + int(id)
+	dd := fd
+	k := 0.
+
+	for i := 0; i < len(lin); i += int(ih) {
+		s := max(0, (stretch[i]*float64(i)-float64(j)+stretch[i]*4096)/4096)
+		inhop := hop / s
+		// Add 2 hop sizes to center the window.
+		if onsets[clamp(0, len(onsets)-1, i+2*n.hop)] == 0 {
+			inhop = hop
+		}
+		ih, fh = math.Modf(inhop)
+		id, fd = math.Modf(delay(stretch[i]))
+
+		if i > len(lin) {
+			break
+		}
+		if j > len(lout) {
+			break
+		}
+		lingrain := lin[i:min(len(lin), i+n.nbuf)]
+		ringrain := rin[i:min(len(lin), i+n.nbuf)]
+		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
+		routgrain := rout[j:min(len(lout), j+n.nbuf)]
+
+		dh += fh
+		h := hop / ih
+		_ = h
+		if dh > 0 {
+			i += 1
+			dh -= 1
+			h = hop / (ih + 1)
+		}
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, h)
+		dd += fd
+		if dh > 0 {
+			j += 1
+			dd -= 1
+		}
+
+		add(loutgrain, lgrainbuf)
+		add(routgrain, rgrainbuf)
+
+		k += hop / stretch[i]
+		j += n.hop
+	}
 }

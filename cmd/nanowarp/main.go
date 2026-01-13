@@ -21,17 +21,13 @@ var println = fmt.Println
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var finput = flag.String("i", "", "input WAV (or anything else, if ffmpeg is present) `path`")
-var mask = flag.Bool("mask", false, "enable auditory masking in PGHI")
-var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
-var smooth = flag.Bool("smooth", false, "trade off pre-echo for more tonal clarity")
 var foutput = flag.String("o", "", "output WAV `path`")
 var coeff = flag.Float64("t", 0, "time stretch multiplier")
 var from = flag.Float64("from", 0, "source `bpm`")
 var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
-var single = flag.Bool("single", false, "stretch without HPSS and using only the largest window")
-var noreset = flag.Bool("noreset", false, "disable impulsive phase reset")
-var asdf = flag.Bool("asdf", true, "use old (less quality) process")
+var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
+var onsets = flag.Bool("onsets", false, "return detected onsets, not audio; ignores stretch factors")
 
 func main() {
 	flag.Parse()
@@ -137,13 +133,13 @@ func main() {
 		}
 	}
 
+	if *onsets {
+		*coeff = 1
+	}
+
 	opts := nanowarp.Options{
-		Masking: *mask,
-		Smooth:  *smooth,
 		Diffadv: *diffadv,
-		Single:  *single,
-		Noreset: *noreset,
-		Asdf:    *asdf,
+		Onsets:  *onsets,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 

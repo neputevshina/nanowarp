@@ -2,7 +2,6 @@ package nanowarp
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"slices"
 
@@ -34,19 +33,18 @@ type sbufs struct {
 	L, R, X, Y                         []complex128
 }
 
-func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
+func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
 	corr := int(filtcorr)
 
 	n = &splitter{
-		nfft:     nfft,
-		nbins:    nbins,
-		nbuf:     nbuf,
-		hop:      nbuf / olap,
-		corr:     filtcorr,
-		detector: detector,
+		nfft:  nfft,
+		nbins: nbins,
+		nbuf:  nbuf,
+		hop:   nbuf / olap,
+		corr:  filtcorr,
 	}
 	makeslices(&n.a, nbins, nfft)
 	n.himp = make([]*mediator[float64, bang], nbins)
@@ -80,27 +78,15 @@ func splitterNew(nfft int, filtcorr float64, _, detector bool) (n *splitter) {
 	return
 }
 
-// process performs harmonic-percussive source separation (HPSS).
-// See Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
+// process performs harmonic-percussive source separation (HPSS) with onset point extraction.
+//
+// The general method is based on [1], but we are using different quantiles for both horizontal
+// and vertical filters. Onsets are extracted by using count of percussive points is a frame as
+// a novelty function and then finding peaks using sliding moving maximum in time domain.
+//
+// [1]: Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
 // (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
-func (n *splitter) process(in []float64, pout []float64, hout []float64) {
-	fmt.Fprintln(os.Stderr, `(*splitter).process`)
-	for i := range n.himp {
-		n.himp[i].Reset(n.himp[i].N)
-	}
-
-	poutgrain := make([]float64, n.nfft)
-	houtgrain := make([]float64, n.nfft)
-
-	for i := 0; i < len(in); i += n.hop {
-		n.advanceOld(in[i:min(len(in), i+n.nbuf)], poutgrain, houtgrain)
-		add(pout[i:min(len(pout), i+n.nbuf)], poutgrain)
-		add(hout[i:min(len(hout), i+n.nbuf)], houtgrain)
-	}
-}
-
-// extract performs HPSS with transient extraction.
-func (n *splitter) extract(lin, rin []float64, lperc, rperc, lharm, rharm, ons []float64) {
+func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons []float64) {
 	fmt.Fprintln(os.Stderr, `(*splitter).extract`)
 	for i := range n.himp {
 		n.himp[i].Reset(n.himp[i].N)
@@ -117,7 +103,7 @@ func (n *splitter) extract(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 	rharmgrain := make([]float64, nf)
 
 	for i := 0; i < len(lin); i += n.hop {
-		n.advanceExtract(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)],
+		n.advance(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)],
 			lpercgrain,
 			rpercgrain,
 			lharmgrain,
@@ -132,85 +118,28 @@ func (n *splitter) extract(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 		add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
 	}
 
-	n.extractOnsetCurveForReal(ons)
+	n.onsetCurve(ons)
 }
 
-func (n *splitter) extractOnsetCurveForReal(ons []float64) {
+func (n *splitter) onsetCurve(ons []float64) {
+	hold := true
 	for i := range ons {
 		j := i + n.dilate.N/2 // Center the window.
 		n.dilate.Insert(ons[min(len(ons)-1, j)], bang{})
 		q, _ := n.dilate.Take()
-		if ons[i] < q {
-			ons[i] = 0
-		} else {
-			ons[i] = 1
-		}
-
-	}
-}
-
-func (n *splitter) extractOnsetCurve(ons []float64) {
-	ca := 0.
-	for i := range ons {
-		fi := float64(i)
-		if i > 0 {
-			ca = (ons[i] + (fi-1)*ca) / fi
-		}
-
-		ons[i] -= ca
-
-		n.tbox.Insert(ons[i])
-		t1, _ := n.tbox.Take()
-		ons[i] = t1 * float64(n.tbox.n)
-	}
-
-	for i := range ons {
-		if i < 2 {
-			continue
-		}
-		if !(ons[i-1] > ons[i-2] && ons[i-1] > ons[i]) {
-			ons[i-2] = 0
-		}
-		ons[i-2] = max(0, ons[i-2])
-	}
-
-	nhop := int(50 * 48 * n.corr)
-
-	for i := 0; i < len(ons); i += nhop {
-		win := ons[i:min(len(ons)-1, i+nhop)]
-		empty := true
-		for j := range win {
-			if win[j] > 0 && empty {
-				empty = false
-				win[j] = 1
-			} else {
-				win[j] = 0
+		if ons[i] >= q {
+			if hold {
+				ons[i] = 1
 			}
-		}
-	}
-
-	// Somehow we get 50 ms of trigger with these parameters.
-	const lenphasedropms = 20
-	const lahphasedropms = 10
-
-	pdln := int(math.Floor(lenphasedropms * 48 * n.corr))
-	pdlah := int(math.Floor(lahphasedropms * 48 * n.corr))
-
-	count := 0
-	for i := range ons {
-		if ons[clamp(0, len(ons)-1, i+pdlah)] > 0.5 {
-			count = pdln
-		}
-		if count > 0 {
-			ons[i] = 0
+			hold = false
 		} else {
-			ons[i] = 1
+			ons[i] = 0
+			hold = true
 		}
-		count--
 	}
 }
 
-func (n *splitter) advanceExtract(lingrain, ringrain []float64, lpercgrain, rpercgrain, lharmgrain, rharmgrain, noveltygrain []float64) {
+func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain, lharmgrain, rharmgrain, noveltygrain []float64) {
 	n.vimp.Reset(n.vimp.N)
 	a := &n.a
 
@@ -236,7 +165,7 @@ func (n *splitter) advanceExtract(lingrain, ringrain []float64, lpercgrain, rper
 
 	for w := range a.X {
 		if a.P[w] > a.H[w] {
-			a.A[w] += 1
+			a.A[w] = 1
 		} else {
 			a.A[w] = 0
 		}
@@ -280,54 +209,4 @@ func (n *splitter) advanceExtract(lingrain, ringrain []float64, lpercgrain, rper
 		rharmgrain[i] = ringrain[i]*w - rpercgrain[i]
 	}
 
-}
-
-func (n *splitter) advanceOld(ingrain []float64, poutgrain []float64, houtgrain []float64) {
-	n.vimp.Reset(n.vimp.N)
-	a := &n.a
-
-	enfft := func(x []complex128, w []float64) {
-		clear(a.S)
-		copy(a.S, ingrain)
-		mul(a.S, w)
-		n.fft.Coefficients(x, a.S)
-	}
-
-	enfft(a.X, a.Wf)
-
-	for w := range a.X {
-		a.M[w] = mag(a.X[w])
-	}
-	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
-	for w := range a.X {
-		m := n.himp[w]
-		m.Insert(a.M[w], bang{})
-		a.H[w], _ = m.Take()
-	}
-
-	for w := range a.X {
-		if a.P[w] > a.H[w] {
-			a.A[w] += 1
-		} else {
-			a.A[w] = 0
-		}
-	}
-
-	for w := range a.X {
-		if a.A[w] == 0 {
-			a.X[w] = 0
-		}
-	}
-
-	n.fft.Sequence(a.S, a.X)
-	for w := range a.S {
-		a.S[w] /= n.norm
-	}
-	mul(a.S, a.Wr)
-	copy(poutgrain, a.S)
-
-	// Harmonic = original - percussive
-	for j := range ingrain {
-		houtgrain[j] = ingrain[j]*a.Wf[j]*a.Wr[j]/n.norm*float64(n.nfft) - a.S[j]
-	}
 }
