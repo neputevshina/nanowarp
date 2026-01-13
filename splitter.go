@@ -130,6 +130,8 @@ func (n *splitter) onsetCurve(ons []float64) {
 		if ons[i] >= q {
 			if hold {
 				ons[i] = 1
+			} else {
+				ons[i] = 0
 			}
 			hold = false
 		} else {
