@@ -1,6 +1,6 @@
 # Nanowarp
 An ongoing attempt to create a professional grade audio time stretching algorithm.
-Reference implementation is going to be in Go, and a possible C implementation will share
+Reference implementation is going to be in Go, and a possible (Fil-)C implementation will share
 this repo with a Go version.
 
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 

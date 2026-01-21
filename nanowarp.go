@@ -43,10 +43,9 @@ import (
 )
 
 type Nanowarp struct {
+	fs          int
 	left, right []float64
 
-	file         []float64
-	hfile, pfile []float64
 	lower, upper *warper
 	hpss         *splitter
 
@@ -73,6 +72,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	n = &Nanowarp{}
+	n.fs = samplerate
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
 	n.lower = warperNew(4096*w, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
@@ -92,6 +92,31 @@ func (n *Nanowarp) nmustcollect() int {
 	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpss.nbuf, n.hpss.hop))
 }
 
+const (
+	minimumSliceMs          = 50
+	minimumSliceStretchedMs = 100
+	sliceLahMs              = 30
+)
+
+func sliceFile(fs int, file []float64, onsets []float64) (sliced [][]float64) {
+	cold := 0
+	prev := 0
+	lahsamp := fs * sliceLahMs / 1000
+	ons := onsets[lahsamp:]
+	for i, x := range ons {
+		if x > 0 {
+			interval := fs * minimumSliceMs / 1000
+			if cold < 0 {
+				sliced = append(sliced, file[prev:i])
+				prev = i
+				cold = interval
+			}
+		}
+		cold--
+	}
+	return
+}
+
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
@@ -108,6 +133,29 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		copy(rout, onsetfile)
 		return
 	}
+
+	// slices := sliceFile(n.fs, lin, onsetfile)
+	// wg := sync.WaitGroup{}
+	// prev := 0
+	// for _, sl := range slices {
+	// 	// wg.Add(1)
+	// 	// go func() {
+	// 	// 	prev := prev
+	// 	// 	sl := sl
+	// 	l := n.fs * minimumSliceMs / 1000
+	// 	x := int(math.Floor(max(0, float64(prev-n.lower.nfft))*stretch)) + l
+	// 	y := x + int(math.Ceil(float64(len(sl))*stretch))
+	// 	xstr := float64(y-x) / float64(y-x-l)
+	// 	// copy(lout[x-l:x], sl[:l])
+	// 	// copy(rout[x-l:x], sl[:l])
+	// 	fr := make([]float64, len(sl)+n.lower.nfft*2)
+	// 	copy(fr[n.upper.nfft:], sl)
+	// 	n.lower.process2(fr, fr, lout[x:y], rout[x:y], onsetfile, stretch*xstr, 0)
+	// 	// wg.Done()
+	// 	// }()
+	// 	prev += len(sl)
+	// }
+	// wg.Wait()
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)

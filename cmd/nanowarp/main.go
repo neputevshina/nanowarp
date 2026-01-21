@@ -28,7 +28,7 @@ var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
 var onsets = flag.Bool("onsets", false, "return detected onsets, not audio; ignores stretch factors")
-var finite = flag.Bool("finite", false, "")
+var finite = flag.Bool("finite", false, "does not work")
 
 func main() {
 	flag.Parse()
@@ -156,6 +156,7 @@ func main() {
 		panic(err)
 	}
 	wr := wav.NewWriter(file, uint32(len(mout)), 2, wavfmt.SampleRate, 32, true)
+	fmt.Fprintln(os.Stderr, `encoding...`)
 	for i := range mout {
 		// msa, ssa := mout[i]/2, sout[i]/2
 		// lsa, rsa := msa+ssa, msa-ssa

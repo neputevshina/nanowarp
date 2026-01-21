@@ -76,25 +76,28 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
 	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
 
-	n.start(lin, lout)
-	n.start(rin, rout)
-	lgrainbuf := make([]float64, n.nfft)
-	rgrainbuf := make([]float64, n.nfft)
+	get := func() []float64 { return make([]float64, n.nfft) }
+	lgrainbuf := get()
+	rgrainbuf := get()
+	lingrain := get()
+	ringrain := get()
 
 	id, fd := math.Modf(delay)
-	j := n.hop + int(id)
+	os := int(-float64(n.nbuf) * stretch)
+	j := os + int(id)
 	dh := fh
 	dd := fd
 
 	trig := true
-	for i := int(ih); i < len(lin); i += int(ih) {
+	_ = trig
+	for i := -n.nbuf; i < len(lin)+n.nbuf; i += int(ih) {
 		if j > len(lout) {
 			break
 		}
-		lingrain := lin[i:min(len(lin), i+n.nbuf)]
-		ringrain := rin[i:min(len(lin), i+n.nbuf)]
-		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
-		routgrain := rout[j:min(len(lout), j+n.nbuf)]
+		clear(lingrain)
+		clear(ringrain)
+		copy(lingrain[max(0, -i):], lin[max(0, i):min(len(lin), i+n.nbuf)])
+		copy(ringrain[max(0, -i):], rin[max(0, i):min(len(lin), i+n.nbuf)])
 
 		// Dither both input and output hop sizes to get
 		// fractional stretch.
@@ -125,8 +128,14 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 			j += 1
 			dd -= 1
 		}
-		add(loutgrain, lgrainbuf)
-		add(routgrain, rgrainbuf)
+
+		// println(i, j, `in`, max(0, i), min(len(lin), i+n.nbuf), `grain`, max(0, -i), `outgrain`, max(0, -j), `out`, max(0, j), min(len(lout), j+n.nbuf))
+
+		loutgrain := lout[max(0, j):clamp(0, len(lout), j+n.nbuf)]
+		routgrain := rout[max(0, j):clamp(0, len(lout), j+n.nbuf)]
+		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -j):])
+		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
+
 		j += n.hop
 	}
 }
@@ -150,7 +159,7 @@ func (n *warper) start(in []float64, out []float64) {
 	for j := range a.S[:n.nbuf] {
 		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
 	}
-	add(out[:min(len(out), n.nbuf)], a.S)
+	copy(out[:min(len(out), n.nbuf)], a.S)
 }
 
 // advance adds to the phase of the output by one frame using
