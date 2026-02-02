@@ -143,14 +143,15 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	// 	// 	prev := prev
 	// 	// 	sl := sl
 	// 	l := n.fs * minimumSliceMs / 1000
-	// 	x := int(math.Floor(max(0, float64(prev-n.lower.nfft))*stretch)) + l
+	// 	x := int(math.Floor(max(0, float64(prev))*stretch)) + l
 	// 	y := x + int(math.Ceil(float64(len(sl))*stretch))
 	// 	xstr := float64(y-x) / float64(y-x-l)
-	// 	// copy(lout[x-l:x], sl[:l])
-	// 	// copy(rout[x-l:x], sl[:l])
-	// 	fr := make([]float64, len(sl)+n.lower.nfft*2)
-	// 	copy(fr[n.upper.nfft:], sl)
-	// 	n.lower.process2(fr, fr, lout[x:y], rout[x:y], onsetfile, stretch*xstr, 0)
+	// 	_ = xstr
+	// 	// fr := make([]float64, len(sl))
+	// 	// copy(fr[n.upper.nfft:], sl)
+	// 	n.lower.process2(sl[l:], sl[l:], lout[x:y], rout[x:y], onsetfile, stretch*xstr, 0)
+	// 	copy(lout[x-l:x], sl[:l])
+	// 	copy(rout[x-l:x], sl[:l])
 	// 	// wg.Done()
 	// 	// }()
 	// 	prev += len(sl)

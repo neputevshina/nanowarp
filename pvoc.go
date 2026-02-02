@@ -56,7 +56,8 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	a.Phase = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
-	niemitalo(a.W[:nbuf])
+	// niemitalo(a.W[:nbuf])
+	blackmanHarris(a.W[:nbuf])
 	windowDx(a.W[:nbuf], a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	copy(a.Wr[:nbuf], a.W[:nbuf])
@@ -104,25 +105,25 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 		// Snap stretch coefficient to the dithered input hop size
 		// to hopefully get more accurate phase.
 		dh += fh
-		hop := float64(n.hop) / (ih)
+		coeff := float64(n.hop) / (ih)
 		if dh > 0 {
 			i += 1
 			dh -= 1
-			hop = float64(n.hop) / (ih + 1)
+			coeff = float64(n.hop) / (ih + 1)
 		}
 
 		// Phase reset on transients.
 		sl := onsets[clamp(0, len(lin)-1, i+n.hop):clamp(0, len(lin)-1, i+3*n.hop)]
 		if slices.Contains(sl, 1) {
 			if trig {
-				hop = 1
+				coeff = 0
 			}
 			trig = false
 		} else {
 			trig = true
 		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, hop)
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, coeff)
 		dd += fd
 		if dh > 0 {
 			j += 1
@@ -213,7 +214,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
 	// Force reset on a no-op stretch, including detected transients.
-	if stretch == 1 {
+	if stretch == 0 {
 		for w := range a.Phase {
 			a.Pphase[w] = cmplx.Phase(a.X[w])
 		}
@@ -286,13 +287,10 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		case -1:
 			if n.arm[w] {
 				adv := tadv(w)
-				if n.root.opts.Finite {
-					ramp1 := cmplx.Exp(-2i * math.Pi * complex(float64(n.hop*w)/stretch, 0))
-					// FIXME Use complex phase math. Atan2 is slow.
-					adv = cmplx.Phase(d(a.Px[w]*ramp1, a.X[w])) + 2*math.Pi*float64(n.hop*w)
-				} else {
-					a.Phase[w] = a.Pphase[w] + adv
-				}
+				// if stretch == 0 {
+				// 	adv = (math.Pi*float64(w) + (cmplx.Phase(a.X[w])-a.Pphase[w])/4) / (olap * osampc / 2)
+				// }
+				a.Phase[w] = a.Pphase[w] + adv
 				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
@@ -332,7 +330,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		}
 		a.Pphase[w] = princarg(a.Phase[w])
 	}
-
+	goto skip
 skip:
 	copy(a.Px, a.X)
 	defft := func(out []float64, x []complex128) {
