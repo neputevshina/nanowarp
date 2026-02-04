@@ -57,7 +57,7 @@ type Nanowarp struct {
 type Options struct {
 	Diffadv bool
 	Onsets  bool
-	Finite  bool
+	Alt     bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -80,7 +80,19 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n.upper = warperNew(64*w, n) // 128 (64) @ 48000 Hz
 	n.lower.diffadv = opts.Diffadv
 
-	n.hpss = splitterNew(512, float64(int(1)<<w))
+	a := sargs{}
+	a.hn = (2*21 - 1)
+	a.vn = 15
+	if opts.Alt {
+		a.hq = 0.5
+		a.vq = 0.5
+		a.thresh = 0.75
+	} else {
+		a.hq = 0.75
+		a.vq = 0.25
+		a.thresh = 0.4
+	}
+	n.hpss = splitterNew(a, 512, float64(int(1)<<w))
 
 	return
 }
@@ -97,23 +109,6 @@ const (
 	maxTransientMs = 50
 )
 
-func onsetarg(fs int, onsets []float64) (sa []int) {
-	cold := 0
-	// prev := 0
-	for i, x := range onsets {
-		if x > 0 {
-			interval := fs * minTransientMs / 1000
-			if cold < 0 {
-				sa = append(sa, i)
-				// prev = i
-				cold = interval
-			}
-		}
-		cold--
-	}
-	return
-}
-
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
@@ -126,19 +121,36 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	n.hpss.process(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile, nil)
 
 	if n.opts.Onsets {
-		copy(lout, onsetfile)
-		copy(rout, onsetfile)
+		copy(lout, lpfile)
+		copy(rout, rpfile)
 		return
 	}
 
+	if n.opts.Alt {
+		phasor := n.getPhasor(lout, stretch, lpfile)
+		n.lower.process3(lin, rin, lout, rout, phasor, 0)
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
+		n.lower.process2(lhfile, rhfile, lout, rout, onsetfile, stretch, dc)
+		wg.Done()
+	}()
+	go func() {
+		n.upper.process2(lpfile, rpfile, lout, rout, onsetfile, stretch, 0)
+		wg.Done()
+	}()
+	wg.Wait()
+
+}
+
+func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) []int {
 	phasor := make([]int, len(lout))
 	fuse := true
 	o0 := 0
-	o1 := 0
-	_ = o1
-	_ = o0
-	pi := 0
-	_ = pi
 	lock := true
 	for j := 0; j < len(phasor); j++ {
 		i := int(float64(j) / stretch)
@@ -188,6 +200,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			}
 			for k := j; k <= e; k++ {
 				u := unmix(float64(j), float64(e), float64(k))
+				u = u * u * (3 - 2*u)
 				m := mix(float64(phasor[j-1]), float64(e)/stretch, u)
 				phasor[k] = int(m)
 			}
@@ -201,59 +214,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		i := int(float64(j) / stretch)
 		phasor[j] = i
 	}
-
-	// arg := onsetarg(n.fs, onsetfile)
-	// // Shift onsets according to the stretch amount.
-	// for i := range arg {
-	// 	// arg[i] = max(1, int(float64(arg[i])*stretch))
-	// 	arg[i] = int(float64(arg[i]) * stretch)
-	// }
-	// // Convert onsets to global phasor.
-	// phasor := make([]int, len(lout))
-	// ai := 1
-	// for j := range phasor {
-	// 	if j > arg[len(arg)-1] {
-	// 		i := int(float64(j) / stretch)
-	// 		phasor[j] = i
-	// 		continue
-	// 	}
-	// 	onsa := minTransientMs * n.fs / 1000
-	// 	tbrk := arg[ai-1] - 1 + onsa
-	// 	if j >= arg[ai-1] && j < tbrk {
-	// 		phasor[j] = phasor[arg[ai-1]-1] + j - arg[ai-1]
-	// 	}
-	// 	if j >= tbrk && j <= arg[ai] {
-	// 		u := unmix(float64(tbrk), float64(arg[ai]), float64(j))
-	// 		m := mix(float64(phasor[tbrk-1]), float64(arg[ai])/stretch, u)
-	// 		phasor[j] = int(m)
-	// 	}
-	// 	if j >= arg[ai] {
-	// 		ai++
-	// 	}
-	// }
-
-	// for i := range lout {
-	// 	lout[i] = float64(phasor[i]) / float64(len(lin))
-	// 	rout[i] = float64(phasor[i]) / float64(len(lin))
-	// }
-	// return
-
-	n.lower.process3(lin, rin, lout, rout, phasor, 0)
-	return
-
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		// dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
-		// n.lower.process3(lhfile, rhfile, lout, rout, phasor, dc)
-		wg.Done()
-	}()
-	go func() {
-		n.upper.process3(lpfile, rpfile, lout, rout, phasor, 0)
-		wg.Done()
-	}()
-	wg.Wait()
-
+	return phasor
 }
 
 /*

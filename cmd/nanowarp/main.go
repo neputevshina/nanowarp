@@ -28,7 +28,7 @@ var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
 var onsets = flag.Bool("onsets", false, "return detected onsets, not audio; ignores stretch factors")
-var finite = flag.Bool("finite", false, "does not work")
+var alt = flag.Bool("alt", false, "use alternative algorithm (worse)")
 
 func main() {
 	flag.Parse()
@@ -141,7 +141,7 @@ func main() {
 	opts := nanowarp.Options{
 		Diffadv: *diffadv,
 		Onsets:  *onsets,
-		Finite:  *finite,
+		Alt:     *alt,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 

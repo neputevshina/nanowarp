@@ -15,6 +15,7 @@ type splitter struct {
 	hop         int
 	norm, wgain float64
 	corr        float64
+	thresh      float64
 	detector    bool
 
 	fft        *fourier.FFT
@@ -33,32 +34,34 @@ type sbufs struct {
 	Xprevs                             [][]complex128 // Lookahead framebuffer
 	L, R, X, Y                         []complex128
 }
+type sargs struct {
+	hn, vn int
+	hq, vq float64
+	thresh float64
+}
 
-func splitterNew(nfft int, filtcorr float64) (n *splitter) {
+func splitterNew(a sargs, nfft int, filtcorr float64) (n *splitter) {
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
 	corr := int(filtcorr)
 
 	n = &splitter{
-		nfft:  nfft,
-		nbins: nbins,
-		nbuf:  nbuf,
-		hop:   nbuf / olap,
-		corr:  filtcorr,
+		nfft:   nfft,
+		nbins:  nbins,
+		nbuf:   nbuf,
+		hop:    nbuf / olap,
+		corr:   filtcorr,
+		thresh: a.thresh,
 	}
 	makeslices(&n.a, nbins, nfft)
 	n.himp = make([]*mediator[float64, bang], nbins)
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
-		nhimp := (2*21 - 1) * corr
-		qhimp := 0.5
-		n.himp[i] = mediatorNew[float64, bang](nhimp, nhimp, qhimp)
+		n.himp[i] = mediatorNew[float64, bang](a.hn*corr, a.hn*corr, a.hq)
 	}
-	nvimp := 15 * corr
-	qvimp := 0.5
-	n.vimp = mediatorNew[float64, bang](nvimp, nvimp, qvimp)
+	n.vimp = mediatorNew[float64, bang](a.vn*corr, a.vn*corr, a.vq)
 
 	ntimp2 := 80 * 48 * corr
 	qtimp2 := 1.
@@ -122,7 +125,6 @@ func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 		add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
 	}
 
-	// return nil // ons = onset mask
 	return n.onsetCurve(ons, onsloc)
 }
 
@@ -199,9 +201,8 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 	// Make “fizzinness” less severe by excluding mostly harmonic frames.
 	// TODO Skip stretching empty frames.
 	for w := range a.A {
-		const thresh = 3. / 4
-		// const thresh = 0.5
-		if ssum < float64(n.nbins)*thresh {
+		th := n.thresh
+		if ssum < float64(n.nbins)*th {
 			a.A[w] = 0
 		}
 	}

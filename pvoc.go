@@ -142,6 +142,7 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 }
 
 func (n *warper) process3(lin, rin, lout, rout []float64, shift []int, delay float64) {
+	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf := get()
 	rgrainbuf := get()
@@ -177,28 +178,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []int, delay flo
 	}
 }
 
-func (n *warper) start(in []float64, out []float64) {
-	a := &n.a
-
-	clear(a.S)
-	copy(a.S, in[:min(len(in), n.nbuf)])
-	mul(a.S, a.W)
-	n.fft.Coefficients(a.X, a.S)
-
-	for w := range a.X {
-		a.M[w] = mag(a.X[w])
-		// FIXME Right phase (not sum) is the starting previous phase.
-		a.Pphase[w] = cmplx.Phase(a.X[w])
-		a.Pha[w] = norm(a.X[w])
-	}
-	copy(a.P, a.M)
-
-	for j := range a.S[:n.nbuf] {
-		a.S[j] = in[:min(len(in), n.nbuf)][j] * a.W[j] * a.W[j] / n.norm * float64(n.nfft)
-	}
-	copy(out[:min(len(out), n.nbuf)], a.S)
-}
-
 // advance adds to the phase of the output by one frame using
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
@@ -224,10 +203,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	}
 
 	enfft(a.X, a.W, a.Mid)
-	if !n.root.opts.Finite {
-		enfft(a.Xd, a.Wd, a.Mid)
-		enfft(a.Xt, a.Wt, a.Mid)
-	}
 
 	// Here we are using time-frequency reassignment[¹] as a way of obtaining
 	// phase derivatives. Probably in future these derivatives will be replaced
@@ -260,13 +235,11 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		goto skip
 	}
 
-	if !n.root.opts.Finite {
-		for w := range a.X {
-			// TODO Probably it will be more numerically stable to limit the phase accuum to
-			// 0..1 and scale back to -π..π range at the poltocar conversion.
-			// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
-			a.Fadv[w] = princarg(fadv(w))
-		}
+	for w := range a.X {
+		// TODO Probably it will be more numerically stable to limit the phase accuum to
+		// 0..1 and scale back to -π..π range at the poltocar conversion.
+		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
+		a.Fadv[w] = princarg(fadv(w))
 	}
 
 	for w := range a.X {
@@ -355,6 +328,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	goto skip
 skip:
 	copy(a.Px, a.X)
+	copy(a.Pfadv, a.Fadv)
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {
@@ -365,68 +339,4 @@ skip:
 	}
 	defft(loutgrain, a.Lo)
 	defft(routgrain, a.Ro)
-}
-
-func (n *warper) processBroken(lin, rin, lout, rout []float64, onsets, stretch []float64, align int) {
-	fmt.Fprintln(os.Stderr, `(*warper).process1`)
-	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
-
-	n.start(lin, lout)
-	n.start(rin, rout)
-	lgrainbuf := make([]float64, n.nfft)
-	rgrainbuf := make([]float64, n.nfft)
-
-	delay := func(stretch float64) float64 {
-		return float64(align) * (stretch - 1) * 2
-	}
-
-	hop := float64(n.hop)
-	ih, dh, fh := 0., 0., 0.
-	id, fd := math.Modf(delay(stretch[0]))
-	j := n.hop + int(id)
-	dd := fd
-	k := 0.
-
-	for i := 0; i < len(lin); i += int(ih) {
-		s := max(0, (stretch[i]*float64(i)-float64(j)+stretch[i]*4096)/4096)
-		inhop := hop / s
-		// Add 2 hop sizes to center the window.
-		if onsets[clamp(0, len(onsets)-1, i+2*n.hop)] == 0 {
-			inhop = hop
-		}
-		ih, fh = math.Modf(inhop)
-		id, fd = math.Modf(delay(stretch[i]))
-
-		if i > len(lin) {
-			break
-		}
-		if j > len(lout) {
-			break
-		}
-		lingrain := lin[i:min(len(lin), i+n.nbuf)]
-		ringrain := rin[i:min(len(lin), i+n.nbuf)]
-		loutgrain := lout[j:min(len(lout), j+n.nbuf)]
-		routgrain := rout[j:min(len(lout), j+n.nbuf)]
-
-		dh += fh
-		h := hop / ih
-		_ = h
-		if dh > 0 {
-			i += 1
-			dh -= 1
-			h = hop / (ih + 1)
-		}
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, h)
-		dd += fd
-		if dh > 0 {
-			j += 1
-			dd -= 1
-		}
-
-		add(loutgrain, lgrainbuf)
-		add(routgrain, rgrainbuf)
-
-		k += hop / stretch[i]
-		j += n.hop
-	}
 }
