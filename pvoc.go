@@ -197,12 +197,15 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 
 	enfft(a.L, a.W, lingrain)
 	enfft(a.R, a.W, ringrain)
+
 	if n.diffadv {
 		enfft(a.Ld, a.Wd, lingrain)
 		enfft(a.Rd, a.Wd, ringrain)
 	}
 
 	enfft(a.X, a.W, a.Mid)
+	enfft(a.Xd, a.Wd, a.Mid)
+	enfft(a.Xt, a.Wt, a.Mid)
 
 	// Here we are using time-frequency reassignment[¹] as a way of obtaining
 	// phase derivatives. Probably in future these derivatives will be replaced
