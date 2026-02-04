@@ -141,7 +141,7 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 	}
 }
 
-func (n *warper) process3(lin, rin, lout, rout []float64, shift []int, delay float64) {
+func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf := get()
@@ -152,7 +152,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []int, delay flo
 	bayer := []float64{0.2, 0.6, 0.4, 0.8}
 	for j := -n.nbuf; ; j += n.hop {
 		di, df := math.Modf(delay)
-		i := shift[clamp(0, len(lout)-1, j)]
+		i := int(shift[clamp(0, len(lout)-1, j)])
 		if i > len(lin)-n.nbuf {
 			break
 		}
@@ -160,7 +160,10 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []int, delay flo
 		clear(ringrain)
 		copy(lingrain[max(0, -i):], lin[max(0, i):min(len(lin), i+n.nbuf)])
 		copy(ringrain[max(0, -i):], rin[max(0, i):min(len(lin), i+n.nbuf)])
-		coeff := float64(j) / float64(i)
+		coeff := 1.
+		if i > 0 {
+			coeff = 1 / (shift[i] - shift[i-1])
+		}
 		if j <= 0 {
 			coeff = 0
 		}

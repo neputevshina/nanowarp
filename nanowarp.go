@@ -86,7 +86,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	if opts.Alt {
 		a.hq = 0.5
 		a.vq = 0.5
-		a.thresh = 0.75
+		a.thresh = 0.9
 	} else {
 		a.hq = 0.75
 		a.vq = 0.25
@@ -147,15 +147,15 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 }
 
-func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) []int {
-	phasor := make([]int, len(lout))
+func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) []float64 {
+	phasor := make([]float64, len(lout))
 	fuse := true
-	o0 := 0
+	o0 := 0.
 	lock := true
 	for j := 0; j < len(phasor); j++ {
 		i := int(float64(j) / stretch)
 		if lpfile[i] <= 0 && fuse {
-			phasor[j] = i
+			phasor[j] = float64(j) / stretch
 			continue
 		}
 		fuse = false
@@ -171,21 +171,20 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 		}
 
 	}
-	for j := len(phasor) - 1; j >= 0; j-- {
-		if phasor[j] <= maxTransientMs*n.fs/1000 {
-		}
-		if phasor[j] >= minTransientMs*n.fs/1000 {
-			j -= phasor[j]
-		}
-		phasor[j] = 0
-	}
+
+	// for j := len(phasor) - 1; j >= 0; j-- {
+	// 	if phasor[j] >= minTransientMs*n.fs/1000 {
+	// 		j -= phasor[j]
+	// 	}
+	// 	phasor[j] = 0
+	// }
 
 	for j := range phasor {
 		i := int(float64(j) / stretch)
 		if phasor[j] > 0 {
 			phasor[j] = o0 + phasor[j]
 		} else {
-			o0 = i
+			o0 = float64(i)
 		}
 	}
 
@@ -201,7 +200,7 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 			for k := j; k <= e; k++ {
 				u := unmix(float64(j), float64(e), float64(k))
 				m := mix(float64(phasor[j-1]), float64(e)/stretch, u)
-				phasor[k] = int(m)
+				phasor[k] = m
 			}
 			if e < j {
 				break
@@ -210,8 +209,7 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 		}
 	}
 	for j := e; j < len(phasor); j++ {
-		i := int(float64(j) / stretch)
-		phasor[j] = i
+		phasor[j] = float64(j) / stretch
 	}
 	return phasor
 }

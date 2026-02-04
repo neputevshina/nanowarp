@@ -127,8 +127,6 @@ func main() {
 
 		for _, sample := range samples {
 			l, r := wavrd.FloatValue(sample, 0), wavrd.FloatValue(sample, 1)
-			// mid = append(mid, l+r)
-			// side = append(side, l-r)
 			mid = append(mid, l)
 			side = append(side, r)
 		}
@@ -157,13 +155,17 @@ func main() {
 	}
 	wr := wav.NewWriter(file, uint32(len(mout)), 2, wavfmt.SampleRate, 32, true)
 	fmt.Fprintln(os.Stderr, `encoding...`)
-	for i := range mout {
-		// msa, ssa := mout[i]/2, sout[i]/2
-		// lsa, rsa := msa+ssa, msa-ssa
-		lsa, rsa := mout[i], sout[i]
-		err := wr.WriteSamples([]wav.Sample{{Values: [2]int{
-			int(math.Float32bits(float32(lsa))),
-			int(math.Float32bits(float32(rsa)))}}})
+	nbuf := 2048
+	buf := make([]wav.Sample, 0, nbuf)
+	for i := 0; i < len(mout); i += nbuf {
+		buf = buf[:0]
+		for j := i; j < min(i+nbuf, len(mout)); j++ {
+			lsa, rsa := mout[j], sout[j]
+			buf = append(buf, wav.Sample{Values: [2]int{
+				int(math.Float32bits(float32(lsa))),
+				int(math.Float32bits(float32(rsa)))}})
+		}
+		err := wr.WriteSamples(buf)
 		if err != nil {
 			panic(err)
 		}
