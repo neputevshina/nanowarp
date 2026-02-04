@@ -200,7 +200,6 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 			}
 			for k := j; k <= e; k++ {
 				u := unmix(float64(j), float64(e), float64(k))
-				u = u * u * (3 - 2*u)
 				m := mix(float64(phasor[j-1]), float64(e)/stretch, u)
 				phasor[k] = int(m)
 			}
