@@ -52,6 +52,14 @@ func mix[F constraints.Float](a, b, x F) F {
 	return a*(1-x) + b*x
 }
 
+func unmix[F constraints.Float](a, b, x F) F {
+	return (x - a) / (b - a)
+}
+
+func remix[F constraints.Float](a, b, x F) F {
+	return mix(a, b, unmix(a, b, x))
+}
+
 func clamp[T constraints.Ordered](a, b, x T) T {
 	return max(a, min(b, x))
 }
@@ -224,4 +232,24 @@ func floatMatrixToImage(data [][]float64) image.Image {
 	}
 
 	return img
+}
+
+func boolint(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func fill[T any](s []T, e T) {
+	for i := range s {
+		s[i] = e
+	}
+}
+
+func abs[T constraints.Signed | constraints.Float](a T) T {
+	if a < 0 {
+		return -a
+	}
+	return a
 }

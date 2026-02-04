@@ -56,7 +56,6 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	a.Phase = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
-	// niemitalo(a.W[:nbuf])
 	blackmanHarris(a.W[:nbuf])
 	windowDx(a.W[:nbuf], a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
@@ -114,6 +113,7 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 
 		// Phase reset on transients.
 		sl := onsets[clamp(0, len(lin)-1, i+n.hop):clamp(0, len(lin)-1, i+3*n.hop)]
+		// sl := onsets[clamp(0, len(lin)-1, i-2*n.hop):clamp(0, len(lin)-1, i+2*n.hop)]
 		if slices.Contains(sl, 1) {
 			if trig {
 				coeff = 0
@@ -138,6 +138,42 @@ func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float6
 		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
 
 		j += n.hop
+	}
+}
+
+func (n *warper) process3(lin, rin, lout, rout []float64, shift []int, delay float64) {
+	get := func() []float64 { return make([]float64, n.nfft) }
+	lgrainbuf := get()
+	rgrainbuf := get()
+	lingrain := get()
+	ringrain := get()
+
+	bayer := []float64{0.2, 0.6, 0.4, 0.8}
+	for j := -n.nbuf; ; j += n.hop {
+		di, df := math.Modf(delay)
+		i := shift[clamp(0, len(lout)-1, j)]
+		if i > len(lin)-n.nbuf {
+			break
+		}
+		clear(lingrain)
+		clear(ringrain)
+		copy(lingrain[max(0, -i):], lin[max(0, i):min(len(lin), i+n.nbuf)])
+		copy(ringrain[max(0, -i):], rin[max(0, i):min(len(lin), i+n.nbuf)])
+		coeff := float64(j) / float64(i)
+		if j <= 0 {
+			coeff = 0
+		}
+		if math.Abs(coeff-1) < 0.001 {
+			coeff = 0
+		}
+
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, coeff)
+
+		tj := j + int(di) + boolint(df > bayer[j%len(bayer)])
+		loutgrain := lout[max(0, tj):clamp(0, len(lout), tj+n.nbuf)]
+		routgrain := rout[max(0, tj):clamp(0, len(lout), tj+n.nbuf)]
+		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -tj):])
+		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -tj):])
 	}
 }
 
@@ -277,12 +313,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap).(heaptriple)
 		w := h.w
-		d := func(p, q complex128) complex128 {
-			if q == 0 {
-				return 0
-			}
-			return p / q
-		}
 		switch h.t {
 		case -1:
 			if n.arm[w] {
@@ -297,20 +327,12 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		case 0:
 			if w > 1 && n.arm[w-1] {
 				adv := -a.Fadv[w-1]
-				if n.root.opts.Finite {
-					// FIXME Use complex phase math. Atan2 is slow.
-					adv = cmplx.Phase(d(a.X[w-1], a.X[w])) * stretch
-				}
 				a.Phase[w-1] = a.Phase[w] + adv
 				n.arm[w-1] = false
 				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
 				adv := a.Fadv[w+1]
-				if n.root.opts.Finite {
-					// FIXME Use complex phase math. Atan2 is slow.
-					adv = cmplx.Phase(d(a.X[w+1], a.X[w])) * stretch
-				}
 				a.Phase[w+1] = a.Phase[w] + adv
 				n.arm[w+1] = false
 				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})

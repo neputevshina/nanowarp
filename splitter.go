@@ -17,12 +17,13 @@ type splitter struct {
 	corr        float64
 	detector    bool
 
-	fft    *fourier.FFT
-	img    [][]float64
-	vimp   *mediator[float64, bang]
-	himp   []*mediator[float64, bang]
-	dilate *mediator[float64, bang]
-	tbox   *boxfilt
+	fft        *fourier.FFT
+	img        [][]float64
+	vimp       *mediator[float64, bang]
+	himp       []*mediator[float64, bang]
+	dilate     *mediator[float64, bang]
+	antidilate *mediator[float64, bang]
+	tbox       *boxfilt
 
 	a sbufs
 }
@@ -51,17 +52,20 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 
 	// TODO Log-scale for HPSS and erosion
 	for i := range n.himp {
-		nhimp := 21 * corr
-		qhimp := 0.75
+		nhimp := (2*21 - 1) * corr
+		qhimp := 0.5
 		n.himp[i] = mediatorNew[float64, bang](nhimp, nhimp, qhimp)
 	}
 	nvimp := 15 * corr
-	qvimp := 0.25
+	qvimp := 0.5
 	n.vimp = mediatorNew[float64, bang](nvimp, nvimp, qvimp)
 
 	ntimp2 := 80 * 48 * corr
 	qtimp2 := 1.
 	n.dilate = mediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
+
+	nadl := 5
+	n.antidilate = mediatorNew[float64, bang](nadl, nadl, 1)
 
 	n.tbox = boxfiltNew(200 * 48 * corr)
 
@@ -86,7 +90,7 @@ func splitterNew(nfft int, filtcorr float64) (n *splitter) {
 //
 // [1]: Fitzgerald, D. (2010). Harmonic/percussive separation using median filtering.
 // (https://dafx10.iem.at/proceedings/papers/DerryFitzGerald_DAFx10_P15.pdf)
-func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons []float64) {
+func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons []float64, onsloc []int) []int {
 	fmt.Fprintln(os.Stderr, `(*splitter).extract`)
 	for i := range n.himp {
 		n.himp[i].Reset(n.himp[i].N)
@@ -118,10 +122,11 @@ func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 		add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
 	}
 
-	n.onsetCurve(ons)
+	return nil // ons = onset mask
+	// return n.onsetCurve(ons, onsloc)
 }
 
-func (n *splitter) onsetCurve(ons []float64) {
+func (n *splitter) onsetCurve(ons []float64, loc []int) []int {
 	hold := true
 	for i := range ons {
 		j := i + n.dilate.N/2 // Center the window.
@@ -130,6 +135,9 @@ func (n *splitter) onsetCurve(ons []float64) {
 		if ons[i] >= q {
 			if hold {
 				ons[i] = 1
+				if loc != nil {
+					loc = append(loc, i)
+				}
 			} else {
 				ons[i] = 0
 			}
@@ -139,6 +147,7 @@ func (n *splitter) onsetCurve(ons []float64) {
 			hold = true
 		}
 	}
+	return loc
 }
 
 func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain, lharmgrain, rharmgrain, noveltygrain []float64) {
@@ -172,6 +181,17 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 			a.A[w] = 0
 		}
 	}
+
+	// Calculate morphological opening of the mask by frequency.
+	for w := range a.X {
+		a.A[w] = -a.A[w]
+	}
+	n.antidilate.filt(a.A, n.antidilate.N, a.A, mREFLECT, 0, 0)
+	for w := range a.X {
+		a.A[w] = -a.A[w]
+	}
+	n.antidilate.filt(a.A, n.antidilate.N, a.A, mREFLECT, 0, 0)
+
 	ssum := 0.
 	for w := range a.A {
 		ssum += a.A[w]
@@ -179,7 +199,9 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 	// Make “fizzinness” less severe by excluding mostly harmonic frames.
 	// TODO Skip stretching empty frames.
 	for w := range a.A {
-		if ssum < float64(n.nbins)/4 {
+		const thresh = 3. / 4
+		// const thresh = 0.5
+		if ssum < float64(n.nbins)*thresh {
 			a.A[w] = 0
 		}
 	}

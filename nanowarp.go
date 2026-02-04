@@ -98,17 +98,15 @@ const (
 	sliceLahMs              = 30
 )
 
-func sliceFile(fs int, file []float64, onsets []float64) (sliced [][]float64) {
+func onsetarg(fs int, onsets []float64) (sa []int) {
 	cold := 0
-	prev := 0
-	lahsamp := fs * sliceLahMs / 1000
-	ons := onsets[lahsamp:]
-	for i, x := range ons {
+	// prev := 0
+	for i, x := range onsets {
 		if x > 0 {
 			interval := fs * minimumSliceMs / 1000
 			if cold < 0 {
-				sliced = append(sliced, file[prev:i])
-				prev = i
+				sa = append(sa, i)
+				// prev = i
 				cold = interval
 			}
 		}
@@ -126,7 +124,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	rpfile := make([]float64, len(lin))
 	onsetfile := make([]float64, len(lin))
 
-	n.hpss.process(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile)
+	n.hpss.process(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile, nil)
 
 	if n.opts.Onsets {
 		copy(lout, onsetfile)
@@ -134,39 +132,95 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		return
 	}
 
-	// slices := sliceFile(n.fs, lin, onsetfile)
-	// wg := sync.WaitGroup{}
-	// prev := 0
-	// for _, sl := range slices {
-	// 	// wg.Add(1)
-	// 	// go func() {
-	// 	// 	prev := prev
-	// 	// 	sl := sl
-	// 	l := n.fs * minimumSliceMs / 1000
-	// 	x := int(math.Floor(max(0, float64(prev))*stretch)) + l
-	// 	y := x + int(math.Ceil(float64(len(sl))*stretch))
-	// 	xstr := float64(y-x) / float64(y-x-l)
-	// 	_ = xstr
-	// 	// fr := make([]float64, len(sl))
-	// 	// copy(fr[n.upper.nfft:], sl)
-	// 	n.lower.process2(sl[l:], sl[l:], lout[x:y], rout[x:y], onsetfile, stretch*xstr, 0)
-	// 	copy(lout[x-l:x], sl[:l])
-	// 	copy(rout[x-l:x], sl[:l])
-	// 	// wg.Done()
-	// 	// }()
-	// 	prev += len(sl)
+	phasor := make([]int, len(lout))
+	fuse := true
+	o0 := 0
+	o1 := 0
+	_ = o1
+	_ = o0
+	pi := 0
+	_ = pi
+	for j := range phasor {
+		i := int(float64(j) / stretch)
+		if lpfile[i] <= 0 && fuse {
+			phasor[j] = i
+			continue
+		}
+		fuse = false
+		if abs(lpfile[i]) > 0 {
+			phasor[j] = phasor[j-1] + 1
+		}
+	}
+	e := 0
+	for j := 1; j < len(phasor); j++ {
+		if phasor[j] == 0 {
+			for k := j; k < len(phasor); k++ {
+				if phasor[k] > 0 {
+					e = k
+					break
+				}
+			}
+			for k := j; k <= e; k++ {
+				u := unmix(float64(j), float64(e), float64(k))
+				m := mix(float64(phasor[j-1]), float64(e)/stretch, u)
+				phasor[k] = int(m)
+			}
+			j = e
+		} else {
+			phasor[j] += phasor[e]
+		}
+	}
+
+	// for i := range lout {
+	// 	lout[i] = float64(phasor[i]) / float64(len(lin))
+	// 	rout[i] = float64(phasor[i]) / float64(len(lin))
 	// }
-	// wg.Wait()
+	// return
+	// arg := onsetarg(n.fs, onsetfile)
+	// // Shift onsets according to the stretch amount.
+	// for i := range arg {
+	// 	// arg[i] = max(1, int(float64(arg[i]-(sliceLahMs*n.fs/1000))*stretch))
+	// 	arg[i] = int(float64(arg[i]) * stretch)
+	// }
+	// // Convert onsets to global phasor.
+	// phasor := make([]int, len(lout))
+	// ai := 1
+	// for j := range phasor {
+	// 	if j > arg[len(arg)-1] {
+	// 		i := int(float64(j) / stretch)
+	// 		phasor[j] = i
+	// 		continue
+	// 	}
+	// 	onsa := minimumSliceMs * n.fs / 1000
+	// 	tbrk := arg[ai-1] - 1 + onsa
+	// 	if j >= arg[ai-1] && j < tbrk {
+	// 		phasor[j] = phasor[arg[ai-1]-1] + j - arg[ai-1]
+	// 	}
+	// 	if j >= tbrk && j <= arg[ai] {
+	// 		u := unmix(float64(tbrk), float64(arg[ai]), float64(j))
+	// 		m := mix(float64(phasor[tbrk-1]), float64(arg[ai])/stretch, u)
+	// 		phasor[j] = int(m)
+	// 	}
+	// 	if j >= arg[ai] {
+	// 		ai++
+	// 	}
+	// 	// lout[j] = float64(phasor[j]) / float64(len(lin))
+	// 	// rout[j] = float64(phasor[j]) / float64(len(lin))
+	// }
+	// return
+
+	n.lower.process3(lin, rin, lout, rout, phasor, 0)
+	return
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
-		n.lower.process2(lhfile, rhfile, lout, rout, onsetfile, stretch, dc)
+		// dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
+		// n.lower.process3(lhfile, rhfile, lout, rout, phasor, dc)
 		wg.Done()
 	}()
 	go func() {
-		n.upper.process2(lpfile, rpfile, lout, rout, onsetfile, stretch, 0)
+		n.upper.process3(lpfile, rpfile, lout, rout, phasor, 0)
 		wg.Done()
 	}()
 	wg.Wait()
