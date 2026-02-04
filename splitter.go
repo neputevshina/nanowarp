@@ -122,8 +122,8 @@ func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 		add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
 	}
 
-	return nil // ons = onset mask
-	// return n.onsetCurve(ons, onsloc)
+	// return nil // ons = onset mask
+	return n.onsetCurve(ons, onsloc)
 }
 
 func (n *splitter) onsetCurve(ons []float64, loc []int) []int {

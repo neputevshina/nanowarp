@@ -93,9 +93,8 @@ func (n *Nanowarp) nmustcollect() int {
 }
 
 const (
-	minimumSliceMs          = 50
-	minimumSliceStretchedMs = 100
-	sliceLahMs              = 30
+	minTransientMs = 15
+	maxTransientMs = 50
 )
 
 func onsetarg(fs int, onsets []float64) (sa []int) {
@@ -103,7 +102,7 @@ func onsetarg(fs int, onsets []float64) (sa []int) {
 	// prev := 0
 	for i, x := range onsets {
 		if x > 0 {
-			interval := fs * minimumSliceMs / 1000
+			interval := fs * minTransientMs / 1000
 			if cold < 0 {
 				sa = append(sa, i)
 				// prev = i
@@ -140,17 +139,44 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	_ = o0
 	pi := 0
 	_ = pi
-	for j := range phasor {
+	lock := true
+	for j := 0; j < len(phasor); j++ {
 		i := int(float64(j) / stretch)
 		if lpfile[i] <= 0 && fuse {
 			phasor[j] = i
 			continue
 		}
 		fuse = false
-		if abs(lpfile[i]) > 0 {
-			phasor[j] = phasor[j-1] + 1
+		if !lock && abs(lpfile[i]) <= 0 {
+			lock = true
+		}
+		if abs(lpfile[i]) > 0 && lock {
+			for ; i < len(lpfile) && abs(lpfile[i]) > 0; i++ {
+				phasor[j] = phasor[j-1] + 1
+				j++
+			}
+			lock = false
+		}
+
+	}
+	for j := len(phasor) - 1; j >= 0; j-- {
+		if phasor[j] <= maxTransientMs*n.fs/1000 {
+		}
+		if phasor[j] >= minTransientMs*n.fs/1000 {
+			j -= phasor[j]
+		}
+		phasor[j] = 0
+	}
+
+	for j := range phasor {
+		i := int(float64(j) / stretch)
+		if phasor[j] > 0 {
+			phasor[j] = o0 + phasor[j]
+		} else {
+			o0 = i
 		}
 	}
+
 	e := 0
 	for j := 1; j < len(phasor); j++ {
 		if phasor[j] == 0 {
@@ -165,21 +191,21 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 				m := mix(float64(phasor[j-1]), float64(e)/stretch, u)
 				phasor[k] = int(m)
 			}
+			if e < j {
+				break
+			}
 			j = e
-		} else {
-			phasor[j] += phasor[e]
 		}
 	}
+	for j := e; j < len(phasor); j++ {
+		i := int(float64(j) / stretch)
+		phasor[j] = i
+	}
 
-	// for i := range lout {
-	// 	lout[i] = float64(phasor[i]) / float64(len(lin))
-	// 	rout[i] = float64(phasor[i]) / float64(len(lin))
-	// }
-	// return
 	// arg := onsetarg(n.fs, onsetfile)
 	// // Shift onsets according to the stretch amount.
 	// for i := range arg {
-	// 	// arg[i] = max(1, int(float64(arg[i]-(sliceLahMs*n.fs/1000))*stretch))
+	// 	// arg[i] = max(1, int(float64(arg[i])*stretch))
 	// 	arg[i] = int(float64(arg[i]) * stretch)
 	// }
 	// // Convert onsets to global phasor.
@@ -191,7 +217,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	// 		phasor[j] = i
 	// 		continue
 	// 	}
-	// 	onsa := minimumSliceMs * n.fs / 1000
+	// 	onsa := minTransientMs * n.fs / 1000
 	// 	tbrk := arg[ai-1] - 1 + onsa
 	// 	if j >= arg[ai-1] && j < tbrk {
 	// 		phasor[j] = phasor[arg[ai-1]-1] + j - arg[ai-1]
@@ -204,8 +230,11 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	// 	if j >= arg[ai] {
 	// 		ai++
 	// 	}
-	// 	// lout[j] = float64(phasor[j]) / float64(len(lin))
-	// 	// rout[j] = float64(phasor[j]) / float64(len(lin))
+	// }
+
+	// for i := range lout {
+	// 	lout[i] = float64(phasor[i]) / float64(len(lin))
+	// 	rout[i] = float64(phasor[i]) / float64(len(lin))
 	// }
 	// return
 
