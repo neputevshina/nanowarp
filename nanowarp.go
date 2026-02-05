@@ -179,7 +179,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 const (
 	minTransientMs = 15
-	maxTransientMs = 50
+	maxTransientMs = 55
 )
 
 func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) []float64 {
@@ -207,15 +207,15 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 
 	}
 
-	// for j := len(phasor) - 1; j >= 0; j-- {
-	// 	if phasor[j] >= float64(maxTransientMs*n.fs/1000) {
-	// 		phasor[j] = 0
-	// 	}
-	// 	if phasor[j] >= float64(minTransientMs*n.fs/1000) {
-	// 		j -= int(phasor[j])
-	// 	}
-	// 	phasor[j] = 0
-	// }
+	for j := len(phasor) - 1; j >= 0; j-- {
+		if phasor[j] >= float64(maxTransientMs*n.fs/1000) {
+			phasor[j] = 0
+		}
+		if phasor[j] >= float64(minTransientMs*n.fs/1000) {
+			j -= int(phasor[j])
+		}
+		phasor[j] = 0
+	}
 
 	for j := range phasor {
 		i := int(float64(j) / stretch)
