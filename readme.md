@@ -11,28 +11,42 @@ Current state: not ready. Algorithm is still in the state of polishing, user-fac
 ## Installation and usage
 
 ```
-$ go install github.com/neputevshina/nanowarp/cmd/nanowarp
+$ go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
 $ nanowarp -i inputfile.wav -t <stretch> [-o outputfile.wav]
 ```
 
 ## Implementation
+
 Nanowarp is a phase gradient heap integration (PGHI) phase vocoder[1] where partial derivatives 
 of phase are obtained through time-frequency reassignment[2]. This way accurate phase-time 
 advance can be obtained using only one windowed grain instead of two.
 
-To reduce smearing of transients, a variant of median harmonic-percussive source separation
-(HPSS)[3] with a very short (nfft=512) asymmetric[5] window is first applied to the signal. 
-Extracted impulsive components of the signal are then warped with smaller FFT grain (64 in 
-this case), and harmonic portion is then warped using large grain (2048). Like in original 
-implementation of PGHI-PV, FFT is oversampled by factor of 2 with zero-padding. Phase is 
-fully reset on onsets, which does not help with quality, but makes numerical errors smaller. 
+Like in original implementation of PGHI-PV, FFT is oversampled by factor of 2 with zero-padding. 
 Stereo coherence is obtained through stretching mono and adding phase difference of 
 respective side channels to it after stretching to get stereo signals back[6].
 
-Currently experimenting with dynamic stretch size.
+### -alt=false
+To reduce smearing of transients, a variant of median harmonic-percussive source separation
+(HPSS)[3] with a very short (nfft=512) asymmetric[5] window is first applied to the signal. 
+Extracted impulsive components of the signal are then warped with smaller FFT grain (64 in 
+this case), and harmonic portion is then warped using large grain (4096). 
+Phase is fully reset on onset points, detected from the percussive signal separately.
+
+### -alt=true
+Median HPSS with same asymmetric window and is used to extract percussive component of the signal.
+HPSS mask is eroded by frequency, and some certain conditions applied to exclude most of the 
+incorrectly classified noise.
+
+Then, a phase ramp for the entire output signal is generated. If percussive signal is non-zero in 
+the time domain, phase ramp will have a derivative of 1 in these samples. A switch can be from 15 to 
+50 ms long max. Indexes of percussive points are scaled by the stretch size, points between switches
+are linearly interpolated.
+
+Then the same large PGHI phase vocoder is applied, using phase ramp for the input sample indexes.
+If the derivative of the signal is 1, samples are passed through to the output.
 
 ## Demos
-[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
+~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~ Outdated
 
 ## TODO Testing strategy
 - Various impulse train signals
@@ -49,6 +63,7 @@ Currently experimenting with dynamic stretch size.
 - Smaller dynamic range comparing to original audio. Related to phase accuracy.
 - Amplidude modulation on transients. A consequence of the previous issue.
 - Artifacts. Artifacts artifacts artifacts. Different after each fix.
+- `-alt=true`: phase interruption on transients results in a “chopped” sound.
 
 
 ## References
