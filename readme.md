@@ -45,6 +45,8 @@ are linearly interpolated.
 Then the same large PGHI phase vocoder is applied, using phase ramp for the input sample indexes.
 If the derivative of the signal is 1, samples are passed through to the output.
 
+> TODO: Lite mode: reset the phase at peaks of cross-correlation of analyzed and synthesized signals.
+
 ## Demos
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~ Outdated
 
