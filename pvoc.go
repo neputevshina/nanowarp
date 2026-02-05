@@ -152,6 +152,9 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay
 	bayer := []float64{0.2, 0.6, 0.4, 0.8}
 	for j := -n.nbuf; ; j += n.hop {
 		di, df := math.Modf(delay)
+		if j > len(lout)-n.nbuf {
+			break
+		}
 		i := int(shift[clamp(0, len(lout)-1, j)])
 		if i > len(lin)-n.nbuf {
 			break
@@ -161,17 +164,25 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay
 		copy(lingrain[max(0, -i):], lin[max(0, i):min(len(lin), i+n.nbuf)])
 		copy(ringrain[max(0, -i):], rin[max(0, i):min(len(lin), i+n.nbuf)])
 		coeff := 1.
-		if i > 0 {
-			coeff = 1 / (shift[i] - shift[i-1])
-		}
-		if j <= 0 {
-			coeff = 0
-		}
-		if math.Abs(coeff-1) < 0.001 {
-			coeff = 0
+		if j > 0 {
+			coeff = 1 / (shift[j] - shift[j-1])
+			if coeff != coeff || math.IsInf(coeff, 0) {
+				coeff = 1
+			}
+			// if coeff < 0 || coeff > 5 {
+			// 	println(i, j, coeff)
+			// }
 		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, coeff)
+		if j <= 0 {
+			coeff = 1
+		}
+		// if coeff == 1 {
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(coeff))
+		// } else {
+		// 	clear(lgrainbuf)
+		// 	clear(rgrainbuf)
+		// }
 
 		tj := j + int(di) + boolint(df > bayer[j%len(bayer)])
 		loutgrain := lout[max(0, tj):clamp(0, len(lout), tj+n.nbuf)]
@@ -231,7 +242,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
 	// Force reset on a no-op stretch, including detected transients.
-	if stretch == 0 {
+	if stretch == 1 {
 		for w := range a.Phase {
 			a.Pphase[w] = cmplx.Phase(a.X[w])
 		}

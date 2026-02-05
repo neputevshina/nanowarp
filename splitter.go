@@ -2,6 +2,7 @@ package nanowarp
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"slices"
 
@@ -29,10 +30,9 @@ type splitter struct {
 	a sbufs
 }
 type sbufs struct {
-	S, Wf, Wr, Wd, Wdt, Wt, M, H, P, A []float64
-	Fadv, Pfadv                        []float64
-	Xprevs                             [][]complex128 // Lookahead framebuffer
-	L, R, X, Y                         []complex128
+	S, Wf, Wr, Wd, Wdt, Wt, M, H, P, A, B []float64
+	Xprevs                                [][]complex128 // Lookahead framebuffer
+	L, R, X, Y                            []complex128
 }
 type sargs struct {
 	hn, vn int
@@ -67,13 +67,13 @@ func splitterNew(a sargs, nfft int, filtcorr float64) (n *splitter) {
 	qtimp2 := 1.
 	n.dilate = mediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
 
-	nadl := 5
+	nadl := 15
 	n.antidilate = mediatorNew[float64, bang](nadl, nadl, 1)
 
 	n.tbox = boxfiltNew(200 * 48 * corr)
 
-	niemitalo(n.a.Wf)
-	// Asymmetric window requires applying reversed copy of itself on synthesis stage.
+	niemitalo(n.a.Wf) // Asymmetric window requires applying reversed copy of itself on synthesis stage.
+	// fill(n.a.Wf, 1)
 	copy(n.a.Wr, n.a.Wf)
 	slices.Reverse(n.a.Wr)
 
@@ -169,6 +169,8 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 	for w := range a.X {
 		a.M[w] = (mag(a.L[w]) + mag(a.R[w])) / 2
 	}
+	fullsum := sum(a.M)
+
 	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
 	for w := range a.X {
 		m := n.himp[w]
@@ -184,27 +186,32 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 		}
 	}
 
-	// Calculate morphological opening of the mask by frequency.
+	// Calculate erosion of the mask by frequency.
 	for w := range a.X {
 		a.A[w] = -a.A[w]
 	}
-	n.antidilate.filt(a.A, n.antidilate.N, a.A, mREFLECT, 0, 0)
+	n.antidilate.filt(a.A, n.antidilate.N, a.B, mREFLECT, 0, 0)
 	for w := range a.X {
-		a.A[w] = -a.A[w]
+		// a.B[w] = -a.B[w]
+		a.A[w] = -a.B[w]
 	}
-	n.antidilate.filt(a.A, n.antidilate.N, a.A, mREFLECT, 0, 0)
+	// n.antidilate.filt(a.B, n.antidilate.N, a.A, mREFLECT, 0, 0)
 
 	ssum := 0.
+	masksum := 0.
 	for w := range a.A {
-		ssum += a.A[w]
+		pink := math.Sqrt(float64(w)) // Pink noise weighting
+		ssum += a.A[w] * pink
+		masksum += a.M[w] * a.A[w]
 	}
+
 	// Make “fizzinness” less severe by excluding mostly harmonic frames.
 	// TODO Skip stretching empty frames.
-	for w := range a.A {
-		th := n.thresh
-		if ssum < float64(n.nbins)*th {
-			a.A[w] = 0
-		}
+	intsqrt := math.Pow(float64(n.nbins)*2/3, 1.5) // Maximum possible ssum
+	th := n.thresh
+	sum(a.M)
+	if ssum < intsqrt*th || masksum < fullsum/2 {
+		clear(a.A)
 	}
 
 	for w := range a.L {

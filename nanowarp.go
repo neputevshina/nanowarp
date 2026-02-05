@@ -86,13 +86,13 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	if opts.Alt {
 		a.hq = 0.5
 		a.vq = 0.5
-		a.thresh = 0.9
+		a.thresh = 0.75
 	} else {
 		a.hq = 0.75
 		a.vq = 0.25
 		a.thresh = 0.4
 	}
-	n.hpss = splitterNew(a, 512, float64(int(1)<<w))
+	n.hpss = splitterNew(a, 1024, float64(int(1)<<w))
 
 	return
 }
@@ -103,11 +103,6 @@ func (n *Nanowarp) nmustcollect() int {
 	}
 	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpss.nbuf, n.hpss.hop))
 }
-
-const (
-	minTransientMs = 15
-	maxTransientMs = 50
-)
 
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
@@ -120,14 +115,48 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 	n.hpss.process(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile, nil)
 
+	// ca := 0.
+	// j := 0.
+	// for i := range lpfile {
+	// 	l := abs(lpfile[i])
+	// 	r := abs(rpfile[i])
+	// 	v := max(l, r)
+	// 	if l < 1e-3 || v < ca {
+	// 		lpfile[i] = 0
+	// 		rpfile[i] = 0
+	// 	} else {
+	// 		j++
+	// 		ca += (v - ca) / float64(j+1)
+	// 	}
+	// }
 	if n.opts.Onsets {
 		copy(lout, lpfile)
 		copy(rout, rpfile)
 		return
 	}
+	for i := range lpfile {
+		lpfile[i] = max(abs(lpfile[i]), abs(rpfile[i]))
+	}
 
 	if n.opts.Alt {
 		phasor := n.getPhasor(lout, stretch, lpfile)
+		for j := range phasor {
+			phasor[j] = phasor[j] - float64(n.lower.nbuf/2)
+		}
+		// for i := 1; i < len(phasor); i++ {
+		// 	lout[i] = 1 / (phasor[i] - phasor[i-1])
+		// 	if lout[i] < 0 {
+		// 		fmt.Println(`!!`, i, lout[i])
+		// 		e++
+		// 	}
+		// 	if lout[i] != lout[i] || math.IsInf(lout[i], 0) {
+		// 		fmt.Println(i, lout[i])
+		// 		lout[i] = 1
+		// 	}
+		// }
+		// copy(rout, phasor)
+		// copy(lout, phasor)
+		// println(e)
 		n.lower.process3(lin, rin, lout, rout, phasor, 0)
 		return
 	}
@@ -146,6 +175,11 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	wg.Wait()
 
 }
+
+const (
+	minTransientMs = 15
+	maxTransientMs = 50
+)
 
 func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) []float64 {
 	phasor := make([]float64, len(lout))
@@ -173,8 +207,11 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 	}
 
 	// for j := len(phasor) - 1; j >= 0; j-- {
-	// 	if phasor[j] >= minTransientMs*n.fs/1000 {
-	// 		j -= phasor[j]
+	// 	if phasor[j] >= float64(maxTransientMs*n.fs/1000) {
+	// 		phasor[j] = 0
+	// 	}
+	// 	if phasor[j] >= float64(minTransientMs*n.fs/1000) {
+	// 		j -= int(phasor[j])
 	// 	}
 	// 	phasor[j] = 0
 	// }
