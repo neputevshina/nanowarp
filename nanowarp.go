@@ -47,7 +47,7 @@ type Nanowarp struct {
 	left, right []float64
 
 	lower, upper *warper
-	hpss         *splitter
+	hpss, hpssb  *splitter
 
 	opts      Options
 	stretch   float64
@@ -82,8 +82,10 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n.lower.diffadv = opts.Diffadv
 
 	a := sargs{}
-	a.hn = (2*21 - 1)
-	a.vn = 15
+	a.nfft = 1024
+	a.hn = 81
+	a.vn = 31
+	a.dilaten = 3
 	if opts.Alt {
 		a.hq = 0.5
 		a.vq = 0.5
@@ -93,7 +95,17 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 		a.vq = 0.25
 		a.thresh = 0.4
 	}
-	n.hpss = splitterNew(a, 1024, float64(int(1)<<w))
+	n.hpss = splitterNew(a, float64(int(1)<<w))
+
+	b := sargs{}
+	b.nfft = 8192
+	b.hn = 21
+	b.vn = 21
+	b.dilaten = 21
+	b.hq = 0.5
+	b.vq = 0.5
+	b.thresh = 0
+	n.hpssb = splitterNew(b, float64(int(1)<<w))
 
 	return
 }
@@ -114,29 +126,24 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	rpfile := make([]float64, len(lin))
 	onsetfile := make([]float64, len(lin))
 
-	n.hpss.process(lin, rin, lpfile, rpfile, lhfile, rhfile, onsetfile, nil)
+	n.hpss.process(lin, rin, lpfile, rpfile, nil, nil, nil, nil)
 
-	// ca := 0.
-	// j := 0.
-	// for i := range lpfile {
-	// 	l := abs(lpfile[i])
-	// 	r := abs(rpfile[i])
-	// 	v := max(l, r)
-	// 	if l < 1e-3 || v < ca {
-	// 		lpfile[i] = 0
-	// 		rpfile[i] = 0
-	// 	} else {
-	// 		j++
-	// 		ca += (v - ca) / float64(j+1)
-	// 	}
-	// }
 	if n.opts.Onsets {
 		copy(lout, lpfile)
-		copy(rout, rpfile)
+		copy(rout, lpfile)
 		return
 	}
+
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
+	filtlen := maxTransientMs * n.fs / 1000
+	maxfilt := mediatorNew[float64, bang](filtlen, filtlen, 1)
 	for i := range lpfile {
-		lpfile[i] = max(abs(lpfile[i]), abs(rpfile[i]))
+		a := boolfloat(max(abs(lpfile[i]), abs(rpfile[i])) > 0)
+		maxfilt.Insert(a, bang{})
+		if i > filtlen {
+			a, _ = maxfilt.Take()
+		}
+		lpfile[i] = a
 	}
 
 	if n.opts.Alt {
@@ -144,20 +151,6 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		for j := range phasor {
 			phasor[j] = phasor[j] - float64(n.lower.nbuf/2)
 		}
-		// for i := 1; i < len(phasor); i++ {
-		// 	lout[i] = 1 / (phasor[i] - phasor[i-1])
-		// 	if lout[i] < 0 {
-		// 		fmt.Println(`!!`, i, lout[i])
-		// 		e++
-		// 	}
-		// 	if lout[i] != lout[i] || math.IsInf(lout[i], 0) {
-		// 		fmt.Println(i, lout[i])
-		// 		lout[i] = 1
-		// 	}
-		// }
-		// copy(rout, phasor)
-		// copy(lout, phasor)
-		// println(e)
 		n.lower.process3(lin, rin, lout, rout, phasor, 0)
 		return
 	}
@@ -183,6 +176,7 @@ const (
 )
 
 func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) []float64 {
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).getPhasor")
 	phasor := make([]float64, len(lout))
 	fuse := true
 	o0 := 0.

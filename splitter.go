@@ -35,12 +35,14 @@ type sbufs struct {
 	L, R, X, Y                            []complex128
 }
 type sargs struct {
-	hn, vn int
-	hq, vq float64
-	thresh float64
+	hn, vn, dilaten int
+	hq, vq          float64
+	thresh          float64
+	nfft            int
 }
 
-func splitterNew(a sargs, nfft int, filtcorr float64) (n *splitter) {
+func splitterNew(a sargs, filtcorr float64) (n *splitter) {
+	nfft := a.nfft
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
@@ -67,8 +69,7 @@ func splitterNew(a sargs, nfft int, filtcorr float64) (n *splitter) {
 	qtimp2 := 1.
 	n.dilate = mediatorNew[float64, bang](ntimp2, ntimp2, qtimp2)
 
-	nadl := 15
-	n.antidilate = mediatorNew[float64, bang](nadl, nadl, 1)
+	n.antidilate = mediatorNew[float64, bang](a.dilaten, a.dilaten, 1)
 
 	n.tbox = boxfiltNew(200 * 48 * corr)
 
@@ -101,9 +102,6 @@ func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 
 	onsgrain := make([]float64, n.nfft)
 	nf := n.nfft
-	if lperc == nil {
-		nf = 0
-	}
 	lpercgrain := make([]float64, nf)
 	rpercgrain := make([]float64, nf)
 	lharmgrain := make([]float64, nf)
@@ -117,15 +115,21 @@ func (n *splitter) process(lin, rin []float64, lperc, rperc, lharm, rharm, ons [
 			rharmgrain,
 			onsgrain)
 		if lperc != nil {
-			add(lperc[i:min(len(ons), i+n.nbuf)], lpercgrain)
-			add(rperc[i:min(len(ons), i+n.nbuf)], rpercgrain)
-			add(lharm[i:min(len(ons), i+n.nbuf)], lharmgrain)
-			add(rharm[i:min(len(ons), i+n.nbuf)], rharmgrain)
+			add(lperc[i:min(len(lin), i+n.nbuf)], lpercgrain)
+			add(rperc[i:min(len(lin), i+n.nbuf)], rpercgrain)
 		}
-		add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
+		if lharm != nil {
+			add(lharm[i:min(len(lin), i+n.nbuf)], lharmgrain)
+			add(rharm[i:min(len(lin), i+n.nbuf)], rharmgrain)
+		}
+		if ons != nil {
+			add(ons[i:min(len(ons), i+n.nbuf)], onsgrain)
+		}
 	}
-
-	return n.onsetCurve(ons, onsloc)
+	if ons != nil {
+		return n.onsetCurve(ons, onsloc)
+	}
+	return onsloc
 }
 
 func (n *splitter) onsetCurve(ons []float64, loc []int) []int {
@@ -200,17 +204,18 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 	ssum := 0.
 	masksum := 0.
 	for w := range a.A {
-		pink := math.Sqrt(float64(w)) // Pink noise weighting
+		pink := math.Sqrt(float64(w))
 		ssum += a.A[w] * pink
 		masksum += a.M[w] * a.A[w]
 	}
 
+	_ = fullsum
 	// Make “fizzinness” less severe by excluding mostly harmonic frames.
 	// TODO Skip stretching empty frames.
 	intsqrt := math.Pow(float64(n.nbins)*2/3, 1.5) // Maximum possible ssum
 	th := n.thresh
 	sum(a.M)
-	if ssum < intsqrt*th || masksum < fullsum/2 {
+	if ssum < intsqrt*th || masksum < fullsum*0.5 {
 		clear(a.A)
 	}
 

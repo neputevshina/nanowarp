@@ -169,17 +169,14 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay
 			if coeff != coeff || math.IsInf(coeff, 0) {
 				coeff = 1
 			}
-			// if coeff < 0 || coeff > 5 {
-			// 	println(i, j, coeff)
-			// }
 		}
 
 		if j <= 0 {
 			coeff = 1
 		}
-		// if coeff == 1 {
+
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(coeff))
-		// } else {
+		// if coeff != 1 {
 		// 	clear(lgrainbuf)
 		// 	clear(rgrainbuf)
 		// }
