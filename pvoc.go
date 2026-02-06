@@ -68,79 +68,6 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process2(lin, rin, lout, rout, onsets []float64, stretch float64, delay float64) {
-	inhop := float64(n.hop) / stretch
-	ih, fh := math.Modf(inhop)
-	fmt.Fprintln(os.Stderr, `(*warper).process2`)
-	fmt.Fprintln(os.Stderr, `stretch:`, stretch, `nbuf:`, n.nbuf, `nsampin:`, len(lin), `nfft:`, n.nfft)
-	fmt.Fprintln(os.Stderr, `inhop:`, inhop, `whole:`, ih, `frac:`, fh, `interval:`, float64(n.hop)/(ih+1), `-`, float64(n.hop)/(ih))
-	fmt.Fprintln(os.Stderr, `outhop:`, n.hop)
-
-	get := func() []float64 { return make([]float64, n.nfft) }
-	lgrainbuf := get()
-	rgrainbuf := get()
-	lingrain := get()
-	ringrain := get()
-
-	id, fd := math.Modf(delay)
-	os := int(-float64(n.nbuf) * stretch)
-	j := os + int(id)
-	dh := fh
-	dd := fd
-
-	trig := true
-	_ = trig
-	for i := -n.nbuf; i < len(lin)+n.nbuf; i += int(ih) {
-		if j > len(lout) {
-			break
-		}
-		clear(lingrain)
-		clear(ringrain)
-		copy(lingrain[max(0, -i):], lin[max(0, i):min(len(lin), i+n.nbuf)])
-		copy(ringrain[max(0, -i):], rin[max(0, i):min(len(lin), i+n.nbuf)])
-
-		// Dither both input and output hop sizes to get
-		// fractional stretch.
-		// Snap stretch coefficient to the dithered input hop size
-		// to hopefully get more accurate phase.
-		dh += fh
-		coeff := float64(n.hop) / (ih)
-		if dh > 0 {
-			i += 1
-			dh -= 1
-			coeff = float64(n.hop) / (ih + 1)
-		}
-
-		// Phase reset on transients.
-		sl := onsets[clamp(0, len(lin)-1, i+n.hop):clamp(0, len(lin)-1, i+3*n.hop)]
-		// sl := onsets[clamp(0, len(lin)-1, i-2*n.hop):clamp(0, len(lin)-1, i+2*n.hop)]
-		if slices.Contains(sl, 1) {
-			if trig {
-				coeff = 0
-			}
-			trig = false
-		} else {
-			trig = true
-		}
-
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, coeff)
-		dd += fd
-		if dh > 0 {
-			j += 1
-			dd -= 1
-		}
-
-		// println(i, j, `in`, max(0, i), min(len(lin), i+n.nbuf), `grain`, max(0, -i), `outgrain`, max(0, -j), `out`, max(0, j), min(len(lout), j+n.nbuf))
-
-		loutgrain := lout[max(0, j):clamp(0, len(lout), j+n.nbuf)]
-		routgrain := rout[max(0, j):clamp(0, len(lout), j+n.nbuf)]
-		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -j):])
-		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
-
-		j += n.hop
-	}
-}
-
 func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
@@ -176,10 +103,10 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay
 		}
 
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(coeff))
-		// if coeff != 1 {
-		// 	clear(lgrainbuf)
-		// 	clear(rgrainbuf)
-		// }
+		if n.root.opts.Onsets && coeff != 1 {
+			clear(lgrainbuf)
+			clear(rgrainbuf)
+		}
 
 		tj := j + int(di) + boolint(df > bayer[j%len(bayer)])
 		loutgrain := lout[max(0, tj):clamp(0, len(lout), tj+n.nbuf)]
@@ -304,9 +231,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 		case -1:
 			if n.arm[w] {
 				adv := tadv(w)
-				// if stretch == 0 {
-				// 	adv = (math.Pi*float64(w) + (cmplx.Phase(a.X[w])-a.Pphase[w])/4) / (olap * osampc / 2)
-				// }
 				a.Phase[w] = a.Pphase[w] + adv
 				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
@@ -342,7 +266,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	goto skip
 skip:
 	copy(a.Px, a.X)
-	copy(a.Pfadv, a.Fadv)
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {

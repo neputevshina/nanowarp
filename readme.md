@@ -6,7 +6,7 @@ this repo with a Go version.
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export.
 
-Current state: not ready. Algorithm is still in the state of polishing, user-facing API does not exist.
+Current state: not ready. Algorithm is still polished, user-facing API does not exist.
 
 ## Installation and usage
 
@@ -25,30 +25,21 @@ Like in original implementation of PGHI-PV, FFT is oversampled by factor of 2 wi
 Stereo coherence is obtained through stretching mono and adding phase difference of 
 respective side channels to it after stretching to get stereo signals back[6].
 
-### -alt=false
-To reduce smearing of transients, a variant of median harmonic-percussive source separation
-(HPSS)[3] with a very short (nfft=512) asymmetric[5] window is first applied to the signal. 
-Extracted impulsive components of the signal are then warped with smaller FFT grain (64 in 
-this case), and harmonic portion is then warped using large grain (4096). 
-Phase is fully reset on onset points, detected from the percussive signal separately.
-
-### -alt=true
-Median HPSS with same asymmetric window and is used to extract percussive component of the signal.
-HPSS mask is eroded by frequency, and some certain conditions applied to exclude most of the 
-incorrectly classified noise.
+Median harmonic-percussive source separation (HPSS)[3] with a very short (nfft=1024 @ 48kHz) 
+asymmetric[5] window is used to extract percussive component of the signal. HPSS mask is 
+eroded by frequency, and some certain conditions applied to exclude most of the incorrectly 
+classified noise.
 
 Then, a phase ramp for the entire output signal is generated. If percussive signal is non-zero in 
-the time domain, phase ramp will have a derivative of 1 in these samples. A switch can be from 15 to 
-50 ms long max. Indexes of percussive points are scaled by the stretch size, points between switches
-are linearly interpolated.
+the time domain, phase ramp will have a derivative of 1 in these samples. A transient portion of 
+the signal is limited to be from 15 to 50 ms long max. Indexes of percussive points are scaled 
+by the stretch size, points between switches are linearly interpolated.
 
-Then the same large PGHI phase vocoder is applied, using phase ramp for the input sample indexes.
-If the derivative of the signal is 1, samples are passed through to the output.
-
-> TODO: Lite mode: reset the phase at peaks of cross-correlation of analyzed and synthesized signals.
+Then the large-grained (nfft=4096) PGHI phase vocoder is applied, using phase ramp for the input 
+sample indexes. If the derivative of the signal is 1, samples are passed through to the output.
 
 ## Demos
-~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~ Outdated
+[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
 
 ## TODO Testing strategy
 - Various impulse train signals
@@ -63,10 +54,7 @@ If the derivative of the signal is 1, samples are passed through to the output.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
 - Smaller dynamic range comparing to original audio. Related to phase accuracy.
-- Amplidude modulation on transients. A consequence of the previous issue.
-- Artifacts. Artifacts artifacts artifacts. Different after each fix.
-- `-alt=true`: phase interruption on transients results in a “chopped” sound.
-
+- Phase interruption on transients sometimes results in a “chopped” sound.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)

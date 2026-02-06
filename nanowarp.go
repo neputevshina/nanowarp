@@ -39,7 +39,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sync"
 )
 
 type Nanowarp struct {
@@ -47,7 +46,7 @@ type Nanowarp struct {
 	left, right []float64
 
 	lower, upper *warper
-	hpss, hpssb  *splitter
+	hpss         *splitter
 
 	opts      Options
 	stretch   float64
@@ -57,7 +56,6 @@ type Nanowarp struct {
 type Options struct {
 	Diffadv bool
 	Onsets  bool
-	Alt     bool
 	Riddim  bool
 }
 
@@ -86,26 +84,11 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	a.hn = 81
 	a.vn = 31
 	a.dilaten = 3
-	if opts.Alt {
-		a.hq = 0.5
-		a.vq = 0.5
-		a.thresh = 0.75
-	} else {
-		a.hq = 0.75
-		a.vq = 0.25
-		a.thresh = 0.4
-	}
-	n.hpss = splitterNew(a, float64(int(1)<<w))
+	a.hq = 0.5
+	a.vq = 0.5
+	a.thresh = 0.75
 
-	b := sargs{}
-	b.nfft = 8192
-	b.hn = 21
-	b.vn = 21
-	b.dilaten = 21
-	b.hq = 0.5
-	b.vq = 0.5
-	b.thresh = 0
-	n.hpssb = splitterNew(b, float64(int(1)<<w))
+	n.hpss = splitterNew(a, float64(int(1)<<w))
 
 	return
 }
@@ -120,19 +103,10 @@ func (n *Nanowarp) nmustcollect() int {
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
-	lhfile := make([]float64, len(lin))
 	lpfile := make([]float64, len(lin))
-	rhfile := make([]float64, len(lin))
 	rpfile := make([]float64, len(lin))
-	onsetfile := make([]float64, len(lin))
 
 	n.hpss.process(lin, rin, lpfile, rpfile, nil, nil, nil, nil)
-
-	if n.opts.Onsets {
-		copy(lout, lpfile)
-		copy(rout, lpfile)
-		return
-	}
 
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
 	filtlen := maxTransientMs * n.fs / 1000
@@ -146,27 +120,11 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		lpfile[i] = a
 	}
 
-	if n.opts.Alt {
-		phasor := n.getPhasor(lout, stretch, lpfile)
-		for j := range phasor {
-			phasor[j] = phasor[j] - float64(n.lower.nbuf/2)
-		}
-		n.lower.process3(lin, rin, lout, rout, phasor, 0)
-		return
+	phasor := n.getPhasor(lout, stretch, lpfile)
+	for j := range phasor {
+		phasor[j] = phasor[j] - float64(n.lower.nbuf/2)
 	}
-
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		dc := float64(n.lower.hop-n.upper.hop) * (stretch - 1) * 2
-		n.lower.process2(lhfile, rhfile, lout, rout, onsetfile, stretch, dc)
-		wg.Done()
-	}()
-	go func() {
-		n.upper.process2(lpfile, rpfile, lout, rout, onsetfile, stretch, 0)
-		wg.Done()
-	}()
-	wg.Wait()
+	n.lower.process3(lin, rin, lout, rout, phasor, 0)
 
 }
 
@@ -266,26 +224,26 @@ nw.SetPitch(semitones float64)
 New() *Nanowarp
 */
 
-func (n *Nanowarp) Push64(l []float64, r []float64) (nl, nr int) {
-	c := n.nmustcollect()
-	diffa := func(a, b *[]float64) {
-		d := len(*a) - c
-		if d < 0 {
-			*a = append(*a, (*b)[:min(len(*b), -d)]...)
-		}
-	}
-	diffa(&n.left, &l)
-	diffa(&n.right, &r)
-	return 0, 0
-}
+// func (n *Nanowarp) Push64(l []float64, r []float64) (nl, nr int) {
+// 	c := n.nmustcollect()
+// 	diffa := func(a, b *[]float64) {
+// 		d := len(*a) - c
+// 		if d < 0 {
+// 			*a = append(*a, (*b)[:min(len(*b), -d)]...)
+// 		}
+// 	}
+// 	diffa(&n.left, &l)
+// 	diffa(&n.right, &r)
+// 	return 0, 0
+// }
 
-func (n *Nanowarp) Ready() bool {
-	if len(n.left) != len(n.right) {
-		panic(`nanowarp: unreachable, stereo buffer length mismatch`)
-	}
-	return len(n.left) == n.nmustcollect()
-}
+// func (n *Nanowarp) Ready() bool {
+// 	if len(n.left) != len(n.right) {
+// 		panic(`nanowarp: unreachable, stereo buffer length mismatch`)
+// 	}
+// 	return len(n.left) == n.nmustcollect()
+// }
 
-func (n *Nanowarp) Pull64(left []float64, right []float64) (nl, nr int) {
-	return 0, 0
-}
+// func (n *Nanowarp) Pull64(left []float64, right []float64) (nl, nr int) {
+// 	return 0, 0
+// }

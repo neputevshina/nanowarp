@@ -56,10 +56,6 @@ func unmix[F constraints.Float](a, b, x F) F {
 	return (x - a) / (b - a)
 }
 
-func remix[F constraints.Float](a, b, x F) F {
-	return mix(a, b, unmix(a, b, x))
-}
-
 func clamp[T constraints.Ordered](a, b, x T) T {
 	return max(a, min(b, x))
 }
