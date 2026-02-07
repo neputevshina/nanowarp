@@ -41,6 +41,11 @@ import (
 	"os"
 )
 
+const (
+	minTransientMs = 15
+	maxTransientMs = 55
+)
+
 type Nanowarp struct {
 	fs          int
 	left, right []float64
@@ -54,9 +59,16 @@ type Nanowarp struct {
 }
 
 type Options struct {
+	// Use time-phase derivative differences from mono in stereo preservation
+	// instead of phase differences.
 	Diffadv bool
-	Onsets  bool
-	Riddim  bool
+	// Output scaled onsets only.
+	Onsets bool
+	// Scale the time between transients quadratically.
+	Riddim bool
+	// Don't perform transient separation, output raw PVDR with phase reset
+	// with arbitrary periodicity.
+	Raw bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -74,10 +86,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n.fs = samplerate
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
-	n.lower = warperNew(4096*w, n) // 8192 (4096) @ 48000 Hz // TODO 6144@48k prob the best
-	n.lower.diffadv = opts.Diffadv
-	n.upper = warperNew(64*w, n) // 128 (64) @ 48000 Hz
-	n.lower.diffadv = opts.Diffadv
+	n.lower = warperNew(4096*w, n) // TODO 6144@48k prob the best
 
 	a := sargs{}
 	a.nfft = 1024
@@ -101,41 +110,43 @@ func (n *Nanowarp) nmustcollect() int {
 }
 
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME, coeff:", stretch)
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
+	fmt.Fprintln(os.Stderr, "Coeff =", stretch)
 
 	lpfile := make([]float64, len(lin))
 	rpfile := make([]float64, len(lin))
 
-	n.hpss.process(lin, rin, lpfile, rpfile, nil, nil, nil, nil)
-
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
-	filtlen := maxTransientMs * n.fs / 1000
-	maxfilt := mediatorNew[float64, bang](filtlen, filtlen, 1)
-	for i := range lpfile {
-		a := boolfloat(max(abs(lpfile[i]), abs(rpfile[i])) > 0)
-		maxfilt.Insert(a, bang{})
-		if i > filtlen {
-			a, _ = maxfilt.Take()
+	phasor := make([]float64, len(lout))
+	if n.opts.Raw {
+		for j := range phasor {
+			phasor[j] = float64(j) / stretch
 		}
-		lpfile[i] = a
+	} else {
+		n.hpss.process(lin, rin, lpfile, rpfile, nil, nil, nil, nil)
+
+		fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
+		filtlen := maxTransientMs * n.fs / 1000
+		maxfilt := mediatorNew[float64, bang](filtlen, filtlen, 1)
+		for i := range lpfile {
+			a := boolfloat(max(abs(lpfile[i]), abs(rpfile[i])) > 0)
+			maxfilt.Insert(a, bang{})
+			if i > filtlen {
+				a, _ = maxfilt.Take()
+			}
+			lpfile[i] = a
+		}
+		n.getPhasor(phasor, lpfile, stretch)
+		for j := range phasor {
+			phasor[j] = phasor[j] - float64(n.lower.nbuf/2)
+		}
 	}
 
-	phasor := n.getPhasor(lout, stretch, lpfile)
-	for j := range phasor {
-		phasor[j] = phasor[j] - float64(n.lower.nbuf/2)
-	}
 	n.lower.process3(lin, rin, lout, rout, phasor, 0)
-
 }
 
-const (
-	minTransientMs = 15
-	maxTransientMs = 55
-)
-
-func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) []float64 {
+func (n *Nanowarp) getPhasor(phasor, lpfile []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).getPhasor")
-	phasor := make([]float64, len(lout))
+
 	fuse := true
 	o0 := 0.
 	lock := true
@@ -207,7 +218,6 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 	for j := e; j < len(phasor); j++ {
 		phasor[j] = float64(j) / stretch
 	}
-	return phasor
 }
 
 /*

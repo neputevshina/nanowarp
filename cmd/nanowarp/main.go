@@ -28,7 +28,8 @@ var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
 var onsets = flag.Bool("onsets", false, "return detected onsets, not audio; ignores stretch factors")
-var riddim = flag.Bool("riddim", false, "use square root ramps between transients ")
+var riddim = flag.Bool("riddim", false, "use square root ramps between transients")
+var raw = flag.Bool("raw", false, "skip onset detection")
 
 func main() {
 	flag.Parse()
@@ -142,6 +143,7 @@ func main() {
 		Diffadv: *diffadv,
 		Onsets:  *onsets,
 		Riddim:  *riddim,
+		Raw:     *raw,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 

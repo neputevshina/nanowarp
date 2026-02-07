@@ -11,14 +11,12 @@ import (
 )
 
 type warper struct {
-	nfft    int
-	nbuf    int
-	nbins   int
-	hop     int
-	olap    int
-	masking bool
-	diffadv bool
-	root    *Nanowarp
+	nfft  int
+	nbuf  int
+	nbins int
+	hop   int
+	olap  int
+	root  *Nanowarp
 
 	fft  *fourier.FFT
 	arm  []bool
@@ -57,6 +55,7 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	n.arm = make([]bool, nbins)
 
 	blackmanHarris(a.W[:nbuf])
+
 	windowDx(a.W[:nbuf], a.Wd[:nbuf])
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	copy(a.Wr[:nbuf], a.W[:nbuf])
@@ -97,8 +96,8 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay
 				coeff = 1
 			}
 		}
-
-		if j <= 0 {
+		twosec := 2 * n.root.fs
+		if n.root.opts.Raw && j%twosec < (j-n.hop)%twosec {
 			coeff = 1
 		}
 
@@ -136,7 +135,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	enfft(a.L, a.W, lingrain)
 	enfft(a.R, a.W, ringrain)
 
-	if n.diffadv {
+	if n.root.opts.Diffadv {
 		enfft(a.Ld, a.Wd, lingrain)
 		enfft(a.Rd, a.Wd, ringrain)
 	}
@@ -145,18 +144,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 
-	// Here we are using time-frequency reassignment[¹] as a way of obtaining
-	// phase derivatives. Probably in future these derivatives will be replaced
-	// with differences because finite differences guarrantee idempotency at stretch=1.
-	//
-	// See also https://github.com/y-fujii/mini_pvdr/, which uses finite differences and
-	// achieves less phase noise than current method. It both sounds clearer and on the
-	// reassigned point density spectrogram there are almost no ”squiggly” trajectories.
-	//
-	// Elastiqué, however, behaves similarly to the current Nanowarp, but it is a 20 year old algorithm.
-	//
-	// [¹]: Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
-	//
+	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	// TODO Works ONLY with 2x FFT oversampling.
 	olap := float64(n.nbuf / n.hop)
 	osampc := 2.
@@ -197,7 +185,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 			p = complex(1, 0)
 		}
 		a.M[w] = m
-		if n.diffadv {
+		if n.root.opts.Diffadv {
 			a.Ldiff[w] = tadv(w) - ltadv(w)
 			a.Rdiff[w] = tadv(w) - rtadv(w)
 		} else {
@@ -211,16 +199,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 
 	for j := range a.X {
 		n.arm[j] = true
-		if n.masking {
-			// Allow time-phase propagation only for local maxima.
-			// Which is the simplest possible auditory masking model.
-			if j == 0 || j == n.nbins-1 ||
-				a.M[j-1] < a.M[j] && a.M[j+1] < a.M[j] {
-				n.heap[j] = heaptriple{a.P[j], j, -1}
-			}
-		} else {
-			n.heap[j] = heaptriple{a.P[j], j, -1}
-		}
+		n.heap[j] = heaptriple{a.P[j], j, -1}
 	}
 	heapInit(&n.heap)
 
@@ -253,7 +232,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
-		if n.diffadv {
+		if n.root.opts.Diffadv {
 			a.Lo[w] = cmplx.Rect(mag(a.L[w]), a.Phase[w]+a.Ldiff[w])
 			a.Ro[w] = cmplx.Rect(mag(a.R[w]), a.Phase[w]+a.Rdiff[w])
 		} else {

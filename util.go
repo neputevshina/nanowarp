@@ -30,7 +30,7 @@ func add[T constraints.Float](dst, src []T) {
 }
 
 func sum[T constraints.Float](src []T) (s T) {
-	for i := 0; i < len(src); i++ {
+	for i := range src {
 		s += src[i]
 	}
 	return
@@ -86,7 +86,7 @@ func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
 			return 0
 		}
 		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
-		// len(x)-1 == nfft/2, this results in more clear sound than with nbins
+		// len(x)-1 == nfft/2, this results in clearer sound than with nbins == nfft/2+1
 		return -real(xt[j]/x[j])/float64(len(x)-1)*math.Pi*stretch - math.Pi/2
 	}
 }
