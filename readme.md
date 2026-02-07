@@ -36,7 +36,8 @@ the signal is limited to be from 15 to 50 ms long max. Indexes of percussive poi
 by the stretch size, points between switches are linearly interpolated.
 
 Then the large-grained (nfft=4096) PGHI phase vocoder is applied, using phase ramp for the input 
-sample indexes. If the derivative of the signal is 1, samples are passed through to the output.
+sample indexes. If the derivative of the signal is 1, samples are passed through to the output 
+unmodified.
 
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)

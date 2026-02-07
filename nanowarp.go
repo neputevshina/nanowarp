@@ -101,7 +101,7 @@ func (n *Nanowarp) nmustcollect() int {
 }
 
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME, coeff:", stretch)
 
 	lpfile := make([]float64, len(lin))
 	rpfile := make([]float64, len(lin))
@@ -150,7 +150,7 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 			lock = true
 		}
 		if abs(lpfile[i]) > 0 && lock {
-			for ; i < len(lpfile) && abs(lpfile[i]) > 0; i++ {
+			for ; i < len(lpfile) && j < len(phasor) && abs(lpfile[i]) > 0; i++ {
 				phasor[j] = phasor[j-1] + 1
 				j++
 			}
@@ -165,6 +165,9 @@ func (n *Nanowarp) getPhasor(lout []float64, stretch float64, lpfile []float64) 
 		}
 		if phasor[j] >= float64(minTransientMs*n.fs/1000) {
 			j -= int(phasor[j])
+		}
+		if j < 0 {
+			break
 		}
 		phasor[j] = 0
 	}

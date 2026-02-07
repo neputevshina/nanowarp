@@ -86,7 +86,9 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			ex := path.Join(path.Dir(s), path.Base(s2)) + `.wav`
+
+			// ex := path.Join(path.Dir(s), path.Base(s2)) + `.wav`
+			ex := path.Join(os.TempDir(), path.Base(s2)) + `.wav`
 
 			cmd := exec.Command(`ffmpeg`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
 			cmd.Stderr = os.Stderr
@@ -102,7 +104,7 @@ func main() {
 
 			file, err := os.Open(ex)
 			if nooutname {
-				*foutput = path.Join(path.Dir(ex), fmt.Sprintf("%.2fx-%s", *coeff, path.Base(ex)))
+				*foutput = path.Join(path.Dir(s), fmt.Sprintf("%.2fx-%s", *coeff, path.Base(ex)))
 			}
 			if err != nil {
 				panic(err)
