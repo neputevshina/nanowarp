@@ -43,7 +43,7 @@ import (
 
 const (
 	minTransientMs = 15
-	maxTransientMs = 55
+	maxTransientMs = 50
 )
 
 type Nanowarp struct {
@@ -88,17 +88,6 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
 	n.warper = warperNew(4096*w, n) // TODO 6144@48k prob the best
-
-	// a := sargs{}
-	// a.nfft = 1024
-	// a.hn = 81
-	// a.vn = 31
-	// a.dilaten = 3
-	// a.hq = 0.5
-	// a.vq = 0.5
-	// a.thresh = 0.75
-
-	// n.hpss = splitterNew(a, float64(int(1)<<w))
 	n.detector = detectorNew(1024, samplerate)
 
 	return
@@ -108,8 +97,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 	fmt.Fprintln(os.Stderr, "Coeff =", stretch)
 
-	lpfile := make([]float64, len(lin))
-	// rpfile := make([]float64, len(lin))
+	ons := make([]float64, len(lin))
 
 	phasor := make([]float64, len(lout))
 	if n.opts.Raw {
@@ -117,11 +105,10 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			phasor[j] = float64(j) / stretch
 		}
 	} else {
-		// n.hpss.process(lin, rin, lpfile, rpfile, nil, nil, nil, nil)
-		n.detector.process(lin, rin, lpfile)
+		n.detector.process(lin, rin, ons)
 
 		fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
-		n.getPhasor(phasor, lpfile, stretch)
+		n.getPhasor(phasor, ons, stretch)
 		for j := range phasor {
 			phasor[j] = phasor[j] - float64(n.detector.nbuf*2)
 		}

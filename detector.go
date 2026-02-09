@@ -49,7 +49,7 @@ func detectorNew(nfft, fs int) (n *detector) {
 	nm := fs * 800 / 1000
 	nd := fs * 800 / 1000
 	nd2 := fs * 100 / 1000
-	nd3 := fs * 50 / 1000
+	nd3 := fs * maxTransientMs / 1000
 	n.bend = mediatorNew[float64, bang](nm, nm, 0.75)
 	n.dil = mediatorNew[float64, bang](nd, nd, 1)
 	n.peaks = mediatorNew[float64, bang](nd2, nd2, 1)
@@ -73,22 +73,11 @@ func detectorNew(nfft, fs int) (n *detector) {
 func (n *detector) process(lin, rin []float64, ons []float64) {
 	fmt.Fprintln(os.Stderr, `(*detector).process`)
 
-	// as := make([]float64, len(lin))
-	// bs := make([]float64, len(lin))
 	cs := make([]float64, len(lin))
-	// onsgrain := make([]float64, n.nfft)
 
 	t := make([]float64, n.nfft)
 	for i := 0; i < len(lin); i += n.hop {
-		a, b, c := n.advance(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
-		_, _ = a, b
-		// fill(t, a)
-		// mul(t, n.a.Wr)
-		// add(as[i:min(len(lin), i+n.nbuf)], t)
-
-		// fill(t, b)
-		// mul(t, n.a.Wr)
-		// add(bs[i:min(len(lin), i+n.nbuf)], t)
+		c := n.advance(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
 
 		fill(t, c)
 		mul(t, n.a.Wr)
@@ -130,7 +119,7 @@ func (n *detector) process(lin, rin []float64, ons []float64) {
 	}
 }
 
-func (n *detector) advance(lingrain, ringrain []float64) (anov, bnov, cnov float64) {
+func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
 	a := &n.a
 
 	enfft := func(x []complex128, w, grain []float64) {
@@ -169,11 +158,8 @@ func (n *detector) advance(lingrain, ringrain []float64) (anov, bnov, cnov float
 		return int(hz * float64(n.nfft) / float64(n.fs))
 	}
 
-	ab := hztobin(400)
 	bc := hztobin(1500)
 
-	anov = sum(a.N[:ab])
-	bnov = sum(a.N[ab:bc])
 	cnov = sum(a.N[bc:])
 	return
 }
