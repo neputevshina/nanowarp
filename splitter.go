@@ -175,7 +175,7 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 	}
 	fullsum := sum(a.M)
 
-	n.vimp.filt(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
+	n.vimp.Process(a.M, n.vimp.N, a.P, mREFLECT, 0, 0)
 	for w := range a.X {
 		m := n.himp[w]
 		m.Insert(a.M[w], bang{})
@@ -194,7 +194,7 @@ func (n *splitter) advance(lingrain, ringrain []float64, lpercgrain, rpercgrain,
 	for w := range a.X {
 		a.A[w] = -a.A[w]
 	}
-	n.antidilate.filt(a.A, n.antidilate.N, a.B, mREFLECT, 0, 0)
+	n.antidilate.Process(a.A, n.antidilate.N, a.B, mREFLECT, 0, 0)
 	for w := range a.X {
 		// a.B[w] = -a.B[w]
 		a.A[w] = -a.B[w]

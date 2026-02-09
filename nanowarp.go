@@ -50,8 +50,9 @@ type Nanowarp struct {
 	fs          int
 	left, right []float64
 
-	lower, upper *warper
-	hpss         *splitter
+	*warper
+	// hpss  *splitter
+	*detector
 
 	opts      Options
 	stretch   float64
@@ -86,27 +87,21 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n.fs = samplerate
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
-	n.lower = warperNew(4096*w, n) // TODO 6144@48k prob the best
+	n.warper = warperNew(4096*w, n) // TODO 6144@48k prob the best
 
-	a := sargs{}
-	a.nfft = 1024
-	a.hn = 81
-	a.vn = 31
-	a.dilaten = 3
-	a.hq = 0.5
-	a.vq = 0.5
-	a.thresh = 0.75
+	// a := sargs{}
+	// a.nfft = 1024
+	// a.hn = 81
+	// a.vn = 31
+	// a.dilaten = 3
+	// a.hq = 0.5
+	// a.vq = 0.5
+	// a.thresh = 0.75
 
-	n.hpss = splitterNew(a, float64(int(1)<<w))
+	// n.hpss = splitterNew(a, float64(int(1)<<w))
+	n.detector = detectorNew(1024, samplerate)
 
 	return
-}
-
-func (n *Nanowarp) nmustcollect() int {
-	lop := func(nbuf, hop int) int {
-		return nbuf + int(math.Ceil(float64(hop)/n.stretch))
-	}
-	return max(lop(n.lower.nbuf, n.lower.hop), lop(n.upper.nbuf, n.upper.hop), lop(n.hpss.nbuf, n.hpss.hop))
 }
 
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
@@ -114,7 +109,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "Coeff =", stretch)
 
 	lpfile := make([]float64, len(lin))
-	rpfile := make([]float64, len(lin))
+	// rpfile := make([]float64, len(lin))
 
 	phasor := make([]float64, len(lout))
 	if n.opts.Raw {
@@ -122,26 +117,17 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			phasor[j] = float64(j) / stretch
 		}
 	} else {
-		n.hpss.process(lin, rin, lpfile, rpfile, nil, nil, nil, nil)
+		// n.hpss.process(lin, rin, lpfile, rpfile, nil, nil, nil, nil)
+		n.detector.process(lin, rin, lpfile)
 
 		fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
-		filtlen := maxTransientMs * n.fs / 1000
-		maxfilt := mediatorNew[float64, bang](filtlen, filtlen, 1)
-		for i := range lpfile {
-			a := boolfloat(max(abs(lpfile[i]), abs(rpfile[i])) > 0)
-			maxfilt.Insert(a, bang{})
-			if i > filtlen {
-				a, _ = maxfilt.Take()
-			}
-			lpfile[i] = a
-		}
 		n.getPhasor(phasor, lpfile, stretch)
 		for j := range phasor {
-			phasor[j] = phasor[j] - float64(n.lower.nbuf/2)
+			phasor[j] = phasor[j] - float64(n.detector.nbuf*2)
 		}
 	}
 
-	n.lower.process3(lin, rin, lout, rout, phasor, 0)
+	n.warper.process3(lin, rin, lout, rout, phasor, 0)
 }
 
 func (n *Nanowarp) getPhasor(phasor, lpfile []float64, stretch float64) {

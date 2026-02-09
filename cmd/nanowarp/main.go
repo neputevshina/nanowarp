@@ -135,10 +135,6 @@ func main() {
 		}
 	}
 
-	if *onsets {
-		*coeff = 1
-	}
-
 	opts := nanowarp.Options{
 		Diffadv: *diffadv,
 		Onsets:  *onsets,

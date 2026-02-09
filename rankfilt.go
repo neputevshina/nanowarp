@@ -189,10 +189,16 @@ func (m *mediator[T, I]) Insert(v T, a I) {
 	}
 }
 
-// filt applies a running rank filter over input slice `in` of length len,
+// Inserts item, maintains rank in O(lg nItems)
+func (m *mediator[T, I]) Filt(v T, a I) (T, I) {
+	m.Insert(v, a)
+	return m.Take()
+}
+
+// Process applies a running rank filter over input slice `in` of length len,
 // window size win, output to `out`. `mode` controls boundary handling, `cval` is a
 // constant value for CONSTANT mode, `origin` shifts the window center.
-func (m *mediator[T, I]) filt(in []T, win int, out []T, mode mediatorMode, cval T, origin int) {
+func (m *mediator[T, I]) Process(in []T, win int, out []T, mode mediatorMode, cval T, origin int) {
 	if m == nil {
 		panic("null Mediator")
 	}

@@ -26,3 +26,9 @@ func (f *boxfilt) Insert(v float64) {
 func (f *boxfilt) Take() (avg, delay float64) {
 	return f.avg, f.ring[f.j]
 }
+
+func (f *boxfilt) Filt(v float64) float64 {
+	f.Insert(v)
+	avg, _ := f.Take()
+	return avg
+}
