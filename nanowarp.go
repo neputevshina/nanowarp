@@ -43,7 +43,7 @@ import (
 
 const (
 	minTransientMs = 15
-	maxTransientMs = 50
+	maxTransientMs = 40
 )
 
 type Nanowarp struct {

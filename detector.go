@@ -48,7 +48,7 @@ func detectorNew(nfft, fs int) (n *detector) {
 
 	nm := fs * 800 / 1000
 	nd := fs * 800 / 1000
-	nd2 := fs * 100 / 1000
+	nd2 := fs * 4 * maxTransientMs / 1000
 	nd3 := fs * maxTransientMs / 1000
 	n.bend = mediatorNew[float64, bang](nm, nm, 0.75)
 	n.dil = mediatorNew[float64, bang](nd, nd, 1)
