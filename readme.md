@@ -10,10 +10,29 @@ Current state: algorithm mostly ready. No user-facing API exists yet.
 
 ## Installation and usage
 
+1. Install [Go](https://go.dev/)
+2. Open terminal/shell/command prompt.
+3. Install Nanowarp
 ```
-$ go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
-$ nanowarp -i inputfile.wav -t <stretch> [-o outputfile.wav]
+go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
 ```
+4. Use it
+```
+nanowarp -i inputfile.wav -t <stretch> [-o outputfile.wav]
+```
+or
+```
+nanowarp -i inputfile.wav -from <bpm> -to <bpm> -st <semitones> [-o outputfile.wav]
+```
+If your system can't find `nanowarp` executable, you have probably changed PATH variable in your system.
+Probably the simplest way to bring it back if you are under Windows is by reinstalling the Go.
+On Linux, you should probably know what to do.
+
+Consult 
+```
+nanowarp -help
+```
+to get the list of available options.
 
 ## Implementation
 
