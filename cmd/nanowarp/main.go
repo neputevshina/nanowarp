@@ -56,9 +56,22 @@ func main() {
 		os.Exit(1)
 	}
 	nooutname := false
+	generateOutName := func(dir, fn string) string {
+		pitchSuffix := ""
+		if *pitch != 0 {
+			pitchSuffix = fmt.Sprintf("%+.2fst", *pitch)
+		}
+
+		if *from > 0 {
+			return path.Join(path.Dir(dir), fmt.Sprintf("%g→%g%s-%s", *from, *to, pitchSuffix, path.Base(fn)))
+		} else {
+			return path.Join(path.Dir(dir), fmt.Sprintf("%.4fx-%s-%s", *coeff, pitchSuffix, path.Base(fn)))
+		}
+	}
 	if *foutput == "" {
 		nooutname = true
-		*foutput = path.Join(path.Dir(*finput), fmt.Sprintf("%.2fx-%s", *coeff, path.Base(*finput)))
+		*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
+		println(*foutput)
 	}
 
 	file, err := os.Open(*finput)
@@ -106,7 +119,7 @@ func main() {
 
 			file, err := os.Open(ex)
 			if nooutname {
-				*foutput = path.Join(path.Dir(s), fmt.Sprintf("%.2fx-%s", *coeff, path.Base(ex)))
+				*foutput = generateOutName(s, ex)
 			}
 			if err != nil {
 				panic(err)
