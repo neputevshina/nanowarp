@@ -41,11 +41,6 @@ import (
 	"os"
 )
 
-const (
-	minTransientMs = 15
-	maxTransientMs = 40
-)
-
 type Nanowarp struct {
 	fs          int
 	left, right []float64
@@ -70,6 +65,8 @@ type Options struct {
 	// Don't perform transient separation, output raw PVDR with phase reset
 	// with arbitrary periodicity.
 	Raw bool
+	// Time for which signal will be bypassed at the any given transient.
+	TransientMs int
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -88,7 +85,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
 	n.warper = warperNew(4096*w, n) // TODO 6144@48k prob the best
-	n.detector = detectorNew(1024, samplerate)
+	n.detector = detectorNew(1024, samplerate, opts.TransientMs)
 
 	return
 }
@@ -144,10 +141,10 @@ func (n *Nanowarp) getPhasor(phasor, lpfile []float64, stretch float64) {
 	}
 
 	for j := len(phasor) - 1; j >= 0; j-- {
-		if phasor[j] >= float64(maxTransientMs*n.fs/1000) {
+		if phasor[j] >= float64(n.opts.TransientMs*n.fs/1000) {
 			phasor[j] = 0
 		}
-		if phasor[j] >= float64(minTransientMs*n.fs/1000) {
+		if phasor[j] >= float64(15*n.fs/1000) {
 			j -= int(phasor[j])
 		}
 		if j < 0 {

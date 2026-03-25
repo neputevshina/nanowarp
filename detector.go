@@ -30,7 +30,7 @@ type dbufs struct {
 	L, R, PL, PPL, PR, PPR []complex128
 }
 
-func detectorNew(nfft, fs int) (n *detector) {
+func detectorNew(nfft, fs, maxTransientMs int) (n *detector) {
 	corr := math.Ceil(float64(fs) / 48000)
 	nbuf := nfft * int(corr)
 	nbins := nfft/2 + 1
@@ -111,7 +111,7 @@ func (n *detector) process(lin, rin []float64, ons []float64) {
 		ons[i] *= boolfloat(ons[i] > 0.2)
 	}
 
-	// Dilate them to 50 millisecond chunks, thus generating the mask.
+	// Dilate them to chunks, thus generating the mask.
 	nn = n.ms.N / 2
 	for i := range ons[:len(ons)-nn] {
 		m, _ := n.ms.Filt(ons[i+nn], bang{})

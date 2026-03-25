@@ -30,6 +30,7 @@ var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not
 var onsets = flag.Bool("onsets", false, "return detected onsets, not audio; ignores stretch factors")
 var riddim = flag.Bool("riddim", false, "use square root ramps between transients")
 var raw = flag.Bool("raw", false, "skip onset detection")
+var transientms = flag.Int("onsetms", 40, "onset size in milliseconds")
 
 func main() {
 	flag.Parse()
@@ -136,10 +137,11 @@ func main() {
 	}
 
 	opts := nanowarp.Options{
-		Diffadv: *diffadv,
-		Onsets:  *onsets,
-		Riddim:  *riddim,
-		Raw:     *raw,
+		Diffadv:     *diffadv,
+		Onsets:      *onsets,
+		Riddim:      *riddim,
+		Raw:         *raw,
+		TransientMs: *transientms,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
