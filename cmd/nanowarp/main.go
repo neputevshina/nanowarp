@@ -27,10 +27,10 @@ var from = flag.Float64("from", 0, "source `bpm`")
 var to = flag.Float64("to", 0, "target `bpm`")
 var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
-var onsets = flag.Bool("onsets", false, "return detected onsets, not audio; ignores stretch factors")
+var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var riddim = flag.Bool("riddim", false, "use square root ramps between transients")
 var raw = flag.Bool("raw", false, "skip onset detection")
-var transientms = flag.Int("onsetms", 40, "onset size in milliseconds")
+var transientms = flag.Int("onsetms", 20, "onset size in milliseconds")
 
 func main() {
 	flag.Parse()
