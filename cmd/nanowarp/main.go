@@ -71,7 +71,6 @@ func main() {
 	if *foutput == "" {
 		nooutname = true
 		*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
-		println(*foutput)
 	}
 
 	file, err := os.Open(*finput)
