@@ -67,7 +67,7 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay float64) {
+func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, delay float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf := get()
@@ -76,12 +76,23 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay
 	ringrain := get()
 
 	bayer := []float64{0.2, 0.6, 0.4, 0.8}
+	i := float64(-n.nbuf / 2)
 	for j := -n.nbuf; ; j += n.hop {
 		di, df := math.Modf(delay)
 		if j > len(lout)-n.nbuf {
 			break
 		}
-		i := int(shift[clamp(0, len(lout)-1, j)])
+		// i := int(shift[clamp(0, len(lout)-1, j)])
+		for _, k := range coeffs[max(0, j-n.hop):clamp(0, len(lout)-1, j)] {
+			coeff := 1.0 / k
+			if coeff != coeff || math.IsInf(coeff, 0) {
+				continue
+			}
+			i += coeff
+		}
+
+		i := int(i)
+
 		if i > len(lin)-n.nbuf {
 			break
 		}
@@ -91,13 +102,17 @@ func (n *warper) process3(lin, rin, lout, rout []float64, shift []float64, delay
 		copy(ringrain[max(0, -i):], rin[max(0, i):min(len(lin), i+n.nbuf)])
 		coeff := 1.
 		if j > 0 {
-			coeff = 1 / (shift[j] - shift[j-1])
+			coeff = coeffs[j]
+			// coeff = 1 / (shift[j] - shift[j-1])
 			if coeff != coeff || math.IsInf(coeff, 0) {
 				coeff = 1
 			}
 		}
 		twosec := 2 * n.root.fs
 		if n.root.opts.Raw && j%twosec < (j-n.hop)%twosec {
+			coeff = 1
+		}
+		if abs(coeff) > 0.99 && abs(coeff) < 1.01 {
 			coeff = 1
 		}
 

@@ -34,9 +34,10 @@ var transientms = flag.Int("onsetms", 20, "onset size in milliseconds")
 
 func main() {
 	flag.Parse()
+	oscope.Enable = true
+
 	if *cpuprofile != "" {
 		fmt.Fprintln(os.Stderr, `profiling, oscope enabled`)
-		oscope.Enable = true
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
 			log.Fatal("could not create CPU profile: ", err)

@@ -102,91 +102,53 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			phasor[j] = float64(j) / stretch
 		}
 	} else {
-		n.detector.process(lin, rin, ons)
+		// n.detector.process(lin, rin, ons)
 
-		fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
-		n.getPhasor(phasor, ons, stretch)
-		for j := range phasor {
-			phasor[j] = phasor[j] - float64(n.detector.nbuf*2)
-		}
+		// fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
+		// n.getPhasor(phasor, ons, stretch)
+		// for j := range phasor {
+		// 	phasor[j] = phasor[j] - float64(n.detector.nbuf*2)
+		// }
+		// copy(lout, ons)
+		// return
 	}
 
-	n.warper.process3(lin, rin, lout, rout, phasor, 0)
+	coeffs := make([]float64, len(lout))
+	sam := n.detector.process(lin, rin, ons)
+	n.getCoeffSignal(coeffs, sam, stretch)
+
+	// for j := range phasor {
+	// 	if j > 0 {
+	// 		coeffs[j] = 1 / (phasor[j] - phasor[j-1])
+	// 	}
+	// 	if coeffs[j] != coeffs[j] || math.IsInf(coeffs[j], 0) {
+	// 		coeffs[j] = 1
+	// 	}
+	// }
+
+	n.warper.process3(lin, rin, lout, rout, coeffs, 0)
 }
 
-func (n *Nanowarp) getPhasor(phasor, lpfile []float64, stretch float64) {
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).getPhasor")
+func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).getCoeffs")
 
-	fuse := true
-	o0 := 0.
-	lock := true
-	for j := 0; j < len(phasor); j++ {
-		i := int(float64(j) / stretch)
-		if lpfile[i] <= 0 && fuse {
-			phasor[j] = float64(j) / stretch
-			continue
-		}
-		fuse = false
-		if !lock && abs(lpfile[i]) <= 0 {
-			lock = true
-		}
-		if abs(lpfile[i]) > 0 && lock {
-			for ; i < len(lpfile) && j < len(phasor) && abs(lpfile[i]) > 0; i++ {
-				phasor[j] = phasor[j-1] + 1
-				j++
-			}
-			lock = false
-		}
+	tsa := n.opts.TransientMs * n.fs / 1000
 
-	}
-
-	for j := len(phasor) - 1; j >= 0; j-- {
-		if phasor[j] >= float64(n.opts.TransientMs*n.fs/1000) {
-			phasor[j] = 0
-		}
-		if phasor[j] >= float64(15*n.fs/1000) {
-			j -= int(phasor[j])
-		}
-		if j < 0 {
-			break
-		}
-		phasor[j] = 0
-	}
-
-	for j := range phasor {
-		i := int(float64(j) / stretch)
-		if phasor[j] > 0 {
-			phasor[j] = o0 + phasor[j]
-		} else {
-			o0 = float64(i)
+	for k := 0; k < len(onsets)-1; k++ {
+		i := onsets[k][0]
+		j := onsets[k+1][0]
+		if j-i < float64(tsa)/s {
+			copy(onsets[k:], onsets[k+1:])
+			onsets = onsets[:len(onsets)-1]
+			k--
 		}
 	}
-
-	e := 0
-	for j := 1; j < len(phasor); j++ {
-		if phasor[j] == 0 {
-			for k := j; k < len(phasor); k++ {
-				if phasor[k] > 0 {
-					e = k
-					break
-				}
-			}
-			for k := j; k <= e; k++ {
-				u := unmix(float64(j), float64(e), float64(k))
-				if n.opts.Riddim {
-					u = math.Sqrt(u)
-				}
-				m := mix(float64(phasor[j-1]), float64(e)/stretch, u)
-				phasor[k] = m
-			}
-			if e < j {
-				break
-			}
-			j = e
-		}
-	}
-	for j := e; j < len(phasor); j++ {
-		phasor[j] = float64(j) / stretch
+	for k := 0; k < len(onsets)-1; k++ {
+		i := max(0, int(onsets[k][0]*s)-n.detector.nbuf*2)
+		j := max(0, int(onsets[k+1][0]*s)-n.detector.nbuf*2)
+		fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
+		t, x := float64(j-i), float64(tsa)
+		fill(coeffs[i+tsa/2:j-tsa/2], (s*t-x)/(t-x))
 	}
 }
 

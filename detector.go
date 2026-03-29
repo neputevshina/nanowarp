@@ -70,10 +70,11 @@ func detectorNew(nfft, fs, maxTransientMs int) (n *detector) {
 
 	return
 }
-func (n *detector) process(lin, rin []float64, ons []float64) {
+func (n *detector) process(lin, rin []float64, ons []float64) (onsons [][2]float64) {
 	fmt.Fprintln(os.Stderr, `(*detector).process`)
 
 	cs := make([]float64, len(lin))
+	onsons = make([][2]float64, 0, 1000)
 
 	t := make([]float64, n.nfft)
 	for i := 0; i < len(lin); i += n.hop {
@@ -101,22 +102,25 @@ func (n *detector) process(lin, rin []float64, ons []float64) {
 		ons[i] = max(0, abac/acb)
 	}
 
-	// Extract 1-sample peaks from the novelty curve.
+	// Extract 1-sample peaks from the novelty curve through local argmax.
 	nn := n.peaks.N / 2
 	for i := range ons[:len(ons)-nn] {
 		m, _ := n.peaks.Filt(ons[i+nn], bang{})
 		if ons[i] < m {
-			ons[i] = 0
+			// ons[i] = 0
+		} else if ons[i] > 0.2 {
+			onsons = append(onsons, [2]float64{float64(i), ons[i]})
 		}
-		ons[i] *= boolfloat(ons[i] > 0.2)
+		// ons[i] *= boolfloat(ons[i] > 0.2)
 	}
 
-	// Dilate them to chunks, thus generating the mask.
-	nn = n.ms.N / 2
-	for i := range ons[:len(ons)-nn] {
-		m, _ := n.ms.Filt(ons[i+nn], bang{})
-		ons[i] = m
-	}
+	// // Dilate them to chunks, thus generating the mask.
+	// nn = n.ms.N / 2
+	// for i := range ons[:len(ons)-nn] {
+	// 	m, _ := n.ms.Filt(ons[i+nn], bang{})
+	// 	ons[i] = m
+	// }
+	return
 }
 
 func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
