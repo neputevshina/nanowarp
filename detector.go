@@ -30,7 +30,7 @@ type dbufs struct {
 	L, R, PL, PPL, PR, PPR []complex128
 }
 
-func detectorNew(nfft, fs, maxTransientMs int) (n *detector) {
+func detectorNew(nfft, fs sa, maxTransient ms) (n *detector) {
 	corr := math.Ceil(float64(fs) / 48000)
 	nbuf := nfft * int(corr)
 	nbins := nfft/2 + 1
@@ -48,8 +48,8 @@ func detectorNew(nfft, fs, maxTransientMs int) (n *detector) {
 
 	nm := fs * 800 / 1000
 	nd := fs * 800 / 1000
-	nd2 := fs * 4 * maxTransientMs / 1000
-	nd3 := fs * maxTransientMs / 1000
+	nd2 := fs * 4 * int(maxTransient) / 1000
+	nd3 := fs * int(maxTransient) / 1000
 	n.bend = mediatorNew[float64, bang](nm, nm, 0.75)
 	n.dil = mediatorNew[float64, bang](nd, nd, 1)
 	n.peaks = mediatorNew[float64, bang](nd2, nd2, 1)
@@ -70,10 +70,10 @@ func detectorNew(nfft, fs, maxTransientMs int) (n *detector) {
 
 	return
 }
-func (n *detector) process(lin, rin []float64, ons []float64) (onsons [][2]float64) {
+
+func (n *detector) process2(lin, rin, ons []float64, stretch float64, onsetevery ms) (onsons [][2]float64) {
 	fmt.Fprintln(os.Stderr, `(*detector).process`)
 
-	cs := make([]float64, len(lin))
 	onsons = make([][2]float64, 0, 1000)
 
 	t := make([]float64, n.nfft)
@@ -82,44 +82,19 @@ func (n *detector) process(lin, rin []float64, ons []float64) (onsons [][2]float
 
 		fill(t, c)
 		mul(t, n.a.Wr)
-		add(cs[i:min(len(lin), i+n.nbuf)], t)
+		add(ons[i:min(len(lin), i+n.nbuf)], t)
 	}
 
-	for i := range lin {
-		pick := func(sum float64, filt *boxfilt) float64 {
-			sum /= filt.Filt(sum) + 1e-10
-			return sum
-		}
-
-		c := pick(cs[i], n.cbox)
-		abc := c
-		bca, _ := n.bend.Filt(abc, bang{})
-		abac := abc - bca
-		acb, _ := n.dil.Filt(abac, bang{})
-		if acb == 0 {
-			acb = 1
-		}
-		ons[i] = max(0, abac/acb)
+	skip := int(onsetevery * ms(n.fs) / 1000 / stretch)
+	// skip := int(onsetevery * ms(n.fs) / 1000)
+	for i := 0; i < len(ons)-skip; i += skip {
+		a := i + argmax(ons[i:i+skip])
+		v := ons[a]
+		// fill(ons[i:i+skip], 0)
+		// ons[a] = v
+		onsons = append(onsons, [2]float64{float64(a), v})
 	}
 
-	// Extract 1-sample peaks from the novelty curve through local argmax.
-	nn := n.peaks.N / 2
-	for i := range ons[:len(ons)-nn] {
-		m, _ := n.peaks.Filt(ons[i+nn], bang{})
-		if ons[i] < m {
-			// ons[i] = 0
-		} else if ons[i] > 0.2 {
-			onsons = append(onsons, [2]float64{float64(i), ons[i]})
-		}
-		// ons[i] *= boolfloat(ons[i] > 0.2)
-	}
-
-	// // Dilate them to chunks, thus generating the mask.
-	// nn = n.ms.N / 2
-	// for i := range ons[:len(ons)-nn] {
-	// 	m, _ := n.ms.Filt(ons[i+nn], bang{})
-	// 	ons[i] = m
-	// }
 	return
 }
 
@@ -158,12 +133,6 @@ func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
 	copy(a.PPL, a.PL)
 	copy(a.PPR, a.PR)
 
-	hztobin := func(hz float64) int {
-		return int(hz * float64(n.nfft) / float64(n.fs))
-	}
-
-	bc := hztobin(1500)
-
-	cnov = sum(a.N[bc:])
+	cnov = sum(a.N)
 	return
 }

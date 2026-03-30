@@ -85,7 +85,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
 	n.warper = warperNew(4096*w, n) // TODO 6144@48k prob the best
-	n.detector = detectorNew(1024, samplerate, opts.TransientMs)
+	n.detector = detectorNew(1024, samplerate, ms(opts.TransientMs))
 
 	return
 }
@@ -96,35 +96,33 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 	ons := make([]float64, len(lin))
 
-	phasor := make([]float64, len(lout))
+	coeffs := make([]float64, len(lout))
 	if n.opts.Raw {
-		for j := range phasor {
-			phasor[j] = float64(j) / stretch
+		for j := range coeffs {
+			coeffs[j] = 1 / stretch
 		}
 	} else {
-		// n.detector.process(lin, rin, ons)
-
-		// fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: conversion")
-		// n.getPhasor(phasor, ons, stretch)
-		// for j := range phasor {
-		// 	phasor[j] = phasor[j] - float64(n.detector.nbuf*2)
-		// }
-		// copy(lout, ons)
-		// return
+		sam := n.detector.process2(lin, rin, ons, stretch, 400)
+		n.getCoeffSignal(coeffs, sam, stretch)
 	}
 
-	coeffs := make([]float64, len(lout))
-	sam := n.detector.process(lin, rin, ons)
-	n.getCoeffSignal(coeffs, sam, stretch)
-
-	// for j := range phasor {
-	// 	if j > 0 {
-	// 		coeffs[j] = 1 / (phasor[j] - phasor[j-1])
-	// 	}
-	// 	if coeffs[j] != coeffs[j] || math.IsInf(coeffs[j], 0) {
-	// 		coeffs[j] = 1
-	// 	}
+	// phs := make([]float64, len(lout))
+	// o := coeffs[0]
+	// for i := range coeffs[1:] {
+	// 	t := coeffs[i+1]
+	// 	phs[i+1] = o
+	// 	o += t
 	// }
+
+	// fill(coeffs, 1.000001)
+	// fill(coeffs[3000:4000], 1)
+
+	// copy(lout, ons)
+	// copy(lout, phs)
+	// println(phs[84391])
+	// println(int(phs[len(phs)-1]), len(phs), len(lin))
+	// copy(lout, coeffs)
+	// return
 
 	n.warper.process3(lin, rin, lout, rout, coeffs, 0)
 }
@@ -143,12 +141,28 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 			k--
 		}
 	}
+	fill(coeffs[:int(onsets[0][0]*s)], 1/s)
+	fill(coeffs[:int(onsets[len(onsets)-1][0]*s)], 1/s)
 	for k := 0; k < len(onsets)-1; k++ {
-		i := max(0, int(onsets[k][0]*s)-n.detector.nbuf*2)
-		j := max(0, int(onsets[k+1][0]*s)-n.detector.nbuf*2)
-		fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
-		t, x := float64(j-i), float64(tsa)
-		fill(coeffs[i+tsa/2:j-tsa/2], (s*t-x)/(t-x))
+		i := int(onsets[k][0] * s)
+		j := int(onsets[k+1][0] * s)
+		// i := max(0, int(onsets[k][0]*s)-n.detector.nbuf*2)
+		// j := max(0, int(onsets[k+1][0]*s)-n.detector.nbuf*2)
+		// i := max(0, int((onsets[k][0]-float64(n.detector.nbuf*2))*s))
+		// j := max(0, int((onsets[k+1][0]-float64(n.detector.nbuf*2))*s))
+		// i := max(0, int((onsets[k][0]-float64(n.detector.nbuf))*s))
+		// j := max(0, int((onsets[k+1][0]-float64(n.detector.nbuf))*s))
+		if s == 1 {
+			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
+			fill(coeffs[i+tsa/2:j-tsa/2], 1.00001)
+		} else {
+			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
+			t, x := float64(j-i), float64(tsa)
+			// Coefficients in signal are dt (scan speed, inverse of speedup,
+			// which current coefficient describes).
+			fill(coeffs[i+tsa/2:j-tsa/2], (t/s-x)/(t-x))
+		}
+
 	}
 }
 

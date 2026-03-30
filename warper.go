@@ -77,18 +77,16 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 
 	bayer := []float64{0.2, 0.6, 0.4, 0.8}
 	i := float64(-n.nbuf / 2)
-	for j := -n.nbuf; ; j += n.hop {
+	for j := int(float64(-n.nbuf) * coeffs[0]); ; j += n.hop {
 		di, df := math.Modf(delay)
 		if j > len(lout)-n.nbuf {
 			break
 		}
-		// i := int(shift[clamp(0, len(lout)-1, j)])
-		for _, k := range coeffs[max(0, j-n.hop):clamp(0, len(lout)-1, j)] {
-			coeff := 1.0 / k
-			if coeff != coeff || math.IsInf(coeff, 0) {
+		for _, c := range coeffs[max(0, j-n.hop):clamp(0, len(lout)-1, j)] {
+			if c != c || math.IsInf(c, 0) {
 				continue
 			}
-			i += coeff
+			i += c
 		}
 
 		i := int(i)
@@ -98,33 +96,29 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 		}
 		clear(lingrain)
 		clear(ringrain)
-		copy(lingrain[max(0, -i):], lin[max(0, i):min(len(lin), i+n.nbuf)])
-		copy(ringrain[max(0, -i):], rin[max(0, i):min(len(lin), i+n.nbuf)])
-		coeff := 1.
+		copy(lingrain[max(0, -i):], lin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		c := 1.
 		if j > 0 {
-			coeff = coeffs[j]
-			// coeff = 1 / (shift[j] - shift[j-1])
-			if coeff != coeff || math.IsInf(coeff, 0) {
-				coeff = 1
+			c = 1 / coeffs[j]
+			if c != c || math.IsInf(c, 0) {
+				c = 1
 			}
 		}
 		twosec := 2 * n.root.fs
 		if n.root.opts.Raw && j%twosec < (j-n.hop)%twosec {
-			coeff = 1
-		}
-		if abs(coeff) > 0.99 && abs(coeff) < 1.01 {
-			coeff = 1
+			c = 1
 		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(coeff))
-		if n.root.opts.Onsets && coeff != 1 {
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c))
+		if n.root.opts.Onsets && c != 1 {
 			clear(lgrainbuf)
 			clear(rgrainbuf)
 		}
 
 		tj := j + int(di) + boolint(df > bayer[j%len(bayer)])
-		loutgrain := lout[max(0, tj):clamp(0, len(lout), tj+n.nbuf)]
-		routgrain := rout[max(0, tj):clamp(0, len(lout), tj+n.nbuf)]
+		loutgrain := lout[max(0, tj-n.nbuf/2):clamp(0, len(lout), tj+n.nbuf/2)]
+		routgrain := rout[max(0, tj-n.nbuf/2):clamp(0, len(lout), tj+n.nbuf/2)]
 		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -tj):])
 		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -tj):])
 	}

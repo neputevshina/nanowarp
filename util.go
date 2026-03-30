@@ -1,6 +1,7 @@
 package nanowarp
 
 import (
+	"cmp"
 	"fmt"
 	"image"
 	"image/color"
@@ -15,6 +16,14 @@ import (
 var mag = cmplx.Abs
 
 type bang = struct{}
+
+// TODO Convert all values inside of algorithm to these units.
+// Remove aliases and convert everywhere, just for “strictness”.
+type (
+	ms = float64
+	hz = float64
+	sa = int
+)
 
 var println = fmt.Println
 
@@ -255,4 +264,19 @@ func boolfloat(b bool) float64 {
 		return 1
 	}
 	return 0
+}
+
+func hztobin(hz float64, nfft, fs int) int {
+	return int(hz * float64(nfft) / float64(fs))
+}
+
+func argmax[T cmp.Ordered](a []T) (i int) {
+	m := a[0]
+	for j, v := range a {
+		m = max(m, v)
+		if m == v {
+			i = j
+		}
+	}
+	return
 }
