@@ -142,7 +142,7 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 		}
 	}
 	fill(coeffs[:int(onsets[0][0]*s)], 1/s)
-	fill(coeffs[:int(onsets[len(onsets)-1][0]*s)], 1/s)
+	fill(coeffs[int(onsets[len(onsets)-1][0]*s):], 1/s)
 	for k := 0; k < len(onsets)-1; k++ {
 		i := int(onsets[k][0] * s)
 		j := int(onsets[k+1][0] * s)
