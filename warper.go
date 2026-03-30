@@ -77,7 +77,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 
 	bayer := []float64{0.2, 0.6, 0.4, 0.8}
 	i := float64(-n.nbuf / 2)
-	for j := int(float64(-n.nbuf) * coeffs[0]); ; j += n.hop {
+	for j := -n.nbuf; ; j += n.hop {
 		di, df := math.Modf(delay)
 		if j > len(lout)-n.nbuf {
 			break
@@ -212,6 +212,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	}
 	heapInit(&n.heap)
 
+	// Do PGHI.
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap).(heaptriple)
 		w := h.w

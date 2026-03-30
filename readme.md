@@ -70,9 +70,9 @@ See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_
 
 ### Streaming implementation plan
 1. ~~Replace phasor with stretch coefficient signal (dx of phasor)~~
-2. Define real-time (or lookahead-based) method to generate switching constant level (or locally similar) coefficient signal.
-	1. Define maximum latency (make user-configurable), which is added to pvoc latency in a realtime pitch shifting context.
-	2. Make it so onset detector must produce an onset at least once this time.
+2. ~~Define real-time (or lookahead-based) method to generate switching constant level (or locally similar) coefficient signal.~~
+	1. ~~Define maximum latency (make user-configurable), which is added to pvoc latency in a realtime pitch shifting context.~~
+	2. ~~Make it so onset detector must produce an onset at least once this time.~~
 3. Define stretch signal producer and sound producer (goroutines).
 ```
 for {

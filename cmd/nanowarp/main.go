@@ -30,7 +30,7 @@ var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not
 var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var riddim = flag.Bool("riddim", false, "use square root ramps between transients")
 var raw = flag.Bool("raw", false, "skip onset detection")
-var transientms = flag.Int("onsetms", 20, "onset size in milliseconds")
+var transientms = flag.Int("onsetms", 30, "onset size in milliseconds")
 
 func main() {
 	flag.Parse()
@@ -66,7 +66,7 @@ func main() {
 		if *from > 0 {
 			return path.Join(path.Dir(dir), fmt.Sprintf("%g→%g%s-%s", *from, *to, pitchSuffix, path.Base(fn)))
 		} else {
-			return path.Join(path.Dir(dir), fmt.Sprintf("%.4fx-%s-%s", *coeff, pitchSuffix, path.Base(fn)))
+			return path.Join(path.Dir(dir), fmt.Sprintf("%.4fx%s-%s", *coeff, pitchSuffix, path.Base(fn)))
 		}
 	}
 	if *foutput == "" {

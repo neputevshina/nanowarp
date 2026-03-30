@@ -19,9 +19,7 @@ type detector struct {
 	thresh      float64
 	fs          int
 
-	fft                  *fourier.FFT
-	bend, dil, peaks, ms *mediator[float64, bang]
-	abox, bbox, cbox     *boxfilt
+	fft *fourier.FFT
 
 	a dbufs
 }
@@ -45,19 +43,6 @@ func detectorNew(nfft, fs sa, maxTransient ms) (n *detector) {
 		fs:    fs,
 	}
 	makeslices(&n.a, nbins, nfft)
-
-	nm := fs * 800 / 1000
-	nd := fs * 800 / 1000
-	nd2 := fs * 4 * int(maxTransient) / 1000
-	nd3 := fs * int(maxTransient) / 1000
-	n.bend = mediatorNew[float64, bang](nm, nm, 0.75)
-	n.dil = mediatorNew[float64, bang](nd, nd, 1)
-	n.peaks = mediatorNew[float64, bang](nd2, nd2, 1)
-	n.ms = mediatorNew[float64, bang](nd3, nd3, 1)
-
-	n.abox = boxfiltNew(fs / 10)
-	n.bbox = boxfiltNew(fs / 10)
-	n.cbox = boxfiltNew(fs / 10)
 
 	// Asymmetric window requires applying reversed copy of itself on synthesis stage.
 	niemitalo(n.a.Wf)
@@ -86,12 +71,9 @@ func (n *detector) process2(lin, rin, ons []float64, stretch float64, onsetevery
 	}
 
 	skip := int(onsetevery * ms(n.fs) / 1000 / stretch)
-	// skip := int(onsetevery * ms(n.fs) / 1000)
 	for i := 0; i < len(ons)-skip; i += skip {
 		a := i + argmax(ons[i:i+skip])
 		v := ons[a]
-		// fill(ons[i:i+skip], 0)
-		// ons[a] = v
 		onsons = append(onsons, [2]float64{float64(a), v})
 	}
 

@@ -55,18 +55,32 @@ type Nanowarp struct {
 }
 
 type Options struct {
-	// Use time-phase derivative differences from mono in stereo preservation
+	// DEPRECATED Use time-phase derivative differences from mono in stereo preservation
 	// instead of phase differences.
+	// Will be removed.
 	Diffadv bool
+
 	// Output scaled onsets only.
 	Onsets bool
-	// Scale the time between transients quadratically.
+
+	// DEPRECATED Scale the time between transients quadratically.
+	// Will be removed.
 	Riddim bool
+
 	// Don't perform transient separation, output raw PVDR with phase reset
-	// with arbitrary periodicity.
+	// each time after arbitrary amount of samples had been elapsed.
 	Raw bool
+
 	// Time for which signal will be bypassed at the any given transient.
+	//
+	// If zero will be set to 30.
 	TransientMs int
+
+	// The size of the transient picking bucket in milliseconds.
+	// An onset is selected at the point of maximum of the novelty function in each bucket.
+	//
+	// If zero will be set to 400.
+	PoolingMs int
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -83,6 +97,13 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	n = &Nanowarp{}
 	n.fs = samplerate
 	w := int(math.Ceil(float64(samplerate) / 48000))
+
+	if opts.TransientMs == 0 {
+		opts.TransientMs = 30
+	}
+	if opts.PoolingMs == 0 {
+		opts.PoolingMs = 400
+	}
 
 	n.warper = warperNew(4096*w, n) // TODO 6144@48k prob the best
 	n.detector = detectorNew(1024, samplerate, ms(opts.TransientMs))
@@ -102,27 +123,9 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			coeffs[j] = 1 / stretch
 		}
 	} else {
-		sam := n.detector.process2(lin, rin, ons, stretch, 400)
+		sam := n.detector.process2(lin, rin, ons, stretch, ms(n.opts.PoolingMs))
 		n.getCoeffSignal(coeffs, sam, stretch)
 	}
-
-	// phs := make([]float64, len(lout))
-	// o := coeffs[0]
-	// for i := range coeffs[1:] {
-	// 	t := coeffs[i+1]
-	// 	phs[i+1] = o
-	// 	o += t
-	// }
-
-	// fill(coeffs, 1.000001)
-	// fill(coeffs[3000:4000], 1)
-
-	// copy(lout, ons)
-	// copy(lout, phs)
-	// println(phs[84391])
-	// println(int(phs[len(phs)-1]), len(phs), len(lin))
-	// copy(lout, coeffs)
-	// return
 
 	n.warper.process3(lin, rin, lout, rout, coeffs, 0)
 }
@@ -146,12 +149,6 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 	for k := 0; k < len(onsets)-1; k++ {
 		i := int(onsets[k][0] * s)
 		j := int(onsets[k+1][0] * s)
-		// i := max(0, int(onsets[k][0]*s)-n.detector.nbuf*2)
-		// j := max(0, int(onsets[k+1][0]*s)-n.detector.nbuf*2)
-		// i := max(0, int((onsets[k][0]-float64(n.detector.nbuf*2))*s))
-		// j := max(0, int((onsets[k+1][0]-float64(n.detector.nbuf*2))*s))
-		// i := max(0, int((onsets[k][0]-float64(n.detector.nbuf))*s))
-		// j := max(0, int((onsets[k+1][0]-float64(n.detector.nbuf))*s))
 		if s == 1 {
 			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
 			fill(coeffs[i+tsa/2:j-tsa/2], 1.00001)
