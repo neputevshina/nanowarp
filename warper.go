@@ -31,13 +31,12 @@ type wbufs struct {
 	Fadv, Pfadv, Ldiff, Rdiff          []float64
 	W, Wr, Wd, Wt                      []float64    // Window functions
 	X, Y, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
-	Px                                 []complex128
 }
 
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	nfft := nextpow2(nbuf) * 2
 	nbins := nfft/2 + 1
-	olap := 4
+	olap := 8
 	n = &warper{
 		nfft:  nfft,
 		nbins: nbins,
@@ -76,7 +75,8 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 
 	bayer := []float64{0.2, 0.6, 0.4, 0.8}
 	i := float64(-n.nbuf / 2)
-	adjust, corr := false, 0
+	// adjust, corr := false, 0
+	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
 		di, df := math.Modf(delay)
 		if j > len(lout)-n.nbuf {
@@ -112,6 +112,14 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c))
 
+		// Cut the pre-echo in the transient region.
+		if c == 1 {
+			lastone = j
+		} else if j-lastone < n.nbuf/2 {
+			fill(lgrainbuf[:n.nbuf/2-(j-lastone)], 0)
+			fill(rgrainbuf[:n.nbuf/2-(j-lastone)], 0)
+		}
+
 		// clear(mgrain)
 		// add(mgrain, lgrainbuf)
 		// add(mgrain, rgrainbuf)
@@ -125,7 +133,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 		// 	}
 		// 	n.fft.Sequence(a.S, a.Y)
 		// 	// corr is actually in two's complement.
-		// 	corr = argmin(a.S) + 1
+		// 	corr = argmax(a.S) + 1
 		// 	if corr > len(a.S)/2 {
 		// 		corr -= len(a.S)
 		// 	}
@@ -134,10 +142,10 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 		// 	j += corr
 		// 	adjust = true
 		// }
-		if c != 1 && adjust {
-			j -= corr
-			adjust = false
-		}
+		// if c != 1 && adjust {
+		// 	j -= corr
+		// 	adjust = false
+		// }
 
 		if n.root.opts.Onsets && c != 1 {
 			clear(lgrainbuf)
@@ -176,11 +184,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	enfft(a.L, a.W, lingrain)
 	enfft(a.R, a.W, ringrain)
 
-	if n.root.opts.Diffadv {
-		enfft(a.Ld, a.Wd, lingrain)
-		enfft(a.Rd, a.Wd, ringrain)
-	}
-
 	enfft(a.X, a.W, a.Mid)
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
@@ -190,8 +193,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	olap := float64(n.nbuf / n.hop)
 	osampc := 2.
 	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
-	ltadv := gettadv(a.L[:n.nbins], a.Ld, osampc, olap)
-	rtadv := gettadv(a.R[:n.nbins], a.Rd, osampc, olap)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
 	// Force reset on a no-op stretch, including detected transients.
@@ -226,13 +227,9 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 			p = complex(1, 0)
 		}
 		a.M[w] = m
-		if n.root.opts.Diffadv {
-			a.Ldiff[w] = tadv(w) - ltadv(w)
-			a.Rdiff[w] = tadv(w) - rtadv(w)
-		} else {
-			a.L[w] /= p
-			a.R[w] /= p
-		}
+
+		a.L[w] /= p
+		a.R[w] /= p
 	}
 
 	n.heap = make(hp, n.nbins)
@@ -274,19 +271,13 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 
 	copy(a.P, a.M)
 	for w := range a.Phase {
-		if n.root.opts.Diffadv {
-			a.Lo[w] = cmplx.Rect(mag(a.L[w]), a.Phase[w]+a.Ldiff[w])
-			a.Ro[w] = cmplx.Rect(mag(a.R[w]), a.Phase[w]+a.Rdiff[w])
-		} else {
-			// Add stereo phase differences back through multiplication.
-			a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Phase[w])
-			a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Phase[w])
-		}
+		// Add stereo phase differences back through multiplication.
+		a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Phase[w])
+		a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Phase[w])
 		a.Pphase[w] = princarg(a.Phase[w])
 	}
 	goto skip
 skip:
-	copy(a.Px, a.X)
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {
