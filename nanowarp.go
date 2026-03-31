@@ -138,7 +138,7 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 	for k := 0; k < len(onsets)-1; k++ {
 		i := onsets[k][0]
 		j := onsets[k+1][0]
-		if j-i < float64(tsa)/s {
+		if j-i < float64(max(n.warper.nbuf*n.olap, tsa))/s {
 			copy(onsets[k:], onsets[k+1:])
 			onsets = onsets[:len(onsets)-1]
 			k--

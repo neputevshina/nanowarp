@@ -280,3 +280,14 @@ func argmax[T cmp.Ordered](a []T) (i int) {
 	}
 	return
 }
+
+func argmin[T cmp.Ordered](a []T) (i int) {
+	m := a[0]
+	for j, v := range a {
+		m = min(m, v)
+		if m == v {
+			i = j
+		}
+	}
+	return
+}

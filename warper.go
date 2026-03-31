@@ -27,11 +27,11 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, Mid, M, P, Phase, Pphase     []float64 // Scratch buffers
-	Fadv, Pfadv, Ldiff, Rdiff       []float64
-	W, Wr, Wd, Wt                   []float64    // Window functions
-	X, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
-	Pha, Px                         []complex128
+	S, Mid, M, P, Phase, Pphase        []float64 // Scratch buffers
+	Fadv, Pfadv, Ldiff, Rdiff          []float64
+	W, Wr, Wd, Wt                      []float64    // Window functions
+	X, Y, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
+	Px                                 []complex128
 }
 
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
@@ -70,13 +70,13 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, delay float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
-	lgrainbuf := get()
-	rgrainbuf := get()
-	lingrain := get()
-	ringrain := get()
+	lgrainbuf, rgrainbuf := get(), get()
+	mgrain, prevmono := get(), get()
+	lingrain, ringrain := get(), get()
 
 	bayer := []float64{0.2, 0.6, 0.4, 0.8}
 	i := float64(-n.nbuf / 2)
+	adjust, corr := false, 0
 	for j := -n.nbuf; ; j += n.hop {
 		di, df := math.Modf(delay)
 		if j > len(lout)-n.nbuf {
@@ -111,16 +111,48 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 		}
 
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c))
+
+		// clear(mgrain)
+		// add(mgrain, lgrainbuf)
+		// add(mgrain, rgrainbuf)
+		// // Use cross-correlation (WSOLA) to calculate transient adjustment.
+		// if c == 1 && !adjust {
+		// 	a := n.a
+		// 	n.fft.Coefficients(a.X, prevmono)
+		// 	n.fft.Coefficients(a.Y, mgrain)
+		// 	for w := range a.X {
+		// 		a.Y[w] = cmplx.Conj(a.X[w]) * a.Y[w]
+		// 	}
+		// 	n.fft.Sequence(a.S, a.Y)
+		// 	// corr is actually in two's complement.
+		// 	corr = argmin(a.S) + 1
+		// 	if corr > len(a.S)/2 {
+		// 		corr -= len(a.S)
+		// 	}
+		// 	corr = int(float64(corr) * float64(n.nbuf) / float64(n.nfft))
+		// 	println(corr)
+		// 	j += corr
+		// 	adjust = true
+		// }
+		if c != 1 && adjust {
+			j -= corr
+			adjust = false
+		}
+
 		if n.root.opts.Onsets && c != 1 {
 			clear(lgrainbuf)
 			clear(rgrainbuf)
 		}
 
 		tj := j + int(di) + boolint(df > bayer[j%len(bayer)])
+
 		loutgrain := lout[max(0, tj-n.nbuf/2):clamp(0, len(lout), tj+n.nbuf/2)]
 		routgrain := rout[max(0, tj-n.nbuf/2):clamp(0, len(lout), tj+n.nbuf/2)]
+
 		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -tj):])
 		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -tj):])
+
+		mgrain, prevmono = prevmono, mgrain
 	}
 }
 

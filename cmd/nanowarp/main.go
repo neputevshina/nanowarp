@@ -31,6 +31,7 @@ var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var riddim = flag.Bool("riddim", false, "use square root ramps between transients")
 var raw = flag.Bool("raw", false, "skip onset detection")
 var transientms = flag.Int("onsetms", 30, "onset size in milliseconds")
+var poolms = flag.Int("poolms", 400, "time of a onset detection bucket in milliseconds")
 
 func main() {
 	flag.Parse()
@@ -155,6 +156,7 @@ func main() {
 		Riddim:      *riddim,
 		Raw:         *raw,
 		TransientMs: *transientms,
+		PoolingMs:   *poolms,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
