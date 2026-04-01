@@ -112,12 +112,20 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c))
 
-		// Cut the pre-echo in the transient region.
+		// Cut pre-echo in transient regions.
+		d := j - lastone
 		if c == 1 {
 			lastone = j
-		} else if j-lastone < n.nbuf/2 {
-			fill(lgrainbuf[:n.nbuf/2-(j-lastone)], 0)
-			fill(rgrainbuf[:n.nbuf/2-(j-lastone)], 0)
+		} else if d < n.nbuf/2 {
+			z := func(grain []float64) {
+				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+				for i := range rr {
+					rr[i] *= float64(i) / float64(len(rr))
+				}
+				fill(grain[:n.nbuf/2-d-n.hop], 0)
+			}
+			z(lgrainbuf)
+			z(rgrainbuf)
 		}
 
 		// clear(mgrain)
