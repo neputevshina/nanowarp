@@ -29,8 +29,11 @@ type warper struct {
 type wbufs struct {
 	S, Mid, M, P, Phase, Pphase        []float64 // Scratch buffers
 	Fadv, Pfadv, Ldiff, Rdiff          []float64
-	W, Wr, Wd, Wt                      []float64    // Window functions
+	W, Wr, Wd, Wt, Wg                  []float64    // Window functions
 	X, Y, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
+
+	// Backups for PVSOLA interruption
+	PphaseI, PI []float64
 }
 
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
@@ -49,7 +52,7 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 
 	makeslices(a, nbins, nfft)
 
-	// Exceptions.
+	// Exceptions
 	a.Phase = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
@@ -61,24 +64,33 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	slices.Reverse(a.Wr[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
 
+	// Generate a PVSOLA “glue” window
+	wsq := slices.Clone(a.W)
+	mul(wsq, wsq)
+	for i := 1; i < n.olap; i++ {
+		add(a.Wg[:n.hop*i], wsq[n.hop*(n.olap-i):])
+	}
+	scale(a.Wg, 1./a.Wg[argmax(a.Wg)])
+	dump("grains/window.wav", a.Wg, n.root.fs)
+
 	n.fft = fourier.NewFFT(nfft)
 
 	return
 }
 
-func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, delay float64) {
+func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf, rgrainbuf := get(), get()
-	mgrain, prevmono := get(), get()
+	// mgrain, prevmono := get(), get()
+	mgrain, anagrain := get(), get()
+	_ = anagrain
 	lingrain, ringrain := get(), get()
 
-	bayer := []float64{0.2, 0.6, 0.4, 0.8}
 	i := float64(-n.nbuf / 2)
-	// adjust, corr := false, 0
+	adjust, corr := false, 0
 	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
-		di, df := math.Modf(delay)
 		if j > len(lout)-n.nbuf {
 			break
 		}
@@ -110,7 +122,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 			c = 1
 		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c))
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c), c == 1)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -128,47 +140,104 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 			z(rgrainbuf)
 		}
 
-		// clear(mgrain)
-		// add(mgrain, lgrainbuf)
-		// add(mgrain, rgrainbuf)
-		// // Use cross-correlation (WSOLA) to calculate transient adjustment.
+		clear(mgrain)
+		add(mgrain, lgrainbuf)
+		add(mgrain, rgrainbuf)
+		// Use cross-correlation (WSOLA) to calculate transient adjustment (PVSOLA).
 		// if c == 1 && !adjust {
+		// 	corr = -10000
 		// 	a := n.a
-		// 	n.fft.Coefficients(a.X, prevmono)
+
+		// 	// Virtually advance PVDR to calculate time delay.
+		// 	oj := j
+		// 	vi := float64(i)
+
+		// 	copy(a.PphaseI, a.Pphase)
+		// 	copy(a.PI, a.P)
+
+		// 	clear(anagrain)
+		// 	add(anagrain, lout[max(0, oj-n.nfft/2):])
+		// 	add(anagrain, rout[max(0, oj-n.nfft/2):])
+
+		// 	for j := oj; j < oj+n.nfft/2; j += n.hop {
+		// 		c := 1.
+		// 		for _, c := range coeffs[max(0, j-n.hop):clamp(0, len(lout)-1, j)] {
+		// 			if c != c || math.IsInf(c, 0) {
+		// 				continue
+		// 			}
+		// 			vi += c
+		// 		}
+		// 		i := int(vi)
+		// 		copy(lingrain[max(0, -i):], lin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		// 		copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		// 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c), false)
+
+		// 		tj := j - oj + n.nfft/2
+
+		// 		subgrain := anagrain[max(0, tj-n.nbuf/2):clamp(0, len(anagrain), tj+n.nbuf/2)]
+		// 		add(subgrain, lgrainbuf[clamp(0, n.nbuf, -tj):])
+		// 		add(subgrain, rgrainbuf[clamp(0, n.nbuf, -tj):])
+		// 	}
+
+		// 	scale(anagrain, 0.5)
+		// 	copy(mgrain[n.nfft/4:], mgrain)
+		// 	clear(mgrain[:n.nfft/4])
+
+		// 	copy(a.Pphase, a.PphaseI)
+		// 	copy(a.P, a.PI)
+
+		// 	n.fft.Coefficients(a.X, anagrain)
 		// 	n.fft.Coefficients(a.Y, mgrain)
 		// 	for w := range a.X {
 		// 		a.Y[w] = cmplx.Conj(a.X[w]) * a.Y[w]
 		// 	}
 		// 	n.fft.Sequence(a.S, a.Y)
-		// 	// corr is actually in two's complement.
-		// 	corr = argmax(a.S) + 1
-		// 	if corr > len(a.S)/2 {
-		// 		corr -= len(a.S)
+
+		// 	// Rotation through reverses
+		// 	f := len(a.S) / 2
+		// 	r := n.hop
+		// 	slices.Reverse(a.S[f:])
+		// 	slices.Reverse(a.S[:f])
+		// 	slices.Reverse(a.S)
+		// 	v := a.S[f-r : f+r]
+		// 	mx, mn := argmax(v), argmin(v)
+		// 	_ = mn
+		// 	corr = mx
+		// 	if abs(a.S[mx]) < abs(a.S[mn]) {
+		// 		corr = mn
+		// 		scale(lgrainbuf, -1)
+		// 		scale(rgrainbuf, -1)
 		// 	}
-		// 	corr = int(float64(corr) * float64(n.nbuf) / float64(n.nfft))
-		// 	println(corr)
+		// 	corr += 1 - r
+		// 	// corr = -corr
+
+		// 	dump(fmt.Sprint(`grains/`, j, "-grain.wav"), mgrain, n.root.fs)
+		// 	dump(fmt.Sprint(`grains/`, j, "-buf.wav"), anagrain, n.root.fs)
+		// 	dump(fmt.Sprint(`grains/`, j, "-correlogram.wav"), a.S, n.root.fs)
+		// 	// println(j, corr, neg)
+		// 	println(j, corr)
+		// 	corr = -corr
 		// 	j += corr
+		// 	lastone += corr
 		// 	adjust = true
 		// }
-		// if c != 1 && adjust {
-		// 	j -= corr
-		// 	adjust = false
-		// }
+		if c != 1 && adjust {
+			j -= corr
+			lastone -= corr
+			adjust = false
+		}
 
 		if n.root.opts.Onsets && c != 1 {
 			clear(lgrainbuf)
 			clear(rgrainbuf)
 		}
 
-		tj := j + int(di) + boolint(df > bayer[j%len(bayer)])
+		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 
-		loutgrain := lout[max(0, tj-n.nbuf/2):clamp(0, len(lout), tj+n.nbuf/2)]
-		routgrain := rout[max(0, tj-n.nbuf/2):clamp(0, len(lout), tj+n.nbuf/2)]
+		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -j):])
+		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
 
-		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -tj):])
-		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -tj):])
-
-		mgrain, prevmono = prevmono, mgrain
 	}
 }
 
@@ -176,7 +245,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64, dela
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, stretch float64) {
+func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, stretch float64, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -203,8 +272,8 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
-	// Force reset on a no-op stretch, including detected transients.
-	if stretch == 1 {
+	// Force reset.
+	if reset {
 		for w := range a.Phase {
 			a.Pphase[w] = cmplx.Phase(a.X[w])
 		}

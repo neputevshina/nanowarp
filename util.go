@@ -7,8 +7,10 @@ import (
 	"image/color"
 	"math"
 	"math/cmplx"
+	"os"
 	"reflect"
 
+	"github.com/neputevshina/nanowarp/wav"
 	"golang.org/x/exp/constraints"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -118,14 +120,14 @@ func gettadv(x, xd []complex128, osampc, olap float64) func(w int) float64 {
 
 func hann(out []float64) {
 	for i := range out {
-		x := float64(i) / float64(len(out))
+		x := float64(i) / float64(len(out)-1)
 		out[i] = 0.5 * (1 - math.Cos(2*math.Pi*x))
 	}
 }
 
 func blackmanHarris(out []float64) {
 	for i := range out {
-		x := float64(i) / float64(len(out))
+		x := float64(i) / float64(len(out)-1)
 		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
 	}
 }
@@ -290,4 +292,43 @@ func argmin[T cmp.Ordered](a []T) (i int) {
 		}
 	}
 	return
+}
+
+func fold[F int | float64](a, b, x F) F {
+	for {
+		x = abs(b-a-abs(x)) + a
+		if x < b {
+			break
+		}
+	}
+	return x
+}
+
+func scale[T constraints.Float](dst []T, s T) {
+	for i := 0; i < len(dst); i++ {
+		dst[i] *= s
+	}
+}
+
+func dump(name string, data []float64, fs int) {
+	file, err := os.Create(name)
+	defer file.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	wr := wav.NewWriter(file, uint32(len(data)), 1, uint32(fs), 32, true)
+	nbuf := 2048
+	buf := make([]wav.Sample, 0, nbuf)
+	for i := 0; i < len(data); i += nbuf {
+		buf = buf[:0]
+		for j := i; j < min(i+nbuf, len(data)); j++ {
+			buf = append(buf, wav.Sample{Values: [2]int{
+				int(math.Float32bits(float32(data[j])))}})
+		}
+		err := wr.WriteSamples(buf)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
