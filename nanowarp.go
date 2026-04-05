@@ -55,21 +55,15 @@ type Nanowarp struct {
 }
 
 type Options struct {
-	// DEPRECATED Use time-phase derivative differences from mono in stereo preservation
-	// instead of phase differences.
-	// Will be removed.
-	Diffadv bool
-
 	// Output scaled onsets only.
 	Onsets bool
 
-	// DEPRECATED Scale the time between transients quadratically.
-	// Will be removed.
-	Riddim bool
-
-	// Don't perform transient separation, output raw PVDR with phase reset
-	// each time after arbitrary amount of samples had been elapsed.
-	Raw bool
+	// Set algorithm quality
+	// -1: Don't perform transient separation, output raw PVDR with phase reset
+	// each time after arbitrary amount of samples had been elapsed. 4x overlap. Fastest.
+	// 0: Extract transients and reset the phase on them. 4x overlap. Slow.
+	// 1: Same as 0, but with 8x overlap. Slowest.
+	Quality int
 
 	// Time for which signal will be bypassed at the any given transient.
 	//
@@ -118,7 +112,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	ons := make([]float64, len(lin))
 
 	coeffs := make([]float64, len(lout))
-	if n.opts.Raw {
+	if n.opts.Quality == -1 {
 		for j := range coeffs {
 			coeffs[j] = 1 / stretch
 		}

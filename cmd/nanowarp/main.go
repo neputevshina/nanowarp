@@ -25,12 +25,10 @@ var foutput = flag.String("o", "", "output WAV `path`")
 var coeff = flag.Float64("t", 0, "time stretch multiplier")
 var from = flag.Float64("from", 0, "source `bpm`")
 var to = flag.Float64("to", 0, "target `bpm`")
-var pitch = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
-var diffadv = flag.Bool("diffadv", false, "advance stereo by CIF difference, not by phase difference")
+var st = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
 var onsets = flag.Bool("onsets", false, "output displaced onsets only")
-var riddim = flag.Bool("riddim", false, "use square root ramps between transients")
-var raw = flag.Bool("raw", false, "skip onset detection")
-var transientms = flag.Int("onsetms", 30, "onset size in milliseconds")
+var q = flag.Int("q", 0, "quality, see nanowarp.Options.Quality comment in nanowarp.go for help")
+var onsetms = flag.Int("onsetms", 30, "onset size in milliseconds")
 var poolms = flag.Int("poolms", 400, "time of a onset detection bucket in milliseconds")
 
 func main() {
@@ -51,7 +49,7 @@ func main() {
 	}
 
 	if *coeff <= 0 && *from > 0 && *to > 0 {
-		*coeff = *from / *to * math.Pow(2, *pitch/12)
+		*coeff = *from / *to * math.Pow(2, *st/12)
 	}
 	if *finput == "" || *coeff <= 0 {
 		flag.Usage()
@@ -60,8 +58,8 @@ func main() {
 	nooutname := false
 	generateOutName := func(dir, fn string) string {
 		pitchSuffix := ""
-		if *pitch != 0 {
-			pitchSuffix = fmt.Sprintf("%+.2fst", *pitch)
+		if *st != 0 {
+			pitchSuffix = fmt.Sprintf("%+.2fst", *st)
 		}
 
 		if *from > 0 {
@@ -151,11 +149,9 @@ func main() {
 	}
 
 	opts := nanowarp.Options{
-		Diffadv:     *diffadv,
 		Onsets:      *onsets,
-		Riddim:      *riddim,
-		Raw:         *raw,
-		TransientMs: *transientms,
+		Quality:     *q,
+		TransientMs: *onsetms,
 		PoolingMs:   *poolms,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)

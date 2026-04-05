@@ -39,7 +39,10 @@ type wbufs struct {
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	nfft := nextpow2(nbuf) * 2
 	nbins := nfft/2 + 1
-	olap := 8
+	olap := 4
+	if nanowarp.opts.Quality >= 1 {
+		olap = 8
+	}
 	n = &warper{
 		nfft:  nfft,
 		nbins: nbins,
@@ -71,7 +74,7 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 		add(a.Wg[:n.hop*i], wsq[n.hop*(n.olap-i):])
 	}
 	scale(a.Wg, 1./a.Wg[argmax(a.Wg)])
-	dump("grains/window.wav", a.Wg, n.root.fs)
+	// dump("grains/window.wav", a.Wg, n.root.fs)
 
 	n.fft = fourier.NewFFT(nfft)
 
@@ -88,7 +91,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64) {
 	lingrain, ringrain := get(), get()
 
 	i := float64(-n.nbuf / 2)
-	adjust, corr := false, 0
+	// adjust, corr := false, 0
 	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
@@ -118,7 +121,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64) {
 			}
 		}
 		twosec := 2 * n.root.fs
-		if n.root.opts.Raw && j%twosec < (j-n.hop)%twosec {
+		if n.root.opts.Quality == -1 && j%twosec < (j-n.hop)%twosec {
 			c = 1
 		}
 
@@ -143,7 +146,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64) {
 		clear(mgrain)
 		add(mgrain, lgrainbuf)
 		add(mgrain, rgrainbuf)
-		// Use cross-correlation (WSOLA) to calculate transient adjustment (PVSOLA).
+		// Use cross-correlation (SOLA) to calculate transient adjustment (PVSOLA).
 		// if c == 1 && !adjust {
 		// 	corr = -10000
 		// 	a := n.a
@@ -209,23 +212,28 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs []float64) {
 		// 		scale(rgrainbuf, -1)
 		// 	}
 		// 	corr += 1 - r
-		// 	// corr = -corr
+		// 	corr = -corr
+
+		// 	// Glue windowing
+		// 	mul(anagrain[max(0, n.nfft/2+corr-n.nbuf):], a.Wg[max(0, corr):])
+		// 	clear(anagrain[min(n.nfft, n.nfft/2+corr+n.nbuf):])
+		// 	copy(lout[max(0, oj-n.nfft/2):], anagrain)
+		// 	copy(rout[max(0, oj-n.nfft/2):], anagrain)
 
 		// 	dump(fmt.Sprint(`grains/`, j, "-grain.wav"), mgrain, n.root.fs)
 		// 	dump(fmt.Sprint(`grains/`, j, "-buf.wav"), anagrain, n.root.fs)
 		// 	dump(fmt.Sprint(`grains/`, j, "-correlogram.wav"), a.S, n.root.fs)
 		// 	// println(j, corr, neg)
 		// 	println(j, corr)
-		// 	corr = -corr
-		// 	j += corr
-		// 	lastone += corr
+		// 	// j += corr
+		// 	// lastone += corr
 		// 	adjust = true
 		// }
-		if c != 1 && adjust {
-			j -= corr
-			lastone -= corr
-			adjust = false
-		}
+		// if c != 1 && adjust {
+		// 	// j -= corr
+		// 	// lastone -= corr
+		// 	adjust = false
+		// }
 
 		if n.root.opts.Onsets && c != 1 {
 			clear(lgrainbuf)
