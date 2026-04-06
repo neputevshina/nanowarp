@@ -33,7 +33,7 @@ package nanowarp
 //	- Use only float32 (impossible with gonum)
 //	- SIMD?
 //		- dev.simd branch of Go compiler with intrinsics
-//	 - Silent percussive frame elimination
+//
 
 import (
 	"fmt"
@@ -112,6 +112,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	ons := make([]float64, len(lin))
 
 	coeffs := make([]float64, len(lout))
+	phasor := make([]float64, len(lout))
 	if n.opts.Quality == -1 {
 		for j := range coeffs {
 			coeffs[j] = 1 / stretch
@@ -167,8 +168,11 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 		n.getCoeffSignal(coeffs, sam, stretch)
 	}
+	for j := range phasor[1:] {
+		phasor[j+1] = phasor[j] + coeffs[j+1]
+	}
 
-	n.warper.process3(lin, rin, lout, rout, coeffs)
+	n.warper.process3(lin, rin, lout, rout, coeffs, phasor)
 }
 
 func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
