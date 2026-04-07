@@ -340,3 +340,7 @@ func l1(x complex128) float64 {
 func linf(x complex128) float64 {
 	return max(abs(real(x)), abs(imag(x)))
 }
+
+func even(x int) int {
+	return x - x%2 + 1
+}

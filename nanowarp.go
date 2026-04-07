@@ -99,8 +99,9 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 		opts.PoolingMs = 400
 	}
 
-	n.warper = warperNew(4096*w, n) // TODO 6144@48k prob the best
-	n.detector = detectorNew(1024, samplerate, ms(opts.TransientMs))
+	// TODO Probably possible to shrink nbuf to 3/4 of size without loss in quality.
+	n.warper = warperNew(4096*w, n)
+	n.detector = detectorNew(512, samplerate, ms(opts.TransientMs), ms(opts.PoolingMs))
 
 	return
 }
@@ -110,6 +111,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	fmt.Fprintln(os.Stderr, "Coeff =", stretch)
 
 	ons := make([]float64, len(lin))
+	ons1 := make([]float64, len(lin))
 
 	coeffs := make([]float64, len(lout))
 	phasor := make([]float64, len(lout))
@@ -118,7 +120,12 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			coeffs[j] = 1 / stretch
 		}
 	} else {
-		sam := n.detector.process2(lin, rin, ons, stretch, ms(n.opts.PoolingMs))
+		sam := n.detector.process2(lin, rin, ons, ons1, stretch)
+
+		// copy(lout, ons)
+		// copy(rout, ons1)
+		// return
+
 		n.getCoeffSignal(coeffs, sam, stretch)
 	}
 	for j := range phasor[1:] {

@@ -1,5 +1,5 @@
 # Nanowarp
-A studio-grade audio time stretching algorithm.
+Studio-grade audio time stretching algorithm.
 
 Reference implementation is going to be in Go, and a possible (Fil-)C implementation will share
 this repo with a Go version.
@@ -7,7 +7,7 @@ this repo with a Go version.
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export.
 
-Current state: algorithm done, working on streaming implementation. No user-facing API exists yet.
+Current state: algorithm done, working on streaming. No user-facing API exists yet.
 
 ## Installation and usage
 
@@ -58,8 +58,9 @@ unmodified.
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
 
 ## Notes
-- There exists a “beat-emphasis onset detection” function
+- There exists “beat-emphasis onset detection” function.
 See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf
+- SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.
 - Formant shifting must be implemented after streaming.
 

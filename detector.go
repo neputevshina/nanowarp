@@ -18,6 +18,7 @@ type detector struct {
 	corr        float64
 	thresh      float64
 	fs          int
+	m           *mediator[float64, bang]
 
 	fft *fourier.FFT
 
@@ -28,7 +29,7 @@ type dbufs struct {
 	L, R, PL, PPL, PR, PPR []complex128
 }
 
-func detectorNew(nfft, fs sa, maxTransient ms) (n *detector) {
+func detectorNew(nfft, fs sa, maxTransient, onsetevery ms) (n *detector) {
 	corr := math.Ceil(float64(fs) / 48000)
 	nbuf := nfft * int(corr)
 	nbins := nfft/2 + 1
@@ -53,10 +54,13 @@ func detectorNew(nfft, fs sa, maxTransient ms) (n *detector) {
 	n.norm = float64(nfft) * float64(olap) * n.wgain
 	n.fft = fourier.NewFFT(nfft)
 
+	tsa := int(onsetevery) / 2 * n.fs / 1000
+	n.m = mediatorNew[float64, bang](tsa+1, tsa+1, 1)
+
 	return
 }
 
-func (n *detector) process2(lin, rin, ons []float64, stretch float64, onsetevery ms) (onsons [][2]float64) {
+func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (onsons [][2]float64) {
 	fmt.Fprintln(os.Stderr, `(*detector).process`)
 
 	onsons = make([][2]float64, 0, 1000)
@@ -70,11 +74,16 @@ func (n *detector) process2(lin, rin, ons []float64, stretch float64, onsetevery
 		add(ons[i:min(len(lin), i+n.nbuf)], t)
 	}
 
-	skip := int(onsetevery * ms(n.fs) / 1000 / stretch)
-	for i := 0; i < len(ons)-skip; i += skip {
-		a := i + argmax(ons[i:i+skip])
-		v := ons[a]
-		onsons = append(onsons, [2]float64{float64(a), v})
+	step := even(int(float64(n.m.maxN) / stretch))
+	n.m.Reset(step)
+	for i := range ons {
+		ons1[max(0, i-step/2)], _ = n.m.Filt(ons[i], bang{})
+	}
+
+	for i := range ons1 {
+		if ons[i] == ons1[i] {
+			onsons = append(onsons, [2]float64{float64(i), ons[i]})
+		}
 	}
 
 	return

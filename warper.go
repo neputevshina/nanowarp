@@ -163,8 +163,7 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, str
 	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
-	// Force phase reset.
-	// TODO Move out to process3, PV doesn't have to handle phase resets.
+	// Forced phase reset.
 	if reset {
 		for w := range a.Phase {
 			a.Pphase[w] = cmplx.Phase(a.X[w])
