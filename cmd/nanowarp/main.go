@@ -29,7 +29,7 @@ var st = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time
 var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var q = flag.Int("q", 0, "quality, see nanowarp.Options.Quality comment in nanowarp.go for help")
 var onsetms = flag.Int("onsetms", 30, "onset size in milliseconds")
-var poolms = flag.Int("poolms", 400, "time of a onset detection bucket in milliseconds")
+var poolms = flag.Int("poolms", 400, "time of onset detection bucket in milliseconds")
 
 func main() {
 	flag.Parse()

@@ -116,5 +116,6 @@ func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
 	copy(a.PPR, a.PR)
 
 	cnov = sum(a.N)
+
 	return
 }

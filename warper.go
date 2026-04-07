@@ -29,11 +29,8 @@ type warper struct {
 type wbufs struct {
 	S, Mid, M, P, Phase, Pphase        []float64 // Scratch buffers
 	Fadv, Pfadv, Ldiff, Rdiff          []float64
-	W, Wr, Wd, Wt, Wg                  []float64    // Window functions
+	W, Wr, Wd, Wt                      []float64    // Window functions
 	X, Y, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
-
-	// Backups for PVSOLA interruption
-	PphaseI, PI []float64
 }
 
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
@@ -67,15 +64,6 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	slices.Reverse(a.Wr[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
 
-	// Generate the PVSOLA “glue” window
-	wsq := slices.Clone(a.W)
-	mul(wsq, wsq)
-	for i := 1; i < n.olap; i++ {
-		add(a.Wg[:n.hop*i], wsq[n.hop*(n.olap-i):])
-	}
-	scale(a.Wg, 1./a.Wg[argmax(a.Wg)])
-	// dump("grains/window.wav", a.Wg, n.root.fs)
-
 	n.fft = fourier.NewFFT(nfft)
 
 	return
@@ -85,12 +73,8 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf, rgrainbuf := get(), get()
-	lgrainbuf2, rgrainbuf2 := get(), get()
-	mgrain, anagrain := get(), get()
-	lanagrain, ranagrain := get(), get()
 	lingrain, ringrain := get(), get()
 
-	adjust, corr := false, 0
 	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
@@ -112,138 +96,29 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				c = 1
 			}
 		}
-		twosec := 2 * n.root.fs
-		if n.root.opts.Quality == -1 && j%twosec < (j-n.hop)%twosec {
+		tensec := 10 * n.root.fs
+		if n.root.opts.Quality == -1 && j%tensec < (j-n.hop)%tensec {
 			c = 1
 		}
 
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c), c == 1)
 
 		// Cut pre-echo in transient regions.
-		if false {
-			d := j - lastone
-			if c == 1 {
-				lastone = j
-			} else if d < n.nbuf/2 {
-				z := func(grain []float64) {
-					rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
-					for i := range rr {
-						rr[i] *= float64(i) / float64(len(rr))
-					}
-					fill(grain[:n.nbuf/2-d-n.hop], 0)
+		d := j - lastone
+		if c == 1 {
+			lastone = j
+		} else if d < n.nbuf/2 {
+			z := func(grain []float64) {
+				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+				for i := range rr {
+					rr[i] *= float64(i) / float64(len(rr))
 				}
-				z(lgrainbuf)
-				z(rgrainbuf)
+				fill(grain[:n.nbuf/2-d-n.hop], 0)
 			}
+			z(lgrainbuf)
+			z(rgrainbuf)
 		}
 
-		// Use cross-correlation (SOLA) to calculate transient adjustment (PVSOLA).
-		// See “PVSOLA: A Phase Vocoder with Synchronized OverLap-Add”
-		// https://www.dafx.de/paper-archive/details.php?id=9UQ9PWY6URdHRFgtlSGduA
-		clear(mgrain)
-		add(mgrain, lgrainbuf)
-		add(mgrain, rgrainbuf)
-		if false {
-			if c == 1 && !adjust {
-				a := n.a
-
-				// Virtually advance PVDR to calculate time delay.
-				oj := j
-
-				copy(a.PphaseI, a.Pphase)
-				copy(a.PI, a.P)
-
-				clear(lanagrain)
-				clear(ranagrain)
-				clear(lgrainbuf2)
-				clear(rgrainbuf2)
-				add(lanagrain, lout[max(0, oj-n.nfft/2):])
-				add(ranagrain, rout[max(0, oj-n.nfft/2):])
-
-				for j := oj; j < oj+n.nfft/2; j += n.hop {
-					i := int(phasor[max(0, j)] - float64(n.nbuf/2))
-					copy(lingrain[max(0, -i):], lin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
-					copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
-					n.advance(lingrain, ringrain, lgrainbuf2, rgrainbuf2, abs(coeffs[max(0, j)]), false)
-
-					tj := j - oj + n.nfft/2
-
-					lsubgrain := lanagrain[max(0, tj-n.nbuf/2):clamp(0, len(lanagrain), tj+n.nbuf/2)]
-					rsubgrain := ranagrain[max(0, tj-n.nbuf/2):clamp(0, len(ranagrain), tj+n.nbuf/2)]
-					add(lsubgrain, lgrainbuf2[clamp(0, n.nbuf, -tj):])
-					add(rsubgrain, rgrainbuf2[clamp(0, n.nbuf, -tj):])
-				}
-
-				clear(anagrain)
-				add(anagrain, lanagrain)
-				add(anagrain, ranagrain)
-				scale(anagrain, 0.5)
-				copy(mgrain[n.nfft/4:], mgrain)
-				clear(mgrain[:n.nfft/4])
-
-				copy(a.Pphase, a.PphaseI)
-				copy(a.P, a.PI)
-
-				n.fft.Coefficients(a.X, anagrain)
-				n.fft.Coefficients(a.Y, mgrain)
-				for w := range a.X {
-					a.Y[w] = cmplx.Conj(a.X[w]) * a.Y[w]
-				}
-				n.fft.Sequence(a.S, a.Y)
-
-				// Rotation through reverses.
-				f := len(a.S) / 2
-				// ~~See only backwards, minimize pre-echo.~~
-				slices.Reverse(a.S[f:])
-				slices.Reverse(a.S[:f])
-				// Skip the last reverse since the sign in xcorr
-				// measure must be reversed anyway.
-
-				r := n.root.opts.TransientMs / 3 * n.root.fs / 1000
-				// r := n.hop
-				v := a.S[f-r : f+r]
-				mx, mn := argmax(v), argmin(v)
-				_ = mn
-				corr = mx
-				if abs(a.S[mx]) < abs(a.S[mn]) {
-					corr = mn
-					scale(lgrainbuf, -1)
-					scale(rgrainbuf, -1)
-				}
-				corr += 1 - r
-				// corr = -corr
-				j += corr
-				lastone += corr
-
-				// Glue windowing
-				z := func(anagrain, out []float64) {
-					c := n.nfft/2 + corr //+ n.hop
-					mul(anagrain[max(0, c-n.nbuf/2):], a.Wg)
-					clear(anagrain[min(n.nfft, c+n.nbuf/2):])
-					copy(out[max(0, oj-n.nfft/2):], anagrain)
-				}
-				z(lanagrain, lout)
-				z(ranagrain, rout)
-
-				// copy(lgrainbuf2, lanagrain)
-				// add(lgrainbuf2, lgrainbuf)
-
-				// dump(fmt.Sprint(`grains/`, j, "-grain.wav"), lgrainbuf, n.root.fs)
-				// dump(fmt.Sprint(`grains/`, j, "-buf.wav"), lanagrain, n.root.fs)
-				// dump(fmt.Sprint(`grains/`, j, "-correlogram.wav"), a.S, n.root.fs)
-				// // dump(fmt.Sprint(`grains/`, j, "-grain+buf.wav"), lgrainbuf2, n.root.fs)
-
-				// println(j, corr, neg)
-				// println(j, corr, coeffs[max(0, oj+corr)])
-				adjust = true
-			}
-			if c != 1 && adjust {
-				j -= corr
-				lastone -= corr
-				adjust = false
-				corr = 0
-			}
-		}
 		if n.root.opts.Onsets && c != 1 {
 			clear(lgrainbuf)
 			clear(rgrainbuf)

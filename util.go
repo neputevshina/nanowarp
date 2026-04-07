@@ -332,3 +332,11 @@ func dump(name string, data []float64, fs int) {
 		}
 	}
 }
+
+func l1(x complex128) float64 {
+	return abs(real(x)) + abs(imag(x))
+}
+
+func linf(x complex128) float64 {
+	return max(abs(real(x)), abs(imag(x)))
+}

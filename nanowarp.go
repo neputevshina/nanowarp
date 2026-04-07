@@ -119,53 +119,6 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		}
 	} else {
 		sam := n.detector.process2(lin, rin, ons, stretch, ms(n.opts.PoolingMs))
-
-		if false {
-			N := n.opts.PoolingMs * n.fs / 1000
-			m := mediatorNew[float64, bang](N, N, 1)
-			m1 := mediatorNew[float64, bang](n.detector.nbuf, n.detector.nbuf, 0.5)
-			_ = m1
-			f := boxfiltNew(N / 2)
-			_ = f
-
-			for i := -N / 2; i < len(ons); i++ {
-				e := abs(i)
-				v := f.Filt(ons[e])
-				if i >= 0 {
-					ons[e] /= v
-				}
-			}
-			for i := 0; i < len(ons); i++ {
-				e := i
-				v, _ := m.Filt(ons[e], bang{})
-				if i >= 0 {
-					ons[e] = 1 - ons[e]/v
-					if v == 0 {
-						ons[e] = 0
-					}
-				}
-			}
-			// for i := range ons {
-			// 	// nb := math.Log2(float64(n.warper.nbuf))
-			// 	// ons[i] = math.Exp2(mix(nb-4, nb, ons[i]))
-			// 	ons[i] = max(1./16, mix(1./16, 1, ons[i]))
-			// }
-			for i := -N / 2; i < len(ons); i++ {
-				e := abs(i)
-				v, _ := m1.Filt(ons[e], bang{})
-				if i >= 0 {
-					if ons[e] > v {
-						ons[e] = v
-					}
-				}
-			}
-
-			println(ons[argmax(ons)], ons[argmin(ons)], sum(ons)/float64(len(ons)))
-
-			copy(lout, ons)
-			return
-		}
-
 		n.getCoeffSignal(coeffs, sam, stretch)
 	}
 	for j := range phasor[1:] {
