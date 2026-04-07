@@ -67,7 +67,7 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	slices.Reverse(a.Wr[:nbuf])
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
 
-	// Generate a PVSOLA “glue” window
+	// Generate the PVSOLA “glue” window
 	wsq := slices.Clone(a.W)
 	mul(wsq, wsq)
 	for i := 1; i < n.olap; i++ {
@@ -85,6 +85,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf, rgrainbuf := get(), get()
+	lgrainbuf2, rgrainbuf2 := get(), get()
 	mgrain, anagrain := get(), get()
 	lanagrain, ranagrain := get(), get()
 	lingrain, ringrain := get(), get()
@@ -119,19 +120,21 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c), c == 1)
 
 		// Cut pre-echo in transient regions.
-		d := j - lastone
-		if c == 1 {
-			lastone = j
-		} else if d < n.nbuf/2 {
-			z := func(grain []float64) {
-				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
-				for i := range rr {
-					rr[i] *= float64(i) / float64(len(rr))
+		if false {
+			d := j - lastone
+			if c == 1 {
+				lastone = j
+			} else if d < n.nbuf/2 {
+				z := func(grain []float64) {
+					rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+					for i := range rr {
+						rr[i] *= float64(i) / float64(len(rr))
+					}
+					fill(grain[:n.nbuf/2-d-n.hop], 0)
 				}
-				fill(grain[:n.nbuf/2-d-n.hop], 0)
+				z(lgrainbuf)
+				z(rgrainbuf)
 			}
-			z(lgrainbuf)
-			z(rgrainbuf)
 		}
 
 		// Use cross-correlation (SOLA) to calculate transient adjustment (PVSOLA).
@@ -142,7 +145,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		add(mgrain, rgrainbuf)
 		if false {
 			if c == 1 && !adjust {
-				corr = -10000
 				a := n.a
 
 				// Virtually advance PVDR to calculate time delay.
@@ -153,6 +155,8 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 				clear(lanagrain)
 				clear(ranagrain)
+				clear(lgrainbuf2)
+				clear(rgrainbuf2)
 				add(lanagrain, lout[max(0, oj-n.nfft/2):])
 				add(ranagrain, rout[max(0, oj-n.nfft/2):])
 
@@ -160,14 +164,14 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 					i := int(phasor[max(0, j)] - float64(n.nbuf/2))
 					copy(lingrain[max(0, -i):], lin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
 					copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
-					n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(coeffs[max(0, j)]), false)
+					n.advance(lingrain, ringrain, lgrainbuf2, rgrainbuf2, abs(coeffs[max(0, j)]), false)
 
 					tj := j - oj + n.nfft/2
 
 					lsubgrain := lanagrain[max(0, tj-n.nbuf/2):clamp(0, len(lanagrain), tj+n.nbuf/2)]
 					rsubgrain := ranagrain[max(0, tj-n.nbuf/2):clamp(0, len(ranagrain), tj+n.nbuf/2)]
-					add(lsubgrain, lgrainbuf[clamp(0, n.nbuf, -tj):])
-					add(rsubgrain, rgrainbuf[clamp(0, n.nbuf, -tj):])
+					add(lsubgrain, lgrainbuf2[clamp(0, n.nbuf, -tj):])
+					add(rsubgrain, rgrainbuf2[clamp(0, n.nbuf, -tj):])
 				}
 
 				clear(anagrain)
@@ -195,7 +199,8 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				// Skip the last reverse since the sign in xcorr
 				// measure must be reversed anyway.
 
-				r := n.hop
+				r := n.root.opts.TransientMs / 3 * n.root.fs / 1000
+				// r := n.hop
 				v := a.S[f-r : f+r]
 				mx, mn := argmax(v), argmin(v)
 				_ = mn
@@ -206,25 +211,38 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 					scale(rgrainbuf, -1)
 				}
 				corr += 1 - r
+				// corr = -corr
+				j += corr
+				lastone += corr
 
 				// Glue windowing
 				z := func(anagrain, out []float64) {
-					mul(anagrain[max(0, n.nfft/2+corr-n.nfft/4):], a.Wg)
-					clear(anagrain[min(n.nfft, n.nfft/2+corr+n.nfft/4):])
+					c := n.nfft/2 + corr //+ n.hop
+					mul(anagrain[max(0, c-n.nbuf/2):], a.Wg)
+					clear(anagrain[min(n.nfft, c+n.nbuf/2):])
 					copy(out[max(0, oj-n.nfft/2):], anagrain)
 				}
 				z(lanagrain, lout)
 				z(ranagrain, rout)
 
-				dump(fmt.Sprint(`grains/`, j, "-grain.wav"), mgrain, n.root.fs)
-				dump(fmt.Sprint(`grains/`, j, "-buf.wav"), lanagrain, n.root.fs)
-				dump(fmt.Sprint(`grains/`, j, "-correlogram.wav"), a.S, n.root.fs)
+				// copy(lgrainbuf2, lanagrain)
+				// add(lgrainbuf2, lgrainbuf)
+
+				// dump(fmt.Sprint(`grains/`, j, "-grain.wav"), lgrainbuf, n.root.fs)
+				// dump(fmt.Sprint(`grains/`, j, "-buf.wav"), lanagrain, n.root.fs)
+				// dump(fmt.Sprint(`grains/`, j, "-correlogram.wav"), a.S, n.root.fs)
+				// // dump(fmt.Sprint(`grains/`, j, "-grain+buf.wav"), lgrainbuf2, n.root.fs)
 
 				// println(j, corr, neg)
-				println(j, corr)
+				// println(j, corr, coeffs[max(0, oj+corr)])
 				adjust = true
 			}
-
+			if c != 1 && adjust {
+				j -= corr
+				lastone -= corr
+				adjust = false
+				corr = 0
+			}
 		}
 		if n.root.opts.Onsets && c != 1 {
 			clear(lgrainbuf)
@@ -236,17 +254,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -j):])
 		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
-
-		if adjust {
-			j += corr
-			lastone += corr
-		}
-		if c != 1 && adjust {
-			j -= corr
-			lastone -= corr
-			adjust = false
-		}
-
 	}
 }
 
