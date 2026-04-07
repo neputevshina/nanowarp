@@ -54,7 +54,7 @@ func detectorNew(nfft, fs sa, maxTransient, onsetevery ms) (n *detector) {
 	n.norm = float64(nfft) * float64(olap) * n.wgain
 	n.fft = fourier.NewFFT(nfft)
 
-	tsa := int(onsetevery) / 2 * n.fs / 1000
+	tsa := int(onsetevery) * n.fs / 1000
 	n.m = mediatorNew[float64, bang](tsa+1, tsa+1, 1)
 
 	return

@@ -99,7 +99,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 		opts.PoolingMs = 400
 	}
 
-	// TODO Probably possible to shrink nbuf to 3/4 of size without loss in quality.
+	// TODO Probably possible to shrink nbuf to 3072 without loss in quality.
 	n.warper = warperNew(4096*w, n)
 	n.detector = detectorNew(512, samplerate, ms(opts.TransientMs), ms(opts.PoolingMs))
 
