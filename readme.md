@@ -1,12 +1,13 @@
 # Nanowarp
-An ongoing attempt to create a professional grade audio time stretching algorithm.
+A studio-grade audio time stretching algorithm.
+
 Reference implementation is going to be in Go, and a possible (Fil-)C implementation will share
 this repo with a Go version.
 
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export.
 
-Current state: algorithm mostly ready. No user-facing API exists yet.
+Current state: algorithm done, working on streaming implementation. No user-facing API exists yet.
 
 ## Installation and usage
 
@@ -41,8 +42,8 @@ of phase are obtained through time-frequency reassignment[2]. This way accurate 
 advance can be obtained using only one windowed grain instead of two.
 
 Like in original implementation of PVDR, FFT is oversampled by factor of 2 with zero-padding. 
-Stereo coherence is obtained through stretching mono and adding phase difference of 
-respective side channels to it after stretching to get stereo signals back[4].
+Stereo coherence is obtained through stretching mono and adding complex phase difference of 
+respective side channels after stretching back[4].
 
 A phase ramp for the entire output signal is generated. Onsets are detected using rectified 
 complex-domain novelty function[3]. If onset is detected, phase ramp will have a derivative of 
@@ -56,10 +57,11 @@ unmodified.
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
 
-## TODO
-### Beat-emphasis onset detection
-
+## Notes
+- There exists a “beat-emphasis onset detection” function
 See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf
+- PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.
+- Formant shifting must be implemented after streaming.
 
 ### Testing strategy
 - Various impulse train signals
@@ -69,11 +71,8 @@ See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_
 - Full tracks: pop, electronica, acoustica, black metal
 
 ### Streaming implementation plan
-1. ~~Replace phasor with stretch coefficient signal (dx of phasor)~~
-2. ~~Define real-time (or lookahead-based) method to generate switching constant level (or locally similar) coefficient signal.~~
-	1. ~~Define maximum latency (make user-configurable), which is added to pvoc latency in a realtime pitch shifting context.~~
-	2. ~~Make it so onset detector must produce an onset at least once this time.~~
-3. Define stretch signal producer and sound producer (goroutines).
+1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.
+2. Define stretch signal producer and sound producer (goroutines).
 ```
 for {
   readnext(i) // blocking
@@ -81,16 +80,16 @@ for {
   writenext(o)
 }
 ```
-4. Define Push and Pull which communicate with producers.
-5. Use in cmd/nanowarp.
+3. Define Push and Pull which communicate with producers.
+4. Use in cmd/nanowarp.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
-- Smaller dynamic range comparing to original audio. Related to phase accuracy.
-- Phase interruption on transients sometimes results in a “chopped” sound.
+- Phase interruption on incorrectly detected transients results in chopped sound. 
+ Fixed by improving onset detection. PVSOLA had been tried with unsatisfactory results.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
