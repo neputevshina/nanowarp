@@ -60,10 +60,10 @@ func detectorNew(nfft, fs sa, maxTransient, onsetevery ms) (n *detector) {
 	return
 }
 
-func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (onsons [][2]float64) {
+func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (onsons []Breakpoint) {
 	fmt.Fprintln(os.Stderr, `(*detector).process`)
 
-	onsons = make([][2]float64, 0, 1000)
+	onsons = make([]Breakpoint, 0, 1000)
 
 	t := make([]float64, n.nfft)
 	for i := 0; i < len(lin); i += n.hop {
@@ -74,15 +74,15 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 		add(ons[i:min(len(lin), i+n.nbuf)], t)
 	}
 
-	step := even(int(float64(n.m.maxN) / stretch))
+	step := int(float64(n.m.maxN)/stretch) | 1
 	n.m.Reset(step)
 	for i := range ons {
-		ons1[max(0, i-step/2)], _ = n.m.Filt(ons[i], bang{})
+		ons1[max(0, i-step/2+2)], _ = n.m.Filt(ons[i], bang{})
 	}
 
 	for i := range ons1 {
 		if ons[i] == ons1[i] {
-			onsons = append(onsons, [2]float64{float64(i), ons[i]})
+			onsons = append(onsons, Breakpoint{I: i, X: ons[i]})
 		}
 	}
 

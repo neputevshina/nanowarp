@@ -1,57 +1,67 @@
 package nanowarp
 
-// TODO
-// - Pitch
-//	- Good resampler is required
-// - Streaming
-// - Identical stretch curve for any hop size OR stretch curve sync.
-//	- Needed to bring HPSS back for higher quality.
-// - Offline dynamic stretch size processing, the last step to high quality
-//	- Reset hop near the each transient
-//	- Repay time debt after each onset by even parts, do not use exponential decay
-//	- Classify material using existing HPSS info by “mostly percussive” and “mostly harmonic”
-//		- Simply by summing each sample's amplitude in a windowed grain
-//		- Repay more debt on mostly harmonic grains
-// - Finite difference scheme for PGHI instead of reassigned
-// ~ Time and pitch envelopes
-// 	- The internal machinery is already there, just glue pieces together and add UI
-// + Hop size dithering
-//	+ Harmonic-percussive desync fix (bubbling)
-// + Phase drift fix (try long impulse train signal to see it)
-// 	+ Time-domain correctness
-//	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
-//	+ Fixed with transient sync
-// - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
-// + Reset phase accuum sometimes to counteract numerical errors
-//	- Fixed with transient sync
-// - Optimizations
-//	+ Calculate mag(a.X) once
-//	+ Replace container.Heap with rankfilt
-//	+ Parallelize
-//		- Parallelize in streaming
-//	- Use/port a vectorized FFT library (e.g. SLEEF/PFFFT)
-//	- Use only float32 (impossible with gonum)
-//	- SIMD?
-//		- dev.simd branch of Go compiler with intrinsics
-//
-
 import (
 	"fmt"
 	"math"
 	"os"
 )
 
+// Nanowarp is a high-quality audio time stretching algorithm.
 type Nanowarp struct {
 	fs          int
 	left, right []float64
 
 	*warper
-	// hpss  *splitter
 	*detector
 
 	opts      Options
 	stretch   float64
 	semitones float64
+}
+
+// Breakpoint is a phase ramp and coefficient curve breakpoint.
+type Breakpoint struct {
+	I    int     // Input sample index.
+	J    int     // Output sample index.
+	X    float64 // Scan speed factor, dJ/dt.
+	Type BreakpointType
+
+	fi, fj float64
+}
+
+// BreakpointType describes how a breakpoint in the stream
+// should be interpolated to the next one.
+//
+// They correspond to X, J is interpolated as an anti-derivative
+// of BreakpointType curve.
+type BreakpointType int
+
+const (
+	Hold BreakpointType = iota
+)
+
+// Fi returns I as float64.
+func (b Breakpoint) Fi() float64 { return float64(b.I) }
+
+// Mix advances b to c for the output sample j as the b.BreakpointType curve.
+//
+// It silently ignores the case when b.J ≰ j ≰ c.J.
+func (b Breakpoint) Mix(c Breakpoint, j int) Breakpoint {
+	i := 0.
+	x := 0.
+	switch b.Type {
+	case Hold:
+		i = unmix(float64(b.J), float64(c.J), float64(j))
+		x = 0.
+	}
+	return Breakpoint{
+		I:    int(mix(float64(b.I), float64(c.I), i)),
+		J:    j,
+		X:    mix(b.X, c.X, x),
+		Type: b.Type,
+		fi:   mix(b.fi, c.fi, i),
+		fj:   mix(b.fj, c.fj, i),
+	}
 }
 
 type Options struct {
@@ -60,7 +70,7 @@ type Options struct {
 
 	// Set algorithm quality
 	// -1: Don't perform transient separation, output raw PVDR with phase reset
-	// each time after arbitrary amount of samples had been elapsed. 4x overlap. Fastest.
+	// every arbitrary amount of seconds. 4x overlap. Fastest.
 	// 0: Extract transients and reset the phase on them. 4x overlap. Slow.
 	// 1: Same as 0, but with 8x overlap. Slowest.
 	Quality int
@@ -115,45 +125,47 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 	coeffs := make([]float64, len(lout))
 	phasor := make([]float64, len(lout))
-	if n.opts.Quality == -1 {
-		for j := range coeffs {
-			coeffs[j] = 1 / stretch
-		}
-	} else {
-		sam := n.detector.process2(lin, rin, ons, ons1, stretch)
-
-		// copy(lout, ons)
-		// copy(rout, ons1)
-		// return
-
+	sam := []Breakpoint{{I: 0, J: 0, X: 1 / stretch, Type: Hold}}
+	if n.opts.Quality > -1 {
+		sam = n.detector.process2(lin, rin, ons, ons1, stretch)
 		n.getCoeffSignal(coeffs, sam, stretch)
+		sam = n.convertOnsets(sam, 1/stretch)
 	}
+
+	_ = phasor
+
+	// for i := range sam {
+	// 	lout[sam[i].J] = sam[i].X
+	// }
+
+	// println(sam)
+
 	for j := range phasor[1:] {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
 
-	n.warper.process3(lin, rin, lout, rout, coeffs, phasor)
+	n.warper.process3(lin, rin, lout, rout, coeffs, phasor, sam)
 }
 
-func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
+func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets []Breakpoint, s float64) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).getCoeffs")
 
 	tsa := n.opts.TransientMs * n.fs / 1000
 
 	for k := 0; k < len(onsets)-1; k++ {
-		i := onsets[k][0]
-		j := onsets[k+1][0]
-		if j-i < float64(max(n.warper.nbuf, tsa))/s {
+		i := onsets[k].I
+		j := onsets[k+1].I
+		if float64(j-i) < float64(max(n.warper.nbuf, tsa))/s {
 			copy(onsets[k:], onsets[k+1:])
 			onsets = onsets[:len(onsets)-1]
 			k--
 		}
 	}
-	fill(coeffs[:int(onsets[0][0]*s)], 1/s)
-	fill(coeffs[int(onsets[len(onsets)-1][0]*s):], 1/s)
+	fill(coeffs[:int(onsets[0].Fi()*s)], 1/s)
+	fill(coeffs[int(onsets[len(onsets)-1].Fi()*s):], 1/s)
 	for k := 0; k < len(onsets)-1; k++ {
-		i := int(onsets[k][0] * s)
-		j := int(onsets[k+1][0] * s)
+		i := int(onsets[k].Fi() * s)
+		j := int(onsets[k+1].Fi() * s)
 		if s == 1 {
 			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
 			fill(coeffs[i+tsa/2:j-tsa/2], 1.00001)
@@ -166,6 +178,40 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 		}
 
 	}
+}
+
+func (n *Nanowarp) convertOnsets(onsets []Breakpoint, s float64) (coeff []Breakpoint) {
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).convertOnsets")
+
+	tsa := n.opts.TransientMs * n.fs / 1000
+
+	add := func(i, j int, x float64, fi, fj float64) {
+		if fi < 0 {
+			fi = float64(i)
+		}
+		if fj < 0 {
+			fj = float64(j)
+		}
+		coeff = append(coeff, Breakpoint{I: i, J: j, X: x, fi: fi, fj: fj})
+	}
+	add(0, 0, s, -1, -1)
+	for k := 0; k < len(onsets)-1; k++ {
+		if float64(onsets[k+1].I-onsets[k].I) < float64(max(n.warper.nbuf, tsa))*s {
+			copy(onsets[k:], onsets[k+1:])
+			onsets = onsets[:len(onsets)-1]
+			k--
+		}
+
+		l := int(onsets[k].Fi() / s)
+		r := int(onsets[k+1].Fi() / s)
+		t, x := float64(r-l), float64(tsa)
+		add(onsets[k].I-tsa/2, l-tsa/2, 1, -1, onsets[k].Fi()/s-x/2)
+		add(onsets[k].I+tsa/2, l+tsa/2, (t*s-x)/(t-x), -1, onsets[k].Fi()/s+x/2)
+	}
+	coeff[0].X = float64(coeff[1].I) / float64(coeff[1].J)
+	coeff[len(coeff)-1].X = s
+	coeff = append(coeff, coeff[len(coeff)-1])
+	return
 }
 
 /*

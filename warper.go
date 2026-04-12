@@ -69,18 +69,31 @@ func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
+func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64, brps []Breakpoint) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf, rgrainbuf := get(), get()
 	lingrain, ringrain := get(), get()
 
 	lastone := 0
+	cut := 0
 	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
 			break
 		}
-		i := int(phasor[max(0, j)] - float64(n.nbuf/2))
+		bi := max(1, cut+slices.IndexFunc(brps[cut:], func(b Breakpoint) bool { return b.J >= j }))
+		b := brps[bi-1].Mix(brps[bi], j)
+		println(j, brps[bi-1].I, brps[bi].I, b, phasor[max(0, j)], coeffs[max(0, j)], b.fi-brps[bi-1].Mix(brps[bi], j-1).fi, b.I-int(phasor[max(0, j)]))
+
+		// bi := cut + slices.IndexFunc(brps[cut:], func(b Breakpoint) bool { return b.J >= j })
+		// b := brps[max(0, bi-1)].Mix(brps[bi], j)
+		// println(brps[max(0, bi-1)], brps[bi], b, phasor[max(0, j)], coeffs[max(0, j)], b.I-int(phasor[max(0, j)]))
+
+		if bi > cut {
+			cut = bi
+		}
+		i := b.I - n.nbuf/2
+		// i := int(phasor[max(0, j)] - float64(n.nbuf/2))
 
 		if i > len(lin)-n.nbuf {
 			break
@@ -91,7 +104,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
 		c := 1.
 		if j > 0 {
-			c = 1 / coeffs[j]
+			c = 1 / b.X
 			if c != c || math.IsInf(c, 0) {
 				c = 1
 			}

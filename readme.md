@@ -9,6 +9,8 @@ float WAV support export.
 
 Current state: algorithm done, working on streaming. No user-facing API exists yet.
 
+Currently Nanowarp sounds best on anything with a distinctive beat.
+
 ## Installation and usage
 
 1. Install [Go](https://go.dev/)
@@ -50,9 +52,9 @@ complex-domain novelty function[3]. If onset is detected, phase ramp will have a
 1 in a region around detected onset. Starting points of these sample regions are scaled by the 
 stretch size, and points between regions are linearly interpolated.
 
-Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for the input 
-sample indexes. If the derivative of the signal is 1, samples are passed through to the output 
-unmodified.
+Then the large-grained (n=4096, nfft=8192) PVDR is applied, using phase ramp for the input 
+sample indexes. If the derivative of the signal is 1, windowed grain is passed through to 
+the output unmodified.
 
 ## Demos
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
@@ -63,6 +65,8 @@ See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.
 - Formant shifting must be implemented after streaming.
+- It is perhaps possible to make reconstruction quality even higher: https://ieeexplore.ieee.org/document/7911250.
+  Experiments must be performed only having tools for measuring the improvement.
 
 ### Testing strategy
 - Various impulse train signals
@@ -90,7 +94,7 @@ for {
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
 - Phase interruption on incorrectly detected transients results in chopped sound. 
- Fixed by improving onset detection. PVSOLA had been tried with unsatisfactory results.
+ Fixed by improving onset detection. PVSOLA was tried with unsatisfactory results.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)

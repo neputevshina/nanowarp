@@ -26,6 +26,7 @@ var coeff = flag.Float64("t", 0, "time stretch multiplier")
 var from = flag.Float64("from", 0, "source `bpm`")
 var to = flag.Float64("to", 0, "target `bpm`")
 var st = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing pitch")
+var ct = flag.Float64("ct", 0, "detune in cents, added to pitch shift")
 var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var q = flag.Int("q", 0, "quality, see nanowarp.Options.Quality comment in nanowarp.go for help")
 var onsetms = flag.Int("onsetms", 30, "onset size in milliseconds")
@@ -47,6 +48,8 @@ func main() {
 		}
 		defer pprof.StopCPUProfile()
 	}
+
+	*st += *ct / 100
 
 	if *coeff <= 0 && *from > 0 && *to > 0 {
 		*coeff = *from / *to * math.Pow(2, *st/12)
@@ -70,7 +73,7 @@ func main() {
 	}
 	if *foutput == "" {
 		nooutname = true
-		*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
+		*foutput = generateOutName(*finput, *finput)
 	}
 
 	file, err := os.Open(*finput)

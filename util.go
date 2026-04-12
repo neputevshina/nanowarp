@@ -3,8 +3,6 @@ package nanowarp
 import (
 	"cmp"
 	"fmt"
-	"image"
-	"image/color"
 	"math"
 	"math/cmplx"
 	"os"
@@ -196,51 +194,6 @@ func norm(c complex128) complex128 {
 	return c / complex(mag(c), 0)
 }
 
-func floatMatrixToImage(data [][]float64) image.Image {
-	if len(data) == 0 || len(data[0]) == 0 {
-		return nil
-	}
-
-	height := len(data[0])
-	width := len(data)
-
-	// Find min and max
-	minVal := math.Inf(1)
-	maxVal := math.Inf(-1)
-	for _, row := range data {
-		for _, v := range row {
-			if v < minVal {
-				minVal = v
-			}
-			if v > maxVal {
-				maxVal = v
-			}
-		}
-	}
-	fmt.Println(minVal, maxVal)
-
-	scale := 1.
-	offset := 3.14
-	scale = 255.0 / (maxVal - minVal)
-	offset = -minVal * scale
-
-	img := image.NewGray(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			val := data[x][y]*scale + offset
-			if val < 0 {
-				val = 0
-			}
-			if val > 255 {
-				val = 255
-			}
-			img.SetGray(x, y, color.Gray{Y: uint8(val + 0.5)})
-		}
-	}
-
-	return img
-}
-
 func boolint(b bool) int {
 	if b {
 		return 1
@@ -339,8 +292,4 @@ func l1(x complex128) float64 {
 
 func linf(x complex128) float64 {
 	return max(abs(real(x)), abs(imag(x)))
-}
-
-func even(x int) int {
-	return x - x%2 + 1
 }
