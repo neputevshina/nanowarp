@@ -2,9 +2,11 @@ package nanowarp
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"slices"
+	"sync/atomic"
 
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -87,6 +89,54 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	}
 
 	return
+}
+
+func (n *detector) onsetFunctionWriter(ar AudioReader, aw AudioWriter, stop *atomic.Bool) (err error) {
+	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
+
+	inbuss := make([][]float64, ar.NchRead())
+	for ch := range inbuss {
+		inbuss[ch] = make([]float64, n.nbuf)
+	}
+	outbuss := make([][]float64, 1)
+	for ch := range outbuss {
+		outbuss[ch] = make([]float64, n.nbuf+n.hop)
+	}
+	slicebuss := make([][]float64, ar.NchRead())
+	fr := make([]float64, n.nbuf)
+	for {
+		if stop.Load() {
+			break
+		}
+		for ch := range inbuss {
+			copy(inbuss[ch], inbuss[ch][n.hop:])
+			slicebuss[ch] = inbuss[ch][n.nbuf-n.hop:]
+		}
+		_, err := ar.AudioRead(nil, slicebuss)
+		if err != nil && err != io.EOF {
+			return err
+		}
+
+		c := n.advance(inbuss[0], inbuss[1])
+
+		fill(fr, c)
+		mul(fr, n.a.Wr)
+		add(outbuss[0][n.hop:], fr)
+		for ch := range outbuss {
+			slicebuss[ch] = inbuss[ch][:n.hop]
+		}
+		_, err = aw.AudioWrite(nil, slicebuss)
+		for ch := range outbuss {
+			copy(outbuss[ch], outbuss[ch][n.hop:])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {

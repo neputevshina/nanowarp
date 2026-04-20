@@ -70,6 +70,7 @@ See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_
 - Vocals under hard saturation
 - Drum loops
 - Full tracks: pop, electronica, acoustica, black metal
+- Braid remastered soundtrack, phase resets WILL break the sound.
 
 ### Streaming implementation plan
 1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.
