@@ -94,15 +94,6 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 func (n *detector) onsetFunctionWriter(ar AudioReader, aw AudioWriter, stop *atomic.Bool) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
 
-	inbuss := make([][]float64, ar.NchRead())
-	for ch := range inbuss {
-		inbuss[ch] = make([]float64, n.nbuf)
-	}
-	outbuss := make([][]float64, 1)
-	for ch := range outbuss {
-		outbuss[ch] = make([]float64, n.nbuf+n.hop)
-	}
-	slicebuss := make([][]float64, ar.NchRead())
 	fr := make([]float64, n.nbuf)
 	for {
 		if stop.Load() {
@@ -121,8 +112,8 @@ func (n *detector) onsetFunctionWriter(ar AudioReader, aw AudioWriter, stop *ato
 
 		fill(fr, c)
 		mul(fr, n.a.Wr)
-		add(outbuss[0][n.hop:], fr)
 		for ch := range outbuss {
+			add(outbuss[ch][n.hop:], fr)
 			slicebuss[ch] = inbuss[ch][:n.hop]
 		}
 		_, err = aw.AudioWrite(nil, slicebuss)
