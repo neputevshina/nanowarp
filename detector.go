@@ -8,6 +8,8 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/neputevshina/nanowarp/dspio"
+
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
@@ -91,35 +93,28 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	return
 }
 
-func (n *detector) onsetFunctionWriter(ar AudioReader, aw AudioWriter, stop *atomic.Bool) (err error) {
+func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter, stop *atomic.Bool) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
+
+	gr := dspio.NewGrainReader(n.nfft, n.hop, ar)
+	gw := dspio.NewGrainWriter(n.nfft, n.hop, aw)
+	gs := make([][]float64, 2)
+	for ch := range gs {
+		gs[ch] = make([]float64, n.nfft)
+	}
 
 	fr := make([]float64, n.nbuf)
 	for {
 		if stop.Load() {
 			break
 		}
-		for ch := range inbuss {
-			copy(inbuss[ch], inbuss[ch][n.hop:])
-			slicebuss[ch] = inbuss[ch][n.nbuf-n.hop:]
-		}
-		_, err := ar.AudioRead(nil, slicebuss)
-		if err != nil && err != io.EOF {
-			return err
-		}
+		_, err := gr.SignalRead(nil, gs)
 
-		c := n.advance(inbuss[0], inbuss[1])
+		c := n.advance(gs[0], gs[1])
 
 		fill(fr, c)
 		mul(fr, n.a.Wr)
-		for ch := range outbuss {
-			add(outbuss[ch][n.hop:], fr)
-			slicebuss[ch] = inbuss[ch][:n.hop]
-		}
-		_, err = aw.AudioWrite(nil, slicebuss)
-		for ch := range outbuss {
-			copy(outbuss[ch], outbuss[ch][n.hop:])
-		}
+		_, err = gw.SignalWrite(nil, [][]float64{fr})
 		if err == io.EOF {
 			break
 		}

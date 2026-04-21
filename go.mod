@@ -1,8 +1,6 @@
 module github.com/neputevshina/nanowarp
 
-go 1.24.0
-
-toolchain go1.24.4
+go 1.25.0
 
 require (
 	github.com/neputevshina/nanowarp/wav v0.0.0-20251208023223-56aed9ad6db5
@@ -11,6 +9,8 @@ require (
 )
 
 require (
+	github.com/fjbotha/go-spscqueue v0.0.0-20231205072141-45583b586c9d // indirect
 	github.com/youpy/go-riff v0.1.0 // indirect
 	github.com/zaf/g711 v1.4.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 )
