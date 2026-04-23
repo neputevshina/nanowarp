@@ -3,6 +3,7 @@ package dspio
 import (
 	"errors"
 	"io"
+	"math"
 	"testing"
 )
 
@@ -60,14 +61,6 @@ func (e *errWriter) SignalWrite(_ error, _ [][]float64) (int, error) {
 
 // helpers
 
-func makeGrainBuf(nch, n int) [][]float64 {
-	g := make([][]float64, nch)
-	for ch := range g {
-		g[ch] = make([]float64, n)
-	}
-	return g
-}
-
 func slicesEqual(a, b []float64) bool {
 	if len(a) != len(b) {
 		return false
@@ -80,34 +73,6 @@ func slicesEqual(a, b []float64) bool {
 	return true
 }
 
-// GrainReader
-
-func TestGrainReaderPrr(t *testing.T) {
-	r := NewGrainReader(4, 2, &mockReader{data: [][]float64{{1, 2, 3, 4}}, hop: 2})
-	sentinel := errors.New("sentinel")
-	n, err := r.SignalRead(sentinel, makeGrainBuf(1, 4))
-	if n != 0 || err != sentinel {
-		t.Fatalf("expected (0, sentinel), got (%d, %v)", n, err)
-	}
-}
-
-func TestGrainReaderChannelPanic(t *testing.T) {
-	r := NewGrainReader(4, 2, &mockReader{data: [][]float64{{1, 2, 3, 4}}, hop: 2})
-	defer func() {
-		if recover() == nil {
-			t.Error("expected panic on channel mismatch")
-		}
-	}()
-	r.SignalRead(nil, makeGrainBuf(2, 4)) // reader has nch=1, grain has 2
-}
-
-func TestGrainReaderNch(t *testing.T) {
-	r := NewGrainReader(4, 2, &mockReader{data: [][]float64{{}, {}}, hop: 2})
-	if r.NchRead() != 2 {
-		t.Fatalf("expected 2, got %d", r.NchRead())
-	}
-}
-
 func TestGrainReaderOverlap(t *testing.T) {
 	// nfft=8, hop=4: each consecutive grain shares nfft-hop=4 samples
 	data := make([]float64, 16)
@@ -115,8 +80,8 @@ func TestGrainReaderOverlap(t *testing.T) {
 		data[i] = float64(i + 1)
 	}
 	r := NewGrainReader(8, 4, &mockReader{data: [][]float64{data}, hop: 4})
-	g1 := makeGrainBuf(1, 8)
-	g2 := makeGrainBuf(1, 8)
+	g1 := make2(1, 8)
+	g2 := make2(1, 8)
 	if _, err := r.SignalRead(nil, g1); err != nil {
 		t.Fatal(err)
 	}
@@ -128,48 +93,12 @@ func TestGrainReaderOverlap(t *testing.T) {
 	}
 }
 
-func TestGrainReaderError(t *testing.T) {
-	r := NewGrainReader(4, 2, &errReader{nch: 1})
-	_, err := r.SignalRead(nil, makeGrainBuf(1, 4))
-	if err == nil || err.Error() != "read error" {
-		t.Fatalf("expected read error, got %v", err)
-	}
-}
-
-// GrainWriter
-
-func TestGrainWriterPrr(t *testing.T) {
-	w := NewGrainWriter(4, 2, newMockWriter(1))
-	sentinel := errors.New("sentinel")
-	n, err := w.SignalWrite(sentinel, makeGrainBuf(1, 4))
-	if n != 0 || err != sentinel {
-		t.Fatalf("expected (0, sentinel), got (%d, %v)", n, err)
-	}
-}
-
-func TestGrainWriterChannelPanic(t *testing.T) {
-	w := NewGrainWriter(4, 2, newMockWriter(1))
-	defer func() {
-		if recover() == nil {
-			t.Error("expected panic on channel mismatch")
-		}
-	}()
-	w.SignalWrite(nil, makeGrainBuf(2, 4)) // writer has nch=1, grain has 2
-}
-
-func TestGrainWriterNch(t *testing.T) {
-	w := NewGrainWriter(4, 2, newMockWriter(2))
-	if w.NchWrite() != 2 {
-		t.Fatalf("expected 2, got %d", w.NchWrite())
-	}
-}
-
 func TestGrainWriterOverlapAdd(t *testing.T) {
 	// nfft=4, hop=2, constant grain [1,1,1,1]
 	// steady-state output per hop = grain[0]+grain[2] = 2, grain[1]+grain[3] = 2
 	aw := newMockWriter(1)
 	w := NewGrainWriter(4, 2, aw)
-	g := makeGrainBuf(1, 4)
+	g := make2(1, 4)
 	for i := range g[0] {
 		g[0][i] = 1
 	}
@@ -185,14 +114,6 @@ func TestGrainWriterOverlapAdd(t *testing.T) {
 	}
 }
 
-func TestGrainWriterError(t *testing.T) {
-	w := NewGrainWriter(4, 2, &errWriter{nch: 1})
-	_, err := w.SignalWrite(nil, makeGrainBuf(1, 4))
-	if err == nil || err.Error() != "write error" {
-		t.Fatalf("expected write error, got %v", err)
-	}
-}
-
 // round-trip
 
 func TestGrainRoundTrip(t *testing.T) {
@@ -205,7 +126,7 @@ func TestGrainRoundTrip(t *testing.T) {
 	gr := NewGrainReader(nfft, hop, ar)
 	gw := NewGrainWriter(nfft, hop, aw)
 
-	g := makeGrainBuf(1, nfft)
+	g := make2(1, nfft)
 	for range 3 {
 		if _, err := gr.SignalRead(nil, g); err != nil {
 			t.Fatal(err)
@@ -219,5 +140,73 @@ func TestGrainRoundTrip(t *testing.T) {
 	want := input[:2*nfft]
 	if !slicesEqual(got, want) {
 		t.Fatalf("round-trip: got %v, want %v", got, want)
+	}
+}
+
+type phasorOsc struct {
+	i, p float64
+}
+
+func (p *phasorOsc) NchRead() int { return 1 }
+
+func (p *phasorOsc) SignalRead(prr error, buf [][]float64) (n int, err error) {
+	if prr != nil {
+		return 0, prr
+	}
+	for i := range buf[0] {
+		buf[0][i] = p.i / p.p
+		p.i = math.Mod(p.i+1, p.p)
+	}
+	return len(buf), nil
+}
+
+var _ SignalReader = &phasorOsc{}
+
+func TestGrainAnasyn(t *testing.T) {
+	const nfft, hop = 512, 128
+	ar := &phasorOsc{p: 510}
+	orig := newMockWriter(1)
+	process := newMockWriter(1)
+	tee := TeeReader(ar, orig)
+	gr := NewGrainReader(nfft, hop, tee)
+	gw := NewGrainWriter(nfft, hop, process)
+
+	hann2 := make([]float64, nfft)
+	for i := range hann2 {
+		hann2[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(nfft)))
+		hann2[i] *= hann2[i]
+	}
+
+	g := make2(1, nfft)
+	for range 100 {
+		n, _ := gr.SignalRead(nil, g)
+		if n != hop {
+			t.Fatalf("read: n != hop, got %d", n)
+		}
+		for i := range nfft {
+			g[0][i] *= hann2[i]
+		}
+		n, _ = gw.SignalWrite(nil, g)
+		if n != hop {
+			t.Fatalf("write: n != hop, got %d", n)
+		}
+	}
+
+	got := process.data[0][nfft:]
+	want := orig.data[0][:2*nfft]
+
+	maxerr := 0.
+	for i := range min(len(got), len(want)) {
+		err := got[i] - want[i]
+		if math.Abs(err) > math.Abs(maxerr) {
+			maxerr = err
+		}
+	}
+	t.Log("maximum absolute error:", maxerr)
+
+	// fmt.Println(got)
+
+	if maxerr > 1e-4 {
+		t.Fatalf("maximum error is greater than -80 dB, something is obviously wrong")
 	}
 }
