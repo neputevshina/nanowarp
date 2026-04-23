@@ -183,9 +183,6 @@ func TestGrainAnasyn(t *testing.T) {
 	got := process.data[0][nfft:]
 	want := orig.data[0]
 
-	dump("got", got, 48000)
-	dump("want", want, 48000)
-
 	for i := range min(len(got), len(want)) {
 		if want[i] == 0 && got[i] != 0 {
 			t.Fatalf(`train unsync at %d: expected 0, got %f`, i, got[i])
