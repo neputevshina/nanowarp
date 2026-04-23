@@ -47,3 +47,10 @@ func dump(name string, data []float64, fs int) {
 		}
 	}
 }
+
+func boolfloat(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}

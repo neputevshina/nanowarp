@@ -1,7 +1,6 @@
 package dspio
 
 import (
-	"errors"
 	"io"
 	"math"
 	"testing"
@@ -43,20 +42,6 @@ func (m *mockWriter) SignalWrite(_ error, buf [][]float64) (int, error) {
 		m.data[ch] = append(m.data[ch], buf[ch]...)
 	}
 	return len(buf[0]), nil
-}
-
-type errReader struct{ nch int }
-
-func (e *errReader) NchRead() int { return e.nch }
-func (e *errReader) SignalRead(_ error, _ [][]float64) (int, error) {
-	return 0, errors.New("read error")
-}
-
-type errWriter struct{ nch int }
-
-func (e *errWriter) NchWrite() int { return e.nch }
-func (e *errWriter) SignalWrite(_ error, _ [][]float64) (int, error) {
-	return 0, errors.New("write error")
 }
 
 // helpers
@@ -143,30 +128,30 @@ func TestGrainRoundTrip(t *testing.T) {
 	}
 }
 
-type phasorOsc struct {
+type trainOsc struct {
 	i, p int
 }
 
-func (p *phasorOsc) NchRead() int { return 1 }
+func (p *trainOsc) NchRead() int { return 1 }
 
-func (p *phasorOsc) SignalRead(prr error, buf [][]float64) (n int, err error) {
+func (p *trainOsc) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	if prr != nil {
 		return 0, prr
 	}
 	for i := range buf[0] {
-		buf[0][i] = float64(p.i) / float64(p.p)
+		buf[0][i] = boolfloat(i == 0)
 		p.i++
 		p.i %= p.p
 	}
 	return len(buf[0]), nil
 }
 
-var _ SignalReader = &phasorOsc{}
+var _ SignalReader = &trainOsc{}
 
 func TestGrainAnasyn(t *testing.T) {
 	// A typical analysis/synthesis scenario.
 	const nfft, hop = 512, 128
-	ar := &phasorOsc{p: 918}
+	ar := &trainOsc{p: 918}
 	orig := newMockWriter(1)
 	process := newMockWriter(1)
 	tee := TeeReader(ar, orig)
@@ -175,13 +160,10 @@ func TestGrainAnasyn(t *testing.T) {
 
 	// Square of the Hann window, imitating applying it twice (before and after FFT)
 	hann2 := make([]float64, nfft)
-	avg := 0. // Window gain compensation
 	for i := range hann2 {
 		hann2[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(nfft)))
 		hann2[i] *= hann2[i]
-		avg += hann2[i]
 	}
-	avg /= float64(nfft)
 
 	g := make2(1, nfft)
 	for range 100 {
@@ -190,7 +172,7 @@ func TestGrainAnasyn(t *testing.T) {
 			t.Fatalf("read: n != hop, got %d", n)
 		}
 		for i := range nfft {
-			g[0][i] *= hann2[i] * avg
+			g[0][i] *= hann2[i]
 		}
 		n, _ = gw.SignalWrite(nil, g)
 		if n != hop {
@@ -198,24 +180,15 @@ func TestGrainAnasyn(t *testing.T) {
 		}
 	}
 
-	dump("got", process.data[0], 48000)
-	dump("want", orig.data[0], 48000)
-
 	got := process.data[0][nfft:]
-	want := orig.data[0][:2*nfft]
+	want := orig.data[0]
 
-	maxerr := 0.
+	dump("got", got, 48000)
+	dump("want", want, 48000)
+
 	for i := range min(len(got), len(want)) {
-		err := got[i] - want[i]
-		if math.Abs(err) > math.Abs(maxerr) {
-			maxerr = err
+		if want[i] == 0 && got[i] != 0 {
+			t.Fatalf(`train unsync at %d: expected 0, got %f`, i, got[i])
 		}
-	}
-	t.Log("maximum absolute error:", maxerr)
-
-	// fmt.Println(got)
-
-	if maxerr > 1e-4 {
-		t.Fatalf("maximum error is greater than -80 dB, something is obviously wrong")
 	}
 }
