@@ -25,7 +25,7 @@ func ReadAll(prr error, r SignalReader) (d [][]float64, err error) {
 	d = make([][]float64, nch)
 	n := 0
 
-	for err != nil {
+	for err == nil {
 		n, err = r.SignalRead(nil, t)
 		for ch := range nch {
 			d[ch] = append(d[ch], t[ch][:n]...)
@@ -46,7 +46,10 @@ type discard struct{}
 func (d *discard) NchWrite() int { return 0 }
 
 func (d *discard) SignalWrite(prr error, buf [][]float64) (n int, err error) {
-	return len(buf[0]), prr
+	if prr == nil {
+		n = len(buf[0])
+	}
+	return n, prr
 }
 
 func TeeReader(r SignalReader, w SignalWriter) SignalReader {
@@ -74,6 +77,37 @@ func (t *teereader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 			return n, err
 		}
 	}
+	return
+}
+
+func LimitReader(r SignalReader, sa int) SignalReader {
+	return &limitreader{sa, r, make([][]float64, r.NchRead())}
+}
+
+type limitreader struct {
+	N     int
+	R     SignalReader
+	knife [][]float64
+}
+
+func (t *limitreader) NchRead() int { return t.R.NchRead() }
+
+func (l *limitreader) SignalRead(prr error, buf [][]float64) (n int, err error) {
+	if prr != nil {
+		return 0, prr
+	}
+	if l.N <= 0 {
+		return 0, io.EOF
+	}
+	for ch := range l.R.NchRead() {
+		if len(buf[0]) > l.N {
+			l.knife[ch] = buf[ch][:l.N]
+		} else {
+			l.knife[ch] = buf[ch]
+		}
+	}
+	n, err = l.R.SignalRead(nil, l.knife)
+	l.N -= n
 	return
 }
 

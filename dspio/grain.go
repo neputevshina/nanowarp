@@ -84,7 +84,7 @@ func NewGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
 		slicebuss: make([][]float64, nch),
 		w:         w}
 	for ch := range nch {
-		g.outbuss[ch] = make([]float64, nfft*2)
+		g.outbuss[ch] = make([]float64, nfft*3)
 	}
 	return
 }
@@ -121,15 +121,15 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 	}
 
 	for ch := range w.outbuss {
-		// Note that len(w.outbuss[ch]) == nfft*2.
-		// Even if w.Hop is equal to nfft, which is the maximum allowable,
+		// Note that len(w.outbuss[ch]) == nfft*3.
+		// Even if w.Hop is equal to nfft, which is the maximum allowable hop size,
 		// we still have the rest of the buffer padded with zeros.
 		//
 		// For typical grain sizes and channel configurations (nfft ∈ [256:16384],
-		// stereo) the 2x memory overhead is not significant.
-		// In most cases it will be in range from 512 (cross-synthesis) to 4096 (phase
-		// vocoder-based pitch change/time scaling).
-		// The most probable reason for worst case (262kB) is either linear-phase EQ or
+		// stereo) the 1.5x—3x memory overhead is not significant.
+		// In most cases it will be in range from 512 (cross-synthesis, onset detection) to
+		// 4096 (phase vocoder-based pitch change/time scaling).
+		// The most probable reason for worst case is either linear-phase EQ or
 		// spectrum visualization, both of which are generally operations that are not
 		// composed with other processes in a pipeline, so overhead won't scale.
 		copy(w.outbuss[ch], w.outbuss[ch][w.Hop:])

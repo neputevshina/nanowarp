@@ -144,7 +144,7 @@ func TestGrainRoundTrip(t *testing.T) {
 }
 
 type phasorOsc struct {
-	i, p float64
+	i, p int
 }
 
 func (p *phasorOsc) NchRead() int { return 1 }
@@ -154,28 +154,34 @@ func (p *phasorOsc) SignalRead(prr error, buf [][]float64) (n int, err error) {
 		return 0, prr
 	}
 	for i := range buf[0] {
-		buf[0][i] = p.i / p.p
-		p.i = math.Mod(p.i+1, p.p)
+		buf[0][i] = float64(p.i) / float64(p.p)
+		p.i++
+		p.i %= p.p
 	}
-	return len(buf), nil
+	return len(buf[0]), nil
 }
 
 var _ SignalReader = &phasorOsc{}
 
 func TestGrainAnasyn(t *testing.T) {
+	// A typical analysis/synthesis scenario.
 	const nfft, hop = 512, 128
-	ar := &phasorOsc{p: 510}
+	ar := &phasorOsc{p: 918}
 	orig := newMockWriter(1)
 	process := newMockWriter(1)
 	tee := TeeReader(ar, orig)
 	gr := NewGrainReader(nfft, hop, tee)
 	gw := NewGrainWriter(nfft, hop, process)
 
+	// Square of the Hann window, imitating applying it twice (before and after FFT)
 	hann2 := make([]float64, nfft)
+	avg := 0. // Window gain compensation
 	for i := range hann2 {
 		hann2[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(nfft)))
 		hann2[i] *= hann2[i]
+		avg += hann2[i]
 	}
+	avg /= float64(nfft)
 
 	g := make2(1, nfft)
 	for range 100 {
@@ -184,13 +190,16 @@ func TestGrainAnasyn(t *testing.T) {
 			t.Fatalf("read: n != hop, got %d", n)
 		}
 		for i := range nfft {
-			g[0][i] *= hann2[i]
+			g[0][i] *= hann2[i] * avg
 		}
 		n, _ = gw.SignalWrite(nil, g)
 		if n != hop {
 			t.Fatalf("write: n != hop, got %d", n)
 		}
 	}
+
+	dump("got", process.data[0], 48000)
+	dump("want", orig.data[0], 48000)
 
 	got := process.data[0][nfft:]
 	want := orig.data[0][:2*nfft]
