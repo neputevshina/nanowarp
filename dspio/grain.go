@@ -127,8 +127,8 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 		//
 		// For typical grain sizes and channel configurations (nfft ∈ [256:16384],
 		// stereo) the 1.5x—3x memory overhead is not significant.
-		// In most cases it will be in range from 512 (cross-synthesis, onset detection) to
-		// 4096 (phase vocoder-based pitch change/time scaling).
+		// In most cases grain size will be in range from 512 (cross-synthesis, onset detection)
+		// to 4096 (phase vocoder-based pitch change/time scaling).
 		// The most probable reason for worst case is either linear-phase EQ or
 		// spectrum visualization, both of which are generally operations that are not
 		// composed with other processes in a pipeline, so overhead won't scale.
@@ -140,3 +140,16 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 func (w *GrainWriter) NchWrite() int { return w.nch }
 
 var _ SignalWriter = &GrainWriter{}
+
+// GrainSeeker allows to read a grain of fixed size (filling the buffer) from the input
+// at the given offset from the start of the input.
+type GrainSeeker interface {
+	NchRead()
+	GrainSeek(prr error, offset int64, buf [][]float64) error
+	// Why not (newoffset int64, err error)?
+	//
+	// Grain reading is either always done with some constant overlap
+	// like in FFT, or with the phase ramp signal, directly corresponding
+	// to the index of read sample, like in grain synthesis or
+	// time scale modification.
+}
