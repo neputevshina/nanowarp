@@ -55,11 +55,10 @@ sample indexes. If the derivative of the signal is 1, samples are passed through
 unmodified.
 
 ## Demos
-[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)
+~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
-- There exists “beat-emphasis onset detection” function.
-See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf
+- There exists a [“beat-emphasis onset detection function”](https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.
 - Formant shifting must be implemented after streaming.
@@ -73,7 +72,7 @@ See https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_
 - Braid remastered soundtrack, phase resets WILL break the sound.
 
 ### Streaming implementation plan
-1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.
+~~1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.~~   Tried, broke the algorithm.
 2. Define stretch signal producer and sound producer (goroutines).
 ```
 for {
@@ -91,7 +90,9 @@ for {
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
 - Phase interruption on incorrectly detected transients results in chopped sound. 
- Fixed by improving onset detection. PVSOLA had been tried with unsatisfactory results.
+  Fixed by improving onset detection. PVSOLA had been tried with unsatisfactory results.
+- heap.go and rankfilt.go are two different implementations of the same thing. 
+  Leave only one of them.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
