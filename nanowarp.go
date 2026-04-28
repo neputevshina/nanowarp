@@ -40,11 +40,11 @@ type Options struct {
 	// Output scaled onsets only.
 	Onsets bool
 
-	// Set algorithm quality
-	// -1: Don't perform transient separation, output raw PVDR with phase reset
-	// each time after arbitrary amount of samples had been elapsed. 4x overlap. Fastest.
-	// 0: Extract transients and reset the phase on them. 4x overlap. Slow.
-	// 1: Same as 0, but with 8x overlap. Slowest.
+	// Set algorithm quality.
+	//  -1: Don't perform transient separation, output raw PVDR with phase reset
+	//   each time after arbitrary amount of samples had been elapsed. 4x overlap. Fastest.
+	//  0: Extract transients and reset the phase on them. 4x overlap. Slow.
+	//  1: Same as 0, but with 8x overlap. Slowest.
 	Quality int
 
 	// Time for which signal will be bypassed at the any given transient.
