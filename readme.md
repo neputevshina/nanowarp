@@ -60,7 +60,8 @@ unmodified.
 ## Notes
 - There exists a [“beat-emphasis onset detection function”](https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
-- PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.
+- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't.
+
 - Formant shifting must be implemented after streaming.
 
 ### Testing strategy
@@ -72,7 +73,8 @@ unmodified.
 - Braid remastered soundtrack, phase resets WILL break the sound.
 
 ### Streaming implementation plan
-~~1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.~~   Tried, broke the algorithm.
+~~1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.~~   Tried, it broke the algorithm.
+
 2. Define stretch signal producer and sound producer (goroutines).
 ```
 for {

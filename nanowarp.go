@@ -4,26 +4,8 @@ package nanowarp
 // - Pitch
 //	- Good resampler is required
 // - Streaming
-// - Identical stretch curve for any hop size OR stretch curve sync.
-//	- Needed to bring HPSS back for higher quality.
-// - Offline dynamic stretch size processing, the last step to high quality
-//	- Reset hop near the each transient
-//	- Repay time debt after each onset by even parts, do not use exponential decay
-//	- Classify material using existing HPSS info by “mostly percussive” and “mostly harmonic”
-//		- Simply by summing each sample's amplitude in a windowed grain
-//		- Repay more debt on mostly harmonic grains
-// - Finite difference scheme for PGHI instead of reassigned
 // ~ Time and pitch envelopes
 // 	- The internal machinery is already there, just glue pieces together and add UI
-// + Hop size dithering
-//	+ Harmonic-percussive desync fix (bubbling)
-// + Phase drift fix (try long impulse train signal to see it)
-// 	+ Time-domain correctness
-//	- Probably DTW can help. See https://www.youtube.com/watch?v=JNCVj_RtdZw
-//	+ Fixed with transient sync
-// - Play with HPSS filter sizes and quantiles. Try pre-emphasis maybe?
-// + Reset phase accuum sometimes to counteract numerical errors
-//	- Fixed with transient sync
 // - Optimizations
 //	+ Calculate mag(a.X) once
 //	+ Replace container.Heap with rankfilt
@@ -32,7 +14,7 @@ package nanowarp
 //	- Use/port a vectorized FFT library (e.g. SLEEF/PFFFT)
 //	- Use only float32 (impossible with gonum)
 //	- SIMD?
-//		- dev.simd branch of Go compiler with intrinsics
+//		- Go 1.26 intrinsics with GOEXPERIMENT=simd
 //
 
 import (

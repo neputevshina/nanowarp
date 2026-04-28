@@ -3,12 +3,13 @@ package dspio
 import (
 	"errors"
 	"fmt"
+	"io"
 	"sync/atomic"
 
 	"golang.org/x/sys/cpu"
 )
 
-var Wait error = errors.New(`buffer is unavailable, wait or lock`)
+var ErrSpillover error = errors.New(`buffer spillover: wait, lock or timeout`)
 
 // Inspired by
 // https://blog.systems.ethz.ch/blog/2019/the-design-and-implementation-of-a-lock-free-ring-buffer-with-contiguous-reservations.html
@@ -40,14 +41,21 @@ func (p *altpipe) SignalWrite(prr error, buf [][]float64) (n int, err error) {
 	}
 	if p.write.Load() == p.read.Load() {
 		// Queue is full.
-		return 0, Wait
+		return 0, ErrSpillover
 	}
 	r, w := int(p.read.Load()), int(p.write.Load())
 	if w < r {
-		w = len(p.bufs[0])
+		n = copy(p.bufs[0][w:r], buf[0])
+		p.write.Add(int64(n))
+	} else {
+		a := copy(p.bufs[0][w:], buf[0])
+		b := copy(p.bufs[0][:r], buf[0][a:])
+		n = a + b
+		p.write.Store(int64(b))
 	}
-	n = copy(p.bufs[0][w:r], buf[0])
-	p.write.Add(int64(n))
+	if n < len(buf[0]) {
+		err = io.ErrShortWrite
+	}
 
 	return
 }
@@ -63,14 +71,17 @@ func (p *altpipe) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	if int(p.read.Load()) == len(p.bufs[0]) {
 		p.read.Store(0)
 	}
-	// NB We can always read, if p.read == p.write we'll just copy nothing and n will be 0.
-	// TODO Yes, this means busy-waiting. Locks will arrive nearer to the lunch.
+	// NOTE We can always read, if p.read == p.write we'll just copy nothing and n will be 0.
 	r, w := int(p.read.Load()), int(p.write.Load())
 	if w < r {
-		w = len(p.bufs[0])
+		a := copy(buf[0], p.bufs[0][r:])
+		b := copy(buf[0][a:], p.bufs[0][:w])
+		n = a + b
+		p.read.Store(int64(b))
+	} else {
+		n = copy(buf[0], p.bufs[0][r:w])
+		p.read.Add(int64(n))
 	}
-	n = copy(buf[0], p.bufs[0][r:w])
-	p.read.Add(int64(n))
 
 	return
 }

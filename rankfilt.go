@@ -9,16 +9,6 @@ package nanowarp
 
 import "golang.org/x/exp/constraints"
 
-type mediatorMode int
-
-const (
-	mNEAREST  mediatorMode = 0
-	mWRAP     mediatorMode = 1
-	mREFLECT  mediatorMode = 2
-	mMIRROR   mediatorMode = 3
-	mCONSTANT mediatorMode = 4
-)
-
 // mediator - rank keeping structure
 type mediator[T constraints.Ordered, I any] struct {
 	pos   []int // index into `heap` for each value (signed position)
@@ -64,7 +54,6 @@ func (m *mediator[T, I]) setHeap(i int, val int) {
 
 // returns true if data[heap[i]] < data[heap[j]]
 func (m *mediator[T, I]) less(i, j int) bool {
-	// return data[m.getHeap(i)] < data[m.getHeap(j)]
 	return m.data[m.getHeap(i)] < m.data[m.getHeap(j)]
 }
 
@@ -193,96 +182,4 @@ func (m *mediator[T, I]) Insert(v T, a I) {
 func (m *mediator[T, I]) Filt(v T, a I) (T, I) {
 	m.Insert(v, a)
 	return m.Take()
-}
-
-// Process applies a running rank filter over input slice `in` of length len,
-// window size win, output to `out`. `mode` controls boundary handling, `cval` is a
-// constant value for CONSTANT mode, `origin` shifts the window center.
-func (m *mediator[T, I]) Process(in []T, win int, out []T, mode mediatorMode, cval T, origin int) {
-	if m == nil {
-		panic("null Mediator")
-	}
-	if win <= 0 {
-		panic("window must be > 0")
-	}
-	m.Reset(win)
-	data := m.data
-	length := len(in)
-
-	lim := (win-1)/2 - origin
-	lim2 := length - lim
-	var offset int
-
-	var z I
-
-	switch mode {
-	case mREFLECT:
-		for i := win - lim - 1; i > -1; i-- {
-			m.Insert(in[i], z)
-		}
-	case mCONSTANT:
-		for i := win - lim; i > 0; i-- {
-			m.Insert(cval, z)
-		}
-	case mNEAREST:
-		for i := win - lim; i > 0; i-- {
-			m.Insert(in[0], z)
-		}
-	case mMIRROR:
-		for i := win - lim; i > 0; i-- {
-			m.Insert(in[i], z)
-		}
-	case mWRAP:
-		if win%2 == 0 {
-			offset = 2
-		} else {
-			offset = 0
-		}
-		start := length - lim - offset - 2*origin
-		if start < 0 {
-			start = 0
-		}
-		for i := start; i < length; i++ {
-			m.Insert(in[i], z)
-		}
-	}
-
-	for i := 0; i < lim; i++ {
-		m.Insert(in[i], z)
-	}
-	for i := lim; i < length; i++ {
-		m.Insert(in[i], z)
-		out[i-lim] = data[m.getHeap(0)]
-	}
-
-	switch mode {
-	case mREFLECT:
-		arrLenThresh := length - 1
-		for i := 0; i < lim; i++ {
-			m.Insert(in[arrLenThresh-i], z)
-			out[lim2+i] = data[m.getHeap(0)]
-		}
-	case mCONSTANT:
-		for i := 0; i < lim; i++ {
-			m.Insert(cval, z)
-			out[lim2+i] = data[m.getHeap(0)]
-		}
-	case mNEAREST:
-		arrLenThresh := length - 1
-		for i := 0; i < lim; i++ {
-			m.Insert(in[arrLenThresh], z)
-			out[lim2+i] = data[m.getHeap(0)]
-		}
-	case mMIRROR:
-		arrLenThresh := length - 2
-		for i := 0; i < lim+1; i++ {
-			m.Insert(in[arrLenThresh-i], z)
-			out[lim2+i] = data[m.getHeap(0)]
-		}
-	case mWRAP:
-		for i := 0; i < lim; i++ {
-			m.Insert(in[i], z)
-			out[lim2+i] = data[m.getHeap(0)]
-		}
-	}
 }
