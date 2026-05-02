@@ -35,7 +35,8 @@ type dbufs struct {
 
 func detectorNew(nfft, fs sa, maxTransient, onsetevery ms) (n *detector) {
 	corr := math.Ceil(float64(fs) / 48000)
-	nbuf := nfft * int(corr)
+	nfft = nfft * int(corr)
+	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
 

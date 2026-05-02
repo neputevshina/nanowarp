@@ -39,7 +39,7 @@ func (p *altpipe) SignalWrite(prr error, buf [][]float64) (n int, err error) {
 	if int(p.write.Load()) == len(p.bufs[0]) {
 		p.write.Store(0)
 	}
-	if p.write.Load() == p.read.Load() {
+	if p.write.Load() == p.read.Load()-1 {
 		// Queue is full.
 		return 0, ErrSpillover
 	}
@@ -51,7 +51,11 @@ func (p *altpipe) SignalWrite(prr error, buf [][]float64) (n int, err error) {
 		a := copy(p.bufs[0][w:], buf[0])
 		b := copy(p.bufs[0][:r], buf[0][a:])
 		n = a + b
-		p.write.Store(int64(b))
+		if a+w < len(p.bufs[0]) {
+			p.write.Store(int64(n))
+		} else {
+			p.write.Store(int64(b))
+		}
 	}
 	if n < len(buf[0]) {
 		err = io.ErrShortWrite
