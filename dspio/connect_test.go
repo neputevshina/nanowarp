@@ -1,6 +1,7 @@
 package dspio
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -35,6 +36,41 @@ func TestAltpipeWraparound(t *testing.T) {
 	w, r := Pipe(1, 4)
 
 	// fill, drain, then write across the wrap point
+	if _, err := w.SignalWrite(nil, [][]float64{{1, 2, 3}}); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	out := [][]float64{make([]float64, 3)}
+	if n, err := r.SignalRead(nil, out); err != nil || n != 3 {
+		t.Fatalf("first read: n=%d err=%v", n, err)
+	}
+
+	// next write should wrap from index 3 to 0
+	if _, err := w.SignalWrite(nil, [][]float64{{10, 20, 30}}); err != nil {
+		t.Fatalf("wrap write: %v", err)
+	}
+	got := [][]float64{make([]float64, 3)}
+	n, err := r.SignalRead(nil, got)
+	if err != nil {
+		t.Fatalf("wrap read: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("wrap read: got n=%d, want 3", n)
+	}
+	want := []float64{10, 20, 30}
+	for i, v := range got[0] {
+		if v != want[i] {
+			t.Errorf("wrap read got[0][%d]=%v, want %v", i, v, want[i])
+		}
+	}
+}
+
+func TestAltpipeSignal(t *testing.T) {
+	w, r := Pipe(1, 4)
+
+	wg := sync.WaitGroup{}
+
+	wg.Wait()
+
 	if _, err := w.SignalWrite(nil, [][]float64{{1, 2, 3}}); err != nil {
 		t.Fatalf("first write: %v", err)
 	}

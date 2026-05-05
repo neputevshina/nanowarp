@@ -61,6 +61,8 @@ unmodified.
 - There exists a [“beat-emphasis onset detection function”](https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't.
+- Phase resets probably could be made smoother [by non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) for several frames before the reset.
+- Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 
 - Formant shifting must be implemented after streaming.
 
