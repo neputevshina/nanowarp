@@ -109,8 +109,29 @@ func Copy(prr error, r SignalReader, w SignalWriter, buf [][]float64) (written i
 	if buf == nil {
 		buf = make2(r.NchRead(), 8192)
 	}
-	if len(buf) != r.NchRead() && len(buf) != w.NchWrite() {
-		panic(fmt.Errorf(`different number of channels: got r=%d, buf=%d, w=%d`, r.NchRead(), w.NchWrite(), len(buf)))
+
+	n, no := 0, 0
+	defer func() {
+		if err == io.EOF {
+			err = nil
+		}
+	}()
+	for err != nil {
+		n, err = r.SignalRead(nil, buf)
+		if n <= 0 {
+			continue
+		}
+		if err != nil {
+			return
+		}
+		no, err = w.SignalWrite(nil, buf[:n])
+		if no < 0 || n < no {
+			if err == nil {
+				err = errors.New(`invalid write result`)
+			}
+			return
+		}
+		written += no
 	}
 
 	return
