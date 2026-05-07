@@ -15,6 +15,7 @@ import (
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/oscope"
 	"github.com/neputevshina/nanowarp/wav"
+	"github.com/neputevshina/nanowarp/waveform"
 )
 
 var println = fmt.Println
@@ -147,6 +148,8 @@ func main() {
 			side = append(side, r)
 		}
 	}
+
+	_ = waveform.Dump(nil, mid)
 
 	opts := nanowarp.Options{
 		Onsets:      *onsets,
