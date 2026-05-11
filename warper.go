@@ -101,7 +101,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			c = 1
 		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c), c == 1)
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, nil, abs(c), c == 1)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -136,7 +136,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain []float64, stretch float64, reset bool) {
+func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)

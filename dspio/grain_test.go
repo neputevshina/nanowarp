@@ -139,7 +139,7 @@ func (p *trainOsc) SignalRead(prr error, buf [][]float64) (n int, err error) {
 		return 0, prr
 	}
 	for i := range buf[0] {
-		buf[0][i] = boolfloat(i == 0)
+		buf[0][i] = boolfloat(p.i == 0)
 		p.i++
 		p.i %= p.p
 	}

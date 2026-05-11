@@ -77,28 +77,37 @@ func TestAltpipeSignal(t *testing.T) {
 		ar := &trainOsc{p: 55}
 		lr := LimitReader(ar, 8192*10)
 		Copy(nil, lr, w, b)
+		r.Close()
+		println(`done`)
 	})
 	wg.Go(func() {
 		got := make2(1, 2048)
 		want := make2(1, 2048)
 		etalon := &trainOsc{p: 55}
-		for bn := 0; ; bn++ {
-			_, err := r.SignalRead(nil, got)
-			if err == io.EOF {
-				break
-			}
+		// for bn := 0; ; bn++ {
+		var err error
+		for n := 0; n != 0 || err == nil; {
+			n, err = r.SignalRead(nil, got)
 			if err != nil {
+				if err == io.EOF {
+					break
+				}
 				t.Fatal(err)
 			}
+			if n == 0 {
+				continue
+			}
 			_, _ = etalon.SignalRead(nil, want)
+
 			for i := range got[0] {
 				if int(got[0][i])-int(want[0][i]) != 0 {
-					waveform.Dump(nil, got[0])
-					waveform.Dump(nil, want[0])
-					t.Fatal(`mismatch at`, i, `, bn`, bn, `want`, want[0][i], `got`, got[0][i])
+					e := waveform.Dump(nil, got[0])
+					e = waveform.Dump(e, want[0])
+					t.Fatal(`mismatch at`, i, `, want`, want[0][i], `got`, got[0][i])
 				}
 			}
 		}
+		// }
 	})
 
 	wg.Wait()
