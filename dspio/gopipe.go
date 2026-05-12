@@ -35,7 +35,7 @@ func (a *onceError) Load() error {
 	return a.err
 }
 
-// A gopipe is the shared gopipe structure underlying PipeReader and PipeWriter.
+// A gopipe is the shared pipe structure underlying PipeReader and PipeWriter.
 type gopipe struct {
 	wrMu sync.Mutex // Serializes Write operations
 	wrCh chan [][]float64
@@ -86,7 +86,7 @@ func (p *gopipe) write(b [][]float64) (n int, err error) {
 		defer p.wrMu.Unlock()
 	}
 
-	for once := true; once || len(b) > 0; once = false {
+	for once := true; once || len(b[0]) > 0; once = false {
 		select {
 		case p.wrCh <- b:
 			nw := <-p.rdCh
@@ -128,15 +128,17 @@ func (p *gopipe) writeCloseError() error {
 	return io.ErrClosedPipe
 }
 
-// A goPipeReader is the read half of a pipe.
-type goPipeReader struct{ gopipe }
+// A GoPipeReader is the read half of a pipe.
+type GoPipeReader struct{ gopipe }
+
+func (p *GoPipeReader) NchRead() int { return p.nch }
 
 // Read implements the standard Read interface:
 // it reads data from the pipe, blocking until a writer
 // arrives or the write end is closed.
 // If the write end is closed with an error, that error is
 // returned as err; otherwise err is EOF.
-func (r *goPipeReader) Read(prr error, data [][]float64) (n int, err error) {
+func (r *GoPipeReader) SignalRead(prr error, data [][]float64) (n int, err error) {
 	if prr != nil {
 		return 0, prr
 	}
@@ -148,7 +150,7 @@ func (r *goPipeReader) Read(prr error, data [][]float64) (n int, err error) {
 
 // Close closes the reader; subsequent writes to the
 // write half of the pipe will return the error [ErrClosedPipe].
-func (r *goPipeReader) Close() error {
+func (r *GoPipeReader) Close() error {
 	return r.CloseWithError(nil)
 }
 
@@ -157,19 +159,21 @@ func (r *goPipeReader) Close() error {
 //
 // CloseWithError never overwrites the previous error if it exists
 // and always returns nil.
-func (r *goPipeReader) CloseWithError(err error) error {
+func (r *GoPipeReader) CloseWithError(err error) error {
 	return r.gopipe.closeRead(err)
 }
 
-// A goPipeWriter is the write half of a pipe.
-type goPipeWriter struct{ r goPipeReader }
+// A GoPipeWriter is the write half of a pipe.
+type GoPipeWriter struct{ r GoPipeReader }
+
+func (p *GoPipeWriter) NchWrite() int { return p.r.nch }
 
 // Write implements the standard Write interface:
 // it writes data to the pipe, blocking until one or more readers
 // have consumed all the data or the read end is closed.
 // If the read end is closed with an error, that err is
 // returned as err; otherwise err is [ErrClosedPipe].
-func (w *goPipeWriter) Write(prr error, data [][]float64) (n int, err error) {
+func (w *GoPipeWriter) SignalWrite(prr error, data [][]float64) (n int, err error) {
 	if prr != nil {
 		return 0, prr
 	}
@@ -181,7 +185,7 @@ func (w *goPipeWriter) Write(prr error, data [][]float64) (n int, err error) {
 
 // Close closes the writer; subsequent reads from the
 // read half of the pipe will return no bytes and EOF.
-func (w *goPipeWriter) Close() error {
+func (w *GoPipeWriter) Close() error {
 	return w.CloseWithError(nil)
 }
 
@@ -191,12 +195,12 @@ func (w *goPipeWriter) Close() error {
 //
 // CloseWithError never overwrites the previous error if it exists
 // and always returns nil.
-func (w *goPipeWriter) CloseWithError(err error) error {
+func (w *GoPipeWriter) CloseWithError(err error) error {
 	return w.r.gopipe.closeWrite(err)
 }
 
-func goPipe(channels int) (*goPipeReader, *goPipeWriter) {
-	pw := &goPipeWriter{r: goPipeReader{gopipe: gopipe{
+func GoPipe(channels int) (*GoPipeReader, *GoPipeWriter) {
+	pw := &GoPipeWriter{r: GoPipeReader{gopipe: gopipe{
 		wrCh: make(chan [][]float64),
 		rdCh: make(chan int),
 		nch:  channels,

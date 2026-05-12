@@ -13,8 +13,10 @@ var ErrSpillover error = errors.New(`buffer spillover: wait, lock or timeout`)
 
 // Inspired by
 // https://blog.systems.ethz.ch/blog/2019/the-design-and-implementation-of-a-lock-free-ring-buffer-with-contiguous-reservations.html
+//
+// DOES NOT WORK
 
-type PipeWriter struct {
+type lockfreePipeWriter struct {
 	bufs [][]float64
 	nch  int
 	_    cpu.CacheLinePad
@@ -27,14 +29,14 @@ type PipeWriter struct {
 	_     cpu.CacheLinePad
 }
 
-type PipeReader struct {
-	*PipeWriter
+type lockfreePipeReader struct {
+	*lockfreePipeWriter
 }
 
-func (p *PipeWriter) NchWrite() int { return p.nch }
-func (p *PipeReader) NchRead() int  { return p.nch }
+func (p *lockfreePipeWriter) NchWrite() int { return p.nch }
+func (p *lockfreePipeReader) NchRead() int  { return p.nch }
 
-func (p *PipeWriter) SignalWrite(prr error, buf [][]float64) (n int, err error) {
+func (p *lockfreePipeWriter) SignalWrite(prr error, buf [][]float64) (n int, err error) {
 	if prr != nil {
 		return 0, prr
 	}
@@ -52,6 +54,7 @@ func (p *PipeWriter) SignalWrite(prr error, buf [][]float64) (n int, err error) 
 		// Queue is full.
 		return 0, ErrSpillover
 	}
+
 	r, w := int(p.read.Load()), int(p.write.Load())
 	if w < r {
 		n = copy(p.bufs[0][w:r], buf[0])
@@ -73,7 +76,7 @@ func (p *PipeWriter) SignalWrite(prr error, buf [][]float64) (n int, err error) 
 	return
 }
 
-func (p *PipeReader) SignalRead(prr error, buf [][]float64) (n int, err error) {
+func (p *lockfreePipeReader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	if prr != nil {
 		return 0, prr
 	}
@@ -102,21 +105,21 @@ func (p *PipeReader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	return
 }
 
-func (p *PipeWriter) Close() (err error) {
+func (p *lockfreePipeWriter) Close() (err error) {
 	p.close.Store(true)
 	return nil
 }
 
-var _ SignalWriter = &PipeWriter{}
-var _ SignalReader = &PipeReader{}
+var _ SignalWriter = &lockfreePipeWriter{}
+var _ SignalReader = &lockfreePipeReader{}
 
-func Pipe(nch int, nbuf int) (*PipeWriter, *PipeReader) {
-	p := &PipeWriter{
+func lockfreePipe(nch int, nbuf int) (*lockfreePipeWriter, *lockfreePipeReader) {
+	p := &lockfreePipeWriter{
 		nch:  nch,
 		bufs: make2(nch, nbuf),
 	}
 
-	return p, &PipeReader{p}
+	return p, &lockfreePipeReader{p}
 }
 
 func Copy(prr error, r SignalReader, w SignalWriter, buf [][]float64) (written int, err error) {

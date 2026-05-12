@@ -1,6 +1,8 @@
 package dspio
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -9,7 +11,7 @@ import (
 )
 
 func TestAltpipeRoundTrip(t *testing.T) {
-	w, r := Pipe(1, 16)
+	w, r := lockfreePipe(1, 16)
 	in := [][]float64{{1, 2, 3, 4}}
 
 	n, err := w.SignalWrite(nil, in)
@@ -36,7 +38,7 @@ func TestAltpipeRoundTrip(t *testing.T) {
 }
 
 func TestAltpipeWraparound(t *testing.T) {
-	w, r := Pipe(1, 4)
+	w, r := lockfreePipe(1, 4)
 
 	// fill, drain, then write across the wrap point
 	if _, err := w.SignalWrite(nil, [][]float64{{1, 2, 3}}); err != nil {
@@ -67,35 +69,87 @@ func TestAltpipeWraparound(t *testing.T) {
 	}
 }
 
-func TestAltpipeSignal(t *testing.T) {
-	w, r := Pipe(1, 4096)
+// func TestAltpipeSignal(t *testing.T) {
+// 	w, r := lockfreePipe(1, 4096)
+
+// 	wg := sync.WaitGroup{}
+
+// 	const period = 88
+
+// 	wg.Go(func() {
+// 		b := make2(1, 2048)
+// 		ar := &trainOsc{p: period}
+// 		lr := LimitReader(ar, 8192*10)
+// 		Copy(nil, lr, w, b)
+// 		r.Close()
+// 		println(`done`)
+// 	})
+// 	wg.Go(func() {
+// 		got := make2(1, 2048)
+// 		want := make2(1, 2048)
+// 		etalon := &trainOsc{p: period}
+// 		// for bn := 0; ; bn++ {
+// 		var err error
+// 		for n := 0; n != 0 || err == nil; {
+// 			n, err = r.SignalRead(nil, got)
+// 			if err != nil {
+// 				if err == io.EOF {
+// 					break
+// 				}
+// 				t.Fatal(err)
+// 			}
+// 			if n == 0 {
+// 				continue
+// 			}
+// 			_, _ = etalon.SignalRead(nil, want)
+
+// 			for i := range got[0] {
+// 				if int(got[0][i])-int(want[0][i]) != 0 {
+// 					e := waveform.Dump(nil, got[0])
+// 					e = waveform.Dump(e, want[0])
+// 					t.Fatal(`mismatch at`, i, `, want`, want[0][i], `got`, got[0][i])
+// 				}
+// 			}
+// 		}
+// 		// }
+// 	})
+
+// 	wg.Wait()
+// }
+
+func TestGopipeSignal(t *testing.T) {
+	r, w := GoPipe(1)
 
 	wg := sync.WaitGroup{}
 
-	wg.Go(func() {
+	const period = 91
+
+	wg.Add(2)
+	go func() {
 		b := make2(1, 2048)
-		ar := &trainOsc{p: 55}
+		ar := &trainOsc{p: period}
 		lr := LimitReader(ar, 8192*10)
 		Copy(nil, lr, w, b)
-		r.Close()
 		println(`done`)
-	})
-	wg.Go(func() {
+		w.Close()
+		wg.Done()
+	}()
+	erc := make(chan error)
+	go func() {
 		got := make2(1, 2048)
 		want := make2(1, 2048)
-		etalon := &trainOsc{p: 55}
+		etalon := &trainOsc{p: period}
 		// for bn := 0; ; bn++ {
 		var err error
 		for n := 0; n != 0 || err == nil; {
+			// println(`spinout`)
 			n, err = r.SignalRead(nil, got)
 			if err != nil {
 				if err == io.EOF {
 					break
 				}
-				t.Fatal(err)
-			}
-			if n == 0 {
-				continue
+				erc <- err
+				return
 			}
 			_, _ = etalon.SignalRead(nil, want)
 
@@ -103,12 +157,19 @@ func TestAltpipeSignal(t *testing.T) {
 				if int(got[0][i])-int(want[0][i]) != 0 {
 					e := waveform.Dump(nil, got[0])
 					e = waveform.Dump(e, want[0])
-					t.Fatal(`mismatch at`, i, `, want`, want[0][i], `got`, got[0][i])
+					erc <- errors.New(fmt.Sprint(`mismatch at`, i, `, want`, want[0][i], `got`, got[0][i]))
+					return
 				}
 			}
 		}
 		// }
-	})
+		erc <- nil
+		wg.Done()
+	}()
+	err := <-erc
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	wg.Wait()
 }
