@@ -10,70 +10,6 @@ import (
 	"golang.org/x/term"
 )
 
-// func Dump2(prr error, b []float64) error {
-// 	const height = 12
-// 	if prr != nil {
-// 		return prr
-// 	}
-// 	w, _, err := term.GetSize(1)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	symb := max(1, len(b)/w)
-// 	gmax, gmin := slices.Max(b), slices.Min(b)
-// 	absmax := max(gmax, -gmin)
-// 	if absmax != 0 {
-// 		for i := range b {
-// 			b[i] /= absmax
-// 		}
-// 	}
-
-// 	img := image.NewPaletted(image.Rect(0, 0, w*2, height), color.Palette{color.White, color.Black})
-
-// 	lines := make([][]rune, height)
-// 	column := make([]rune, height)
-// 	for i := 0; i < len(b); i += symb {
-// 		fill(column, ' ')
-// 		sl := b[i:min(len(b), i+symb)]
-// 		h := float64(height)
-
-// 		floor := func(x float64) int { return int(math.Round(x)) }
-// 		frac := func(x float64) float64 { _, f := math.Modf(x); return f }
-
-// 		ma, mi := h*((-slices.Max(sl))/2+0.5), h*((-slices.Min(sl))/2+0.5)
-// 		if ma != mi {
-// 			fill(column[floor(ma):min(height, floor(mi)+1)], '█')
-// 		}
-// 		if frac(ma) <= 0.5 {
-// 			column[min(height-1, floor(mi))] = '▀'
-// 		}
-// 		if frac(mi) >= 0.5 {
-// 			column[floor(ma)] = '▄'
-// 		}
-
-// 		for i := range height {
-// 			lines[i] = append(lines[i], column[i])
-// 		}
-// 	}
-
-// 	sa := fmt.Sprint(gmax)
-// 	f := fmt.Sprintf("%%s%%%dd\n", w-len(sa))
-// 	fmt.Fprintf(os.Stderr, f, sa, len(b))
-// 	for _, l := range lines {
-// 		_, err := os.Stderr.Write([]byte(string(l[:w])))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		_, err = os.Stderr.Write([]byte{'\n'})
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-// 	fmt.Fprintln(os.Stderr, gmin)
-
-// 	return nil
-// }
-
 func Dump(prr error, b []float64) error {
 	const height = 12
 	if prr != nil {
@@ -83,7 +19,7 @@ func Dump(prr error, b []float64) error {
 	if err != nil {
 		return err
 	}
-	symb := max(1, len(b)/w)
+	symb := max(1, len(b)/w/2)
 	gmax, gmin := slices.Max(b), slices.Min(b)
 	absmax := max(gmax, -gmin)
 	if absmax != 0 {
@@ -92,29 +28,47 @@ func Dump(prr error, b []float64) error {
 		}
 	}
 
-	lines := make([][]rune, height)
-	column := make([]rune, height)
+	column := make([]bool, height*6)
+	blines := make([][]bool, height*6)
 	for i := 0; i < len(b); i += symb {
-		fill(column, ' ')
+		fill(column, false)
 		sl := b[i:min(len(b), i+symb)]
-		h := float64(height)
+		h := float64(height * 6)
 
 		floor := func(x float64) int { return int(math.Round(x)) }
-		frac := func(x float64) float64 { _, f := math.Modf(x); return f }
 
 		ma, mi := h*((-slices.Max(sl))/2+0.5), h*((-slices.Min(sl))/2+0.5)
-		if ma != mi {
-			fill(column[floor(ma):min(height, floor(mi)+1)], '█')
-		}
-		if frac(ma) <= 0.5 {
-			column[min(height-1, floor(mi))] = '▀'
-		}
-		if frac(mi) >= 0.5 {
-			column[floor(ma)] = '▄'
-		}
+		fill(column[floor(ma):min(height*6, floor(mi)+1)], true)
 
-		for i := range height {
-			lines[i] = append(lines[i], column[i])
+		for i := range height * 6 {
+			blines[i] = append(blines[i], column[i])
+		}
+	}
+	g := func(x, y int) rune {
+		if y >= len(blines) {
+			return 0
+		}
+		if x >= len(blines[0]) {
+			return 0
+		}
+		if blines[y][x] {
+			return 1
+		}
+		return 0
+	}
+	lines := make([][]rune, height)
+	for i := range lines {
+		lines[i] = make([]rune, w)
+	}
+	for x := 0; x < len(blines[0]); x += 2 {
+		for y := 0; y < len(blines); y += 6 {
+			i := g(x, y) | g(x+1, y)<<1 |
+				g(x, y+1)<<2 | g(x+1, y+1)<<3 |
+				g(x, y+2)<<4 | g(x+1, y+2)<<5
+			r := []rune(` 🬀🬁🬂🬃🬄🬅🬆🬇🬈🬉🬊🬋🬌🬍🬎🬏🬐🬑🬒🬓▌🬔🬕🬖🬗🬘🬙🬚🬛🬜🬝🬞🬟🬠🬡🬢🬣🬤🬥🬦🬧▐🬨🬩🬪🬫🬬🬭🬮🬯🬰🬱🬲🬳🬴🬵🬶🬷🬸🬹🬺🬻█`)[i]
+			if y/6 < len(lines) && x/2 < len(lines[0]) {
+				lines[y/6][x/2] = r
+			}
 		}
 	}
 
@@ -134,10 +88,4 @@ func Dump(prr error, b []float64) error {
 	fmt.Fprintln(os.Stderr, gmin)
 
 	return nil
-}
-
-func fill[T any](s []T, e T) {
-	for i := range s {
-		s[i] = e
-	}
 }
