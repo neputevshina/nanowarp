@@ -19,6 +19,7 @@ func Dump(prr error, b []float64) error {
 	if err != nil {
 		return err
 	}
+	w = min(w, len(b))
 	symb := max(1, len(b)/w/2)
 	gmax, gmin := slices.Max(b), slices.Min(b)
 	absmax := max(gmax, -gmin)
@@ -65,6 +66,8 @@ func Dump(prr error, b []float64) error {
 			i := g(x, y) | g(x+1, y)<<1 |
 				g(x, y+1)<<2 | g(x+1, y+1)<<3 |
 				g(x, y+2)<<4 | g(x+1, y+2)<<5
+			// U+1FB00-U+1FB3B is a lie.
+			// Remap by lookup, filling in missing space, halves and the full block.
 			r := []rune(` 🬀🬁🬂🬃🬄🬅🬆🬇🬈🬉🬊🬋🬌🬍🬎🬏🬐🬑🬒🬓▌🬔🬕🬖🬗🬘🬙🬚🬛🬜🬝🬞🬟🬠🬡🬢🬣🬤🬥🬦🬧▐🬨🬩🬪🬫🬬🬭🬮🬯🬰🬱🬲🬳🬴🬵🬶🬷🬸🬹🬺🬻█`)[i]
 			if y/6 < len(lines) && x/2 < len(lines[0]) {
 				lines[y/6][x/2] = r
@@ -88,4 +91,10 @@ func Dump(prr error, b []float64) error {
 	fmt.Fprintln(os.Stderr, gmin)
 
 	return nil
+}
+
+func fill[T any](s []T, e T) {
+	for i := range s {
+		s[i] = e
+	}
 }
