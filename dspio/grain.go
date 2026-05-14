@@ -50,6 +50,7 @@ func (r *GrainReader) SignalRead(prr error, grain [][]float64) (n int, err error
 			r.slicebuss[ch] = r.inbuss[ch][r.n-r.Hop:][s:]
 		}
 		n, err = r.r.SignalRead(nil, r.slicebuss)
+		// TODO Will drop the whole frame on EOF, pls fix.
 		if err != nil {
 			return s, err
 		}

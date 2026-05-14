@@ -24,8 +24,8 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var finput = flag.String("i", "", "input WAV (or anything else, if ffmpeg is present) `path`")
 var foutput = flag.String("o", "", "output WAV `path`")
 var coeff = flag.Float64("t", 0, "time stretch multiplier")
-var from = flag.Float64("from", 0, "source `bpm`")
-var to = flag.Float64("to", 0, "target `bpm`")
+var from = flag.Float64("from", 1, "source `bpm`")
+var to = flag.Float64("to", 1, "target `bpm`")
 var st = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing the the pitch")
 var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var q = flag.Int("q", 0, "quality, run “go doc nanowarp.Options.Quality” for help")
@@ -49,7 +49,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	if *coeff <= 0 && *from > 0 && *to > 0 {
+	if *coeff <= 0 && (*from > 1 && *to > 1 || math.Abs(*st) > 0) {
 		*coeff = *from / *to * math.Pow(2, *st/12)
 	}
 	if *finput == "" || *coeff <= 0 {
@@ -63,8 +63,10 @@ func main() {
 			pitchSuffix = fmt.Sprintf("%+.2fst", *st)
 		}
 
-		if *from > 0 {
+		if *from > 1 {
 			return path.Join(path.Dir(dir), fmt.Sprintf("%g→%g%s-%s", *from, *to, pitchSuffix, path.Base(fn)))
+		} else if math.Abs(*st) > 0 {
+			return path.Join(path.Dir(dir), fmt.Sprintf("%s-%s", pitchSuffix, path.Base(fn)))
 		} else {
 			return path.Join(path.Dir(dir), fmt.Sprintf("%.4fx%s-%s", *coeff, pitchSuffix, path.Base(fn)))
 		}

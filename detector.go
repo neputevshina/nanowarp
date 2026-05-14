@@ -2,11 +2,9 @@ package nanowarp
 
 import (
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"slices"
-	"sync/atomic"
 
 	"github.com/neputevshina/nanowarp/dspio"
 
@@ -94,7 +92,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	return
 }
 
-func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter, stop *atomic.Bool) (err error) {
+func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
@@ -109,24 +107,21 @@ func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 
 	fr := make([]float64, n.nbuf)
 	for {
-		if stop.Load() {
-			break
-		}
 		_, err := gr.SignalRead(nil, gs)
+		if err != nil {
+			return err
+		}
 
 		c := n.advance(gs[0], gs[1])
 
 		fill(fr, c)
 		mul(fr, n.a.Wr)
 		_, err = gw.SignalWrite(nil, [][]float64{fr})
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
 			return err
 		}
 	}
-	return nil
+	// This function is expected to exit when io.EOF is encountered.
 }
 
 func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
