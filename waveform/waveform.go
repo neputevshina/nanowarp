@@ -1,8 +1,9 @@
-// Package waveform provides a way to dump the waveform view of a buffer to the terminal.
+// Package waveform provides a way to dump the pseudographic waveform view of an audio buffer.
 package waveform
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"slices"
@@ -10,7 +11,24 @@ import (
 	"golang.org/x/term"
 )
 
+// Lookup is the lookup table used to draw a 2×3 dot rectangle with symbols.
+//
+// The order of bits in the rectangle of dots by which it is indexed is:
+//
+//	0 1
+//	2 3
+//	4 5
+//
+// It must contain at least 64 elements.
+var Lookup = []rune(` 🬀🬁🬂🬃🬄🬅🬆🬇🬈🬉🬊🬋🬌🬍🬎🬏🬐🬑🬒🬓▌🬔🬕🬖🬗🬘🬙🬚🬛🬜🬝🬞🬟🬠🬡🬢🬣🬤🬥🬦🬧▐🬨🬩🬪🬫🬬🬭🬮🬯🬰🬱🬲🬳🬴🬵🬶🬷🬸🬹🬺🬻█`) // U+1FB00-U+1FB3B is a lie.
+
+// Dump prints the waveform of the audio to Stderr.
 func Dump(prr error, b []float64) error {
+	return DumpWriter(prr, os.Stderr, b)
+}
+
+// DumpWrited prints the waveform of the audio to out.
+func DumpWriter(prr error, out io.Writer, b []float64) error {
 	const height = 12
 	if prr != nil {
 		return prr
@@ -38,14 +56,17 @@ func Dump(prr error, b []float64) error {
 
 		floor := func(x float64) int { return int(math.Round(x)) }
 
-		ma, mi := h*((-slices.Max(sl))/2+0.5), h*((-slices.Min(sl))/2+0.5)
-		fill(column[floor(ma):min(height*6, floor(mi)+1)], true)
+		ma, mi := floor(h*((-slices.Max(sl))/2+0.5)), min(height*6, floor(h*((-slices.Min(sl))/2+0.5))+1)
+		fill(column[ma:mi], true)
+		if ma+1 == mi {
+			column[min(len(column)-1, ma)] = true
+		}
 
 		for i := range height * 6 {
 			blines[i] = append(blines[i], column[i])
 		}
 	}
-	g := func(x, y int) rune {
+	g := func(x, y int) int {
 		if y >= len(blines) {
 			return 0
 		}
@@ -66,9 +87,7 @@ func Dump(prr error, b []float64) error {
 			i := g(x, y) | g(x+1, y)<<1 |
 				g(x, y+1)<<2 | g(x+1, y+1)<<3 |
 				g(x, y+2)<<4 | g(x+1, y+2)<<5
-			// U+1FB00-U+1FB3B is a lie.
-			// Remap by lookup, filling in missing space, halves and the full block.
-			r := []rune(` 🬀🬁🬂🬃🬄🬅🬆🬇🬈🬉🬊🬋🬌🬍🬎🬏🬐🬑🬒🬓▌🬔🬕🬖🬗🬘🬙🬚🬛🬜🬝🬞🬟🬠🬡🬢🬣🬤🬥🬦🬧▐🬨🬩🬪🬫🬬🬭🬮🬯🬰🬱🬲🬳🬴🬵🬶🬷🬸🬹🬺🬻█`)[i]
+			r := Lookup[i]
 			if y/6 < len(lines) && x/2 < len(lines[0]) {
 				lines[y/6][x/2] = r
 			}
@@ -77,18 +96,18 @@ func Dump(prr error, b []float64) error {
 
 	sa := fmt.Sprint(gmax)
 	f := fmt.Sprintf("%%s%%%dd\n", w-len(sa))
-	fmt.Fprintf(os.Stderr, f, sa, len(b))
+	fmt.Fprintf(out, f, sa, len(b))
 	for _, l := range lines {
-		_, err := os.Stderr.Write([]byte(string(l[:w])))
+		_, err := out.Write([]byte(string(l[:w])))
 		if err != nil {
 			return err
 		}
-		_, err = os.Stderr.Write([]byte{'\n'})
+		_, err = out.Write([]byte{'\n'})
 		if err != nil {
 			return err
 		}
 	}
-	fmt.Fprintln(os.Stderr, gmin)
+	fmt.Fprintln(out, gmin)
 
 	return nil
 }

@@ -126,7 +126,7 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 		// we still have the rest of the buffer padded with zeros.
 		//
 		// For typical grain sizes and channel configurations (nfft ∈ [256:16384],
-		// stereo) the 1.5x—3x memory overhead is not significant.
+		// stereo) the 1.5x—3x memory overhead is not significant with modern RAM sizes.
 		// In most cases grain size will be in range from 512 (cross-synthesis, onset detection)
 		// to 4096 (phase vocoder-based pitch change/time scaling).
 		// The most probable reason for worst case is either linear-phase EQ or

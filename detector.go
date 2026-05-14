@@ -97,6 +97,9 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter, stop *atomic.Bool) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
 
+	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
+		panic(`onsetFunctionWriter: non-overlapping reader required`)
+	}
 	gr := dspio.NewGrainReader(n.nfft, n.hop, ar)
 	gw := dspio.NewGrainWriter(n.nfft, n.hop, aw)
 	gs := make([][]float64, 2)

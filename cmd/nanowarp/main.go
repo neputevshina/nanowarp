@@ -149,7 +149,7 @@ func main() {
 		}
 	}
 
-	_ = waveform.Dump(nil, mid)
+	_ = waveform.Dump(nil, mid[:512])
 
 	opts := nanowarp.Options{
 		Onsets:      *onsets,
