@@ -55,8 +55,11 @@ type Options struct {
 	// The size of the transient picking bucket in milliseconds.
 	// An onset is selected at the point of maximum of the novelty function in each bucket.
 	//
-	// If zero will be set to 300.
+	// If zero will be set to 250.
 	PoolingMs int
+
+	// Scale the pooling size by time stretch multiplier.
+	ScalePool bool
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -78,7 +81,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 		opts.TransientMs = 30
 	}
 	if opts.PoolingMs == 0 {
-		opts.PoolingMs = 300
+		opts.PoolingMs = 250
 	}
 
 	// TODO Probably possible to shrink nbuf to 3072 without loss in quality.
@@ -102,7 +105,11 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			coeffs[j] = 1 / stretch
 		}
 	} else {
-		sam := n.detector.process2(lin, rin, ons, ons1, stretch)
+		poolstretch := 1.
+		if n.opts.ScalePool {
+			poolstretch = stretch
+		}
+		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
 
 		// copy(lout, ons)
 		// copy(rout, ons1)

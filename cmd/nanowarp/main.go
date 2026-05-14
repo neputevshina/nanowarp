@@ -134,8 +134,8 @@ func main() {
 		}
 	}
 
-	mid := []float64{}
-	side := []float64{}
+	left := []float64{}
+	right := []float64{}
 	for {
 		samples, err := wavrd.ReadSamples()
 		if err == io.EOF {
@@ -144,12 +144,12 @@ func main() {
 
 		for _, sample := range samples {
 			l, r := wavrd.FloatValue(sample, 0), wavrd.FloatValue(sample, 1)
-			mid = append(mid, l)
-			side = append(side, r)
+			left = append(left, l)
+			right = append(right, r)
 		}
 	}
 
-	_ = waveform.Dump(nil, mid[:512])
+	_ = waveform.Dump(nil, left)
 
 	opts := nanowarp.Options{
 		Onsets:      *onsets,
@@ -159,24 +159,24 @@ func main() {
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
-	mout := make([]float64, int(float64(len(mid))**coeff))
-	sout := make([]float64, int(float64(len(mid))**coeff))
+	lout := make([]float64, int(float64(len(left))**coeff))
+	rout := make([]float64, int(float64(len(left))**coeff))
 
-	mnw.Process(mid, side, mout, sout, *coeff)
+	mnw.Process(left, right, lout, rout, *coeff)
 
 	file, err = os.Create(*foutput)
 
 	if err != nil {
 		panic(err)
 	}
-	wr := wav.NewWriter(file, uint32(len(mout)), 2, wavfmt.SampleRate, 32, true)
+	wr := wav.NewWriter(file, uint32(len(lout)), 2, wavfmt.SampleRate, 32, true)
 	fmt.Fprintln(os.Stderr, `encoding...`)
 	nbuf := 2048
 	buf := make([]wav.Sample, 0, nbuf)
-	for i := 0; i < len(mout); i += nbuf {
+	for i := 0; i < len(lout); i += nbuf {
 		buf = buf[:0]
-		for j := i; j < min(i+nbuf, len(mout)); j++ {
-			lsa, rsa := mout[j], sout[j]
+		for j := i; j < min(i+nbuf, len(lout)); j++ {
+			lsa, rsa := lout[j], rout[j]
 			buf = append(buf, wav.Sample{Values: [2]int{
 				int(math.Float32bits(float32(lsa))),
 				int(math.Float32bits(float32(rsa)))}})
