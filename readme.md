@@ -60,11 +60,16 @@ unmodified.
 ## Notes
 - There exists a [“beat-emphasis onset detection function”](https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).
   - Or just make an informed guess of `-poolms` based on estimated uniform BPM. Much simpler and faster, probably as much effective.
+  - In the latter case, the novelty curve “max pool” (per time bin) detection (vs. dilation as now) is probably more preferable.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't.
 - Phase resets probably could be made smoother [by non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) for several frames before the reset.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
+- We can probably reset the phases not for the whole frame, but only for a most prominent region. Either:
+  - define several “phase reset bands”. Just return the per-band sums of the novelty function; or
+  - use the total sum (as now), but find a prominent bin range and reset the phase only in it.
+  - We can probably never reset the bass. Probably.
 
 ### Testing strategy
 - Various impulse train signals
@@ -73,6 +78,7 @@ unmodified.
 - Drum loops
 - Full tracks: pop, electronica, acoustica, black metal
 - Braid remastered soundtrack, phase resets WILL break the sound.
+- “Frederic — oddloop” brings the algorithm to the knees: phasiness and misplaced phase resets are obvious.
 
 ### Streaming implementation plan
 ~~1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.~~   Tried, it broke the algorithm.
