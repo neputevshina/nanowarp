@@ -62,12 +62,12 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	return r.WavData.Read(p)
 }
 
-func (r *Reader) ReadSamples(params ...uint32) (samples []Sample, err error) {
+func (r *Reader) ReadSamples(samples []Sample) (numSamples int, out []Sample, err error) {
 	var bytes []byte
-	var numSamples, b, n int
+	var b, n int
 
-	if len(params) > 0 {
-		numSamples = int(params[0])
+	if len(samples) > 0 {
+		numSamples = len(samples)
 	} else {
 		numSamples = 2048
 	}
@@ -90,7 +90,9 @@ func (r *Reader) ReadSamples(params ...uint32) (samples []Sample, err error) {
 
 	numSamples = n / blockAlign
 	r.WavData.pos += uint32(numSamples * blockAlign)
-	samples = make([]Sample, numSamples)
+	if samples == nil {
+		samples = make([]Sample, numSamples)
+	}
 	offset := 0
 
 	for i := 0; i < numSamples; i++ {
@@ -136,7 +138,7 @@ func (r *Reader) ReadSamples(params ...uint32) (samples []Sample, err error) {
 
 		offset += blockAlign
 	}
-
+	out = samples
 	return
 }
 

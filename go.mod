@@ -2,6 +2,8 @@ module github.com/neputevshina/nanowarp
 
 go 1.25.0
 
+replace github.com/neputevshina/nanowarp/wav => ./wav
+
 require (
 	github.com/neputevshina/nanowarp/wav v0.0.0-20251208023223-56aed9ad6db5
 	golang.org/x/exp v0.0.0-20251002181428-27f1f14c8bb9

@@ -138,8 +138,9 @@ func main() {
 
 	left := []float64{}
 	right := []float64{}
+	var samples []wav.Sample
 	for {
-		samples, err := wavrd.ReadSamples()
+		_, samples, err = wavrd.ReadSamples(samples)
 		if err == io.EOF {
 			break
 		}
