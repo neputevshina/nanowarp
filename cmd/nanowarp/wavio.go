@@ -1,6 +1,11 @@
 package main
 
+// TODO Write own WAV codec, without all of the peculiarities of youpy's code.
+
 import (
+	"io"
+	"math"
+
 	"github.com/neputevshina/nanowarp/dspio"
 	"github.com/neputevshina/nanowarp/wav"
 	"github.com/youpy/go-riff"
@@ -50,17 +55,45 @@ func (w *WavSignalReader) SignalRead(prr error, buf [][]float64) (n int, err err
 	return
 }
 
-type WavSignalWriter struct{}
+type WavSignalWriter struct {
+	*wav.Writer
+}
+
+var _ dspio.SignalWriter = &WavSignalWriter{}
+
+func NewWavSignalWriter(prr error, file io.Writer, length int, nch int, fs int) (wsw *WavSignalWriter, err error) {
+	if prr != nil {
+		return nil, prr
+	}
+	wsw = &WavSignalWriter{}
+	wsw.Writer = wav.NewWriter(file, uint32(length), uint16(nch), uint32(fs), 32, true)
+	return
+}
 
 func (w *WavSignalWriter) NchWrite() int {
-	return 0
+	return int(w.Writer.Format.NumChannels)
 }
 
 func (w *WavSignalWriter) SignalWrite(prr error, buf [][]float64) (n int, err error) {
 	if prr != nil {
 		return 0, prr
 	}
+
+	nbuf := len(buf[0])
+	sabuf := make([]wav.Sample, 0, nbuf)
+
+	buf = buf[:0]
+	for i := range nbuf {
+		sa := wav.Sample{}
+		for ch := range w.NchWrite() {
+			sa.Values[ch] = int(math.Float32bits(float32(buf[ch][i])))
+		}
+		sabuf = append(sabuf, sa)
+	}
+	err = w.WriteSamples(sabuf)
+	if err != nil {
+		panic(err)
+	}
+
 	return
 }
-
-var _ dspio.SignalWriter = &WavSignalWriter{}
