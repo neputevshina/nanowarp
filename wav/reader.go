@@ -83,12 +83,12 @@ func (r *Reader) ReadSamples(samples []Sample) (numSamples int, out []Sample, er
 
 	bytes = make([]byte, numSamples*blockAlign)
 	n, err = r.Read(bytes)
+	numSamples = n / blockAlign
 
 	if err != nil {
 		return
 	}
 
-	numSamples = n / blockAlign
 	r.WavData.pos += uint32(numSamples * blockAlign)
 	if samples == nil {
 		samples = make([]Sample, numSamples)

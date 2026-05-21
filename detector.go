@@ -2,6 +2,7 @@ package nanowarp
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"slices"
@@ -31,7 +32,7 @@ type dbufs struct {
 	L, R, PL, PPL, PR, PPR []complex128
 }
 
-func detectorNew(nfft, fs sa, maxTransient, onsetevery ms) (n *detector) {
+func DetectorNew(nfft, fs sa, maxTransient, onsetevery ms) (n *detector) {
 	corr := math.Ceil(float64(fs) / 48000)
 	nfft = nfft * int(corr)
 	nbuf := nfft
@@ -92,7 +93,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	return
 }
 
-func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
+func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
@@ -109,6 +110,9 @@ func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 	for {
 		_, err := gr.SignalRead(nil, gs)
 		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 
@@ -116,8 +120,9 @@ func (n *detector) onsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 
 		fill(fr, c)
 		mul(fr, n.a.Wr)
-		_, err = gw.SignalWrite(nil, [][]float64{fr})
+		_, err = gw.SignalWrite(nil, [][]float64{fr, fr})
 		if err != nil {
+
 			return err
 		}
 	}

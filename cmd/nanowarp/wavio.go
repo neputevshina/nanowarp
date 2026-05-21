@@ -21,11 +21,12 @@ type WavSignalReader struct {
 var _ dspio.SignalReader = &WavSignalReader{}
 
 func NewWavSignalReader(prr error, file riff.RIFFReader) (wsr *WavSignalReader, err error) {
+	wsr = &WavSignalReader{}
 	if prr != nil {
 		return nil, prr
 	}
-	wsr = &WavSignalReader{}
 	wsr.Reader = wav.NewReader(file)
+	_, _ = wsr.Duration() // WavData is populated by unexported function.
 	wsr.WavFormat, err = wsr.Reader.Format()
 	if err != nil {
 		return nil, err
@@ -55,6 +56,13 @@ func (w *WavSignalReader) SignalRead(prr error, buf [][]float64) (n int, err err
 	return
 }
 
+func (w *WavSignalReader) MakeWriter(prr error, of io.Writer) (wsw *WavSignalWriter, err error) {
+	if prr != nil {
+		return nil, prr
+	}
+	return NewWavSignalWriter(err, of, int(w.Size)/int(w.NumChannels)/int(w.BitsPerSample/8), int(w.NumChannels), int(w.SampleRate))
+}
+
 type WavSignalWriter struct {
 	*wav.Writer
 }
@@ -82,7 +90,6 @@ func (w *WavSignalWriter) SignalWrite(prr error, buf [][]float64) (n int, err er
 	nbuf := len(buf[0])
 	sabuf := make([]wav.Sample, 0, nbuf)
 
-	buf = buf[:0]
 	for i := range nbuf {
 		sa := wav.Sample{}
 		for ch := range w.NchWrite() {
@@ -94,6 +101,7 @@ func (w *WavSignalWriter) SignalWrite(prr error, buf [][]float64) (n int, err er
 	if err != nil {
 		panic(err)
 	}
+	n = len(sabuf)
 
 	return
 }

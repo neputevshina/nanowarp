@@ -13,7 +13,6 @@ import (
 	"runtime/pprof"
 
 	"github.com/neputevshina/nanowarp"
-	"github.com/neputevshina/nanowarp/oscope"
 	"github.com/neputevshina/nanowarp/wav"
 	"github.com/neputevshina/nanowarp/waveform"
 )
@@ -31,13 +30,13 @@ var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var q = flag.Int("q", 0, "quality, run “go doc nanowarp.Options.Quality” for help")
 var onsetms = flag.Int("onsetms", 30, "onset size in milliseconds")
 var poolms = flag.Int("poolms", 250, "time of onset detection bucket in milliseconds")
+var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp")
 
 func main() {
 	flag.Parse()
-	oscope.Enable = true
 
 	if *cpuprofile != "" {
-		fmt.Fprintln(os.Stderr, `profiling, oscope enabled`)
+		fmt.Fprintln(os.Stderr, `profiling`)
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
 			log.Fatal("could not create CPU profile: ", err)
@@ -119,7 +118,7 @@ func main() {
 				}
 			}
 
-			file, err := os.Open(ex)
+			file, err = os.Open(ex)
 			if nooutname {
 				*foutput = generateOutName(s, ex)
 			}
@@ -134,6 +133,11 @@ func main() {
 		} else {
 			panic(err)
 		}
+	}
+
+	if *experiment != 0 {
+		experiments(*experiment, file, *foutput)
+		return
 	}
 
 	left := []float64{}
@@ -158,7 +162,7 @@ func main() {
 		Onsets:      *onsets,
 		Quality:     *q,
 		TransientMs: *onsetms,
-		PoolingMs:   *poolms,
+		PickingMs:   *poolms,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
@@ -188,11 +192,5 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-	}
-
-	wd, err := os.Getwd()
-	err = oscope.Dump(err, wd)
-	if err != nil {
-		panic(err)
 	}
 }

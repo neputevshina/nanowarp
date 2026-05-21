@@ -47,16 +47,15 @@ type Options struct {
 	//  1: Same as 0, but with 8x overlap. Slowest.
 	Quality int
 
-	// Time for which signal will be bypassed at the any given transient.
+	// Time for which signal will be bypassed at any detected transient.
 	//
 	// If zero will be set to 30.
 	TransientMs int
 
-	// The size of the transient picking bucket in milliseconds.
-	// An onset is selected at the point of maximum of the novelty function in each bucket.
+	// The size of the transient picking filter in milliseconds.
 	//
 	// If zero will be set to 250.
-	PoolingMs int
+	PickingMs int
 
 	// Scale the pooling size by time stretch multiplier.
 	ScalePool bool
@@ -80,13 +79,13 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	if opts.TransientMs == 0 {
 		opts.TransientMs = 30
 	}
-	if opts.PoolingMs == 0 {
-		opts.PoolingMs = 250
+	if opts.PickingMs == 0 {
+		opts.PickingMs = 250
 	}
 
 	// TODO Probably possible to shrink nbuf to 3072 without loss in quality.
 	n.warper = warperNew(4096*w, n)
-	n.detector = detectorNew(512, samplerate, ms(opts.TransientMs), ms(opts.PoolingMs))
+	n.detector = DetectorNew(512, samplerate, ms(opts.TransientMs), ms(opts.PickingMs))
 
 	return
 }
@@ -149,7 +148,7 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 		} else {
 			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
 			t, x := float64(j-i), float64(tsa)
-			// Coefficients in signal are dt (scan speed, inverse of speedup,
+			// Coefficients in signal are dt (scan speed, inverse of stretch,
 			// which current coefficient describes).
 			fill(coeffs[i+tsa/2:j-tsa/2], (t/s-x)/(t-x))
 		}

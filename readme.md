@@ -62,6 +62,10 @@ unmodified.
   - Or just make an informed guess of `-poolms` based on estimated uniform BPM. Much simpler and faster, probably as much effective.
   - In the latter case, the novelty curve “max pool” (per time bin) detection (vs. dilation as now) is probably more preferable.
   - Even simpler: use `-from` as a source of truth.
+  - Or keep a cumulative average, and select peaks only from above it.
+  - Or do live classification of the material and make the bin size smaller where no voice is found. Phase interruptions on instruments are much less noticeable.
+  - Or use the large BPM-independent peak selection window (≥300 ms) and force the reset when enough correlation with the original is obtained. **Might be expensive.** 
+    Might require doing it per-band and using some psychoacoustics to do it both regularly and unnoticeable.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't.
 - Phase resets probably could be made smoother [by non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) for several frames before the reset.
