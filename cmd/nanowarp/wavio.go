@@ -26,7 +26,7 @@ func NewWavSignalReader(prr error, file riff.RIFFReader) (wsr *WavSignalReader, 
 		return nil, prr
 	}
 	wsr.Reader = wav.NewReader(file)
-	_, _ = wsr.Duration() // WavData is populated by unexported function.
+	_, _ = wsr.Duration() // WavData is populated by an unexported function.
 	wsr.WavFormat, err = wsr.Reader.Format()
 	if err != nil {
 		return nil, err
@@ -48,9 +48,13 @@ func (w *WavSignalReader) SignalRead(prr error, buf [][]float64) (n int, err err
 	}
 	w.buf = w.buf[:len(buf[0])]
 	n, _, err = w.Reader.ReadSamples(w.buf)
+	norm := math.Pow(2, float64(w.BitsPerSample-1))
+	if w.WavFormat.AudioFormat == wav.AudioFormatIEEEFloat {
+		norm = 1
+	}
 	for i := range n {
 		for ch := range w.NumChannels {
-			buf[ch][i] = float64(w.buf[i].Values[ch])
+			buf[ch][i] = float64(w.buf[i].Values[ch]) / norm
 		}
 	}
 	return

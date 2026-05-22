@@ -32,7 +32,7 @@ type dbufs struct {
 	L, R, PL, PPL, PR, PPR []complex128
 }
 
-func DetectorNew(nfft, fs sa, maxTransient, onsetevery ms) (n *detector) {
+func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 	corr := math.Ceil(float64(fs) / 48000)
 	nfft = nfft * int(corr)
 	nbuf := nfft

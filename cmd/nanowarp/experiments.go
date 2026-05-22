@@ -10,10 +10,13 @@ import (
 
 func experiments(n int, inputfile *os.File, output string) {
 	if n == 1 {
+		// Bypass
 		of, err := os.Create(output)
 		defer of.Close()
 		wsr, err := NewWavSignalReader(err, inputfile)
-		d, err := dspio.ReadAll(err, wsr)
+		wsw, err := wsr.MakeWriter(err, of)
+		rr := dspio.TeeReader(wsr, wsw)
+		d, err := dspio.ReadAll(err, rr)
 		if err != nil {
 			panic(err)
 		}
@@ -23,6 +26,7 @@ func experiments(n int, inputfile *os.File, output string) {
 		}
 	}
 	if n == 2 {
+		// Novelty curve
 		of, err := os.Create(output)
 		defer of.Close()
 		wsr, err := NewWavSignalReader(err, inputfile)
@@ -30,7 +34,7 @@ func experiments(n int, inputfile *os.File, output string) {
 		if err != nil {
 			panic(err)
 		}
-		dt := nanowarp.DetectorNew(512, 48000, 30, 300)
+		dt := nanowarp.DetectorNew(512, int(wsw.Format.SampleRate), 30, 300)
 		err = dt.OnsetFunctionWriter(wsr, wsw)
 		if err != nil {
 			panic(err)

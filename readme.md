@@ -64,7 +64,8 @@ unmodified.
   - Even simpler: use `-from` as a source of truth.
   - Or keep a cumulative average, and select peaks only from above it.
   - Or do live classification of the material and make the bin size smaller where no voice is found. Phase interruptions on instruments are much less noticeable.
-  - Or use the large BPM-independent peak selection window (≥300 ms) and force the reset when enough correlation with the original is obtained. **Might be expensive.** 
+  - Or use the large BPM-independent peak selection window (≥300 ms) and force the reset when enough correlation with the original is obtained. 
+    Very cheap, we always have both spectra for each grain, xcorr is one conjugate and multiplication away.
     Might require doing it per-band and using some psychoacoustics to do it both regularly and unnoticeable.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't.
