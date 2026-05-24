@@ -9,9 +9,29 @@ type GrainReader struct {
 	inbuss    [][]float64
 	slicebuss [][]float64
 	r         SignalReader
+	offline   bool
+	primed    bool
 }
 
+// NewGrainReader constructs a new real-time grain reader.
+//
+// The output latency in a resulting uniform GrainReader/GrainWriter system is equal
+// to nfft and it will be reflected in the output sample stream.
+// If you need a non-uniform reader for offline processing without the need
+// to compensate latency, use [NewOfflineGrainReader].
 func NewGrainReader(nfft, hop int, r SignalReader) (g *GrainReader) {
+	return newGrainReader(nfft, hop, r, false)
+}
+
+// NewOfflineGrainReader constructs a new grain reader for offline use.
+//
+// The resulting reader will skip
+// NOTE: It MUST be paired with an offline GrainWriter.
+func NewOfflineGrainReader(nfft, hop int, r SignalReader) (g *GrainReader) {
+	return newGrainReader(nfft, hop, r, true)
+}
+
+func newGrainReader(nfft, hop int, r SignalReader, offline bool) (g *GrainReader) {
 	nch := r.NchRead()
 	g = &GrainReader{
 		Hop:       hop,
@@ -19,15 +39,17 @@ func NewGrainReader(nfft, hop int, r SignalReader) (g *GrainReader) {
 		nch:       nch,
 		inbuss:    make([][]float64, nch),
 		slicebuss: make([][]float64, nch),
-		r:         r}
+		r:         r,
+		offline:   offline}
 	for ch := range nch {
 		g.inbuss[ch] = make([]float64, nfft)
 	}
 	return
-
 }
 
 func (r *GrainReader) N() int { return r.n }
+
+func (r *GrainReader) Offline() bool { return r.offline }
 
 // SignalRead reads the next overlapped grain from input.
 // It returns the amount of samples actually read from the input (at least r.Hop),
@@ -41,13 +63,19 @@ func (r *GrainReader) SignalRead(prr error, grain [][]float64) (n int, err error
 	if len(grain) != r.nch {
 		panic(fmt.Errorf(`different number of channels: expected %d, got %d`, r.nch, len(grain)))
 	}
-	for ch := range r.inbuss {
-		copy(r.inbuss[ch], r.inbuss[ch][r.Hop:])
+	fillStart := r.n - r.Hop
+	if r.offline && !r.primed {
+		fillStart = 0
+		r.primed = true
+	} else {
+		for ch := range r.inbuss {
+			copy(r.inbuss[ch], r.inbuss[ch][r.Hop:])
+		}
 	}
 	s := 0
-	for s < r.Hop {
+	for s < r.n-fillStart {
 		for ch := range r.slicebuss {
-			r.slicebuss[ch] = r.inbuss[ch][r.n-r.Hop:][s:]
+			r.slicebuss[ch] = r.inbuss[ch][fillStart:][s:]
 		}
 		n, err = r.r.SignalRead(nil, r.slicebuss)
 		// TODO Will drop the whole frame on EOF, pls fix.
@@ -73,9 +101,21 @@ type GrainWriter struct {
 	outbuss   [][]float64
 	slicebuss [][]float64
 	w         SignalWriter
+	offline   bool
+	primed    bool
 }
 
+// NewGrainWriter constructs an overlap-add grain writer.
 func NewGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
+	return newGrainWriter(nfft, hop, w, false)
+}
+
+// NewGrainWriter constructs an offline overlap-add grain writer.
+func NewOfflineGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
+	return newGrainWriter(nfft, hop, w, true)
+}
+
+func newGrainWriter(nfft, hop int, w SignalWriter, offline bool) (g *GrainWriter) {
 	nch := w.NchWrite()
 	g = &GrainWriter{
 		Hop:       hop,
@@ -83,7 +123,8 @@ func NewGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
 		nch:       nch,
 		outbuss:   make([][]float64, nch),
 		slicebuss: make([][]float64, nch),
-		w:         w}
+		w:         w,
+		offline:   offline}
 	for ch := range nch {
 		g.outbuss[ch] = make([]float64, nfft*3)
 	}
@@ -92,10 +133,14 @@ func NewGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
 
 func (w *GrainWriter) N() int { return w.n }
 
+func (r *GrainWriter) Offline() bool { return r.offline }
+
 // SignalWrite writes the next overlap-added grain to the output.
 // It returns the amount of samples written to the output (at least r.Hop),
 // but adds the whole buffer to the accumulator, so data in grain is expected to be
 // different each time.
+//
+// In offline mode the first call skips its write step entirely.
 //
 // SignalWrite takes no more than nfft samples from each channel of grain.
 func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err error) {
@@ -110,15 +155,20 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 	}
 
 	s := 0
-	for s < w.Hop {
-		for ch := range w.slicebuss {
-			w.slicebuss[ch] = w.outbuss[ch][:w.Hop][s:]
+	if w.offline && !w.primed {
+		w.primed = true
+		s = w.Hop
+	} else {
+		for s < w.Hop {
+			for ch := range w.slicebuss {
+				w.slicebuss[ch] = w.outbuss[ch][:w.Hop][s:]
+			}
+			n, err = w.w.SignalWrite(nil, w.slicebuss)
+			if err != nil {
+				return s, err
+			}
+			s += n
 		}
-		n, err = w.w.SignalWrite(nil, w.slicebuss)
-		if err != nil {
-			return s, err
-		}
-		s += n
 	}
 
 	for ch := range w.outbuss {

@@ -99,8 +99,8 @@ func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}
-	gr := dspio.NewGrainReader(n.nfft, n.hop, ar)
-	gw := dspio.NewGrainWriter(n.nfft, n.hop, aw)
+	gr := dspio.NewOfflineGrainReader(n.nfft, n.hop, ar)
+	gw := dspio.NewOfflineGrainWriter(n.nfft, n.hop, aw)
 	gs := make([][]float64, 2)
 	for ch := range gs {
 		gs[ch] = make([]float64, n.nfft)

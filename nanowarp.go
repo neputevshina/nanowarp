@@ -44,7 +44,7 @@ type Options struct {
 	//  -1: Don't perform transient separation, output raw PVDR with phase reset
 	//   each time after arbitrary amount of samples had been elapsed. 4x overlap. Fastest.
 	//  0: Extract transients and reset the phase on them. 4x overlap. Slow.
-	//  1: Same as 0, but with 8x overlap. Slowest.
+	//  1: Same as 0, but with 8x overlap. Slowest with diminishing returns.
 	Quality int
 
 	// Time for which signal will be bypassed at any detected transient.
@@ -57,7 +57,8 @@ type Options struct {
 	// If zero will be set to 250.
 	PickingMs int
 
-	// Scale the pooling size by time stretch multiplier.
+	// Measure the pooling size in output time, not in input time.
+	// I.e. scale the pooling size with the stretch coefficient.
 	ScalePool bool
 }
 

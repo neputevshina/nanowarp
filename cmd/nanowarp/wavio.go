@@ -3,6 +3,7 @@ package main
 // TODO Write own WAV codec, without all of the peculiarities of youpy's code.
 
 import (
+	"fmt"
 	"io"
 	"math"
 
@@ -48,13 +49,24 @@ func (w *WavSignalReader) SignalRead(prr error, buf [][]float64) (n int, err err
 	}
 	w.buf = w.buf[:len(buf[0])]
 	n, _, err = w.Reader.ReadSamples(w.buf)
-	norm := math.Pow(2, float64(w.BitsPerSample-1))
-	if w.WavFormat.AudioFormat == wav.AudioFormatIEEEFloat {
-		norm = 1
-	}
+
 	for i := range n {
 		for ch := range w.NumChannels {
-			buf[ch][i] = float64(w.buf[i].Values[ch]) / norm
+			switch w.WavFormat.AudioFormat {
+			case wav.AudioFormatIEEEFloat:
+				switch w.BitsPerSample {
+				case 32:
+					buf[ch][i] = float64(math.Float32frombits(uint32(w.buf[i].Values[ch])))
+				case 64:
+					buf[ch][i] = float64(math.Float64frombits(uint64(w.buf[i].Values[ch])))
+				default:
+					return n, fmt.Errorf("malformed wav: float bit depth is not 32 nor 64 (got %v)", w.BitsPerSample)
+				}
+			default:
+				norm := math.Pow(2, float64(w.BitsPerSample-1))
+				buf[ch][i] = float64(w.buf[i].Values[ch]) / norm
+			}
+
 		}
 	}
 	return
