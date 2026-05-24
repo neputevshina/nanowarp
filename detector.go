@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/cmplx"
 	"os"
 	"slices"
 
@@ -81,7 +82,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	step := even(int(float64(n.m.maxN) / stretch))
 	n.m.Reset(step)
 	for i := range ons {
-		ons1[max(0, i-step/2)], _ = n.m.Filt(ons[i], bang{})
+		ons1[max(0, i-step/2)], _ = n.m.Filt(ons[i], bang{}) // Center-windowed dilation
 	}
 
 	for i := range ons1 {
@@ -122,7 +123,6 @@ func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 		mul(fr, n.a.Wr)
 		_, err = gw.SignalWrite(nil, [][]float64{fr, fr})
 		if err != nil {
-
 			return err
 		}
 	}
@@ -151,7 +151,8 @@ func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
 		//
 		// https://www.audiolabs-erlangen.de/resources/MIR/FMP/C6/C6S1_NoveltyComplex.html
 		cnov := func(x, px, ppx complex128) float64 {
-			m := mag(x - px*norm(px/(ppx+1e-10)))
+			// m := mag(x - px*norm(px/(ppx+1e-10)))
+			m := mag(x - px*norm(px*cmplx.Conj(ppx)))
 			return m * boolfloat(mag(x) > mag(px))
 		}
 		a.N[w] = bitsafe(max(
