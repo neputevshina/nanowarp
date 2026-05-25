@@ -344,3 +344,13 @@ func linf(x complex128) float64 {
 func even(x int) int {
 	return x - x%2 + 1
 }
+
+func softmax(a []float64) {
+	expsum := 0.
+	for _, v := range a {
+		expsum += math.Exp2(v)
+	}
+	for i := range a {
+		a[i] = math.Exp2(a[i]) / expsum
+	}
+}

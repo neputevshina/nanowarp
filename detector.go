@@ -74,7 +74,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	for i := 0; i < len(lin); i += n.hop {
 		c := n.advance(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
 
-		fill(t, c)
+		fill(t, sum(c[:]))
 		mul(t, n.a.Wr)
 		add(ons[i:min(len(lin), i+n.nbuf)], t)
 	}
@@ -82,7 +82,8 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	step := even(int(float64(n.m.maxN) / stretch))
 	n.m.Reset(step)
 	for i := range ons {
-		ons1[max(0, i-step/2)], _ = n.m.Filt(ons[i], bang{}) // Center-windowed dilation
+		// Center-windowed dilation
+		ons1[max(0, i-step/2)], _ = n.m.Filt(ons[i], bang{})
 	}
 
 	for i := range ons1 {
@@ -108,6 +109,7 @@ func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 	}
 
 	fr := make([]float64, n.nbuf)
+	fl := make([]float64, n.nbuf)
 	for {
 		_, err := gr.SignalRead(nil, gs)
 		if err != nil {
@@ -119,7 +121,49 @@ func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 
 		c := n.advance(gs[0], gs[1])
 
-		fill(fr, c)
+		fill(fr, c[0])
+		fill(fr[n.hop:], 0)
+
+		fill(fl, c[1])
+
+		// fill(fr, sum(c[:]))
+
+		// mul(fr, n.a.Wr)
+		mul(fl, n.a.Wr)
+		_, err = gw.SignalWrite(nil, [][]float64{fr, fl})
+		if err != nil {
+			return err
+		}
+	}
+	// This function is expected to exit when io.EOF is encountered.
+}
+
+func (n *detector) dilate(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
+	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
+
+	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
+		panic(`onsetFunctionWriter: non-overlapping reader required`)
+	}
+	gr := dspio.NewOfflineGrainReader(n.nfft, n.hop, ar)
+	gw := dspio.NewOfflineGrainWriter(n.nfft, n.hop, aw)
+	gs := make([][]float64, 2)
+	for ch := range gs {
+		gs[ch] = make([]float64, n.nfft)
+	}
+
+	fr := make([]float64, n.nbuf)
+	for {
+		_, err := gr.SignalRead(nil, gs)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		c := n.advance(gs[0], gs[1])
+
+		fill(fr, sum(c[:]))
 		mul(fr, n.a.Wr)
 		_, err = gw.SignalWrite(nil, [][]float64{fr, fr})
 		if err != nil {
@@ -129,7 +173,7 @@ func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 	// This function is expected to exit when io.EOF is encountered.
 }
 
-func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
+func (n *detector) advance(lingrain, ringrain []float64) (activations [4]float64) {
 	a := &n.a
 
 	enfft := func(x []complex128, w, grain []float64) {
@@ -165,7 +209,32 @@ func (n *detector) advance(lingrain, ringrain []float64) (cnov float64) {
 	copy(a.PPL, a.PL)
 	copy(a.PPR, a.PR)
 
-	cnov = sum(a.N)
+	// Crossover frequencies
+	l := hztobin(250, n.nfft, n.fs)
+	m := hztobin(820, n.nfft, n.fs)
+	h := hztobin(2500, n.nfft, n.fs)
+
+	activations[0] = sum(a.N[:l])
+	activations[1] = sum(a.N[l:m])
+	activations[2] = sum(a.N[m:h])
+	activations[3] = sum(a.N[h:])
+
+	s := sum(a.N)
+
+	softmax(activations[:])
+	for i, v := range activations {
+		activations[i] = bitsafe(v)
+		if v < 0.25 {
+			activations[i] = 0
+		}
+	}
+
+	activations[0] = float64(
+		boolint(activations[0] > 0) |
+			boolint(activations[1] > 0)<<1 |
+			boolint(activations[2] > 0)<<2 |
+			boolint(activations[3] > 0)<<3)
+	activations[1] = s
 
 	return
 }

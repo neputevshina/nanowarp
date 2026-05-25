@@ -34,7 +34,7 @@ func experiments(n int, inputfile *os.File, output string) {
 		if err != nil {
 			panic(err)
 		}
-		dt := nanowarp.DetectorNew(512, int(wsw.Format.SampleRate), 30, 300)
+		dt := nanowarp.DetectorNew(1024, int(wsw.Format.SampleRate), 30, 300)
 		err = dt.OnsetFunctionWriter(wsr, wsw)
 		if err != nil {
 			panic(err)

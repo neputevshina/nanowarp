@@ -74,8 +74,11 @@ unmodified.
 - Formant shifting must be implemented after streaming.
 - We can probably reset the phases not for the whole frame, but only for a most prominent region. Either:
   - define several “phase reset bands”. Just return the per-band sums of the novelty function; or
-  - use the total sum (as now), but find a prominent bin range and reset the phase only in it.
+  - ~~use the total sum (like now), but find a prominent bin range and reset the phase only in it.~~
   - We can probably never reset the bass. Probably.
+  - It is enough to split the signal to four bands probably, crossovers are at 250-820-2500 Hz
+  - And then drop the band if cross-correlation is low or if a band's response in a softmaxed vector is lower than 0.25.
+  - Bass activation triggers everything
 
 ### Testing strategy
 - Various impulse train signals
