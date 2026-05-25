@@ -69,8 +69,8 @@ func experiments(n int, inputfile *os.File, output string) {
 		if err != nil {
 			panic(err)
 		}
-		gr := dspio.NewOfflineGrainReader(1024, 512, wsr)
-		gw := dspio.NewOfflineGrainWriter(1024, 512, wsw)
+		gr := dspio.NewOfflineGrainReader(512, 512, wsr)
+		gw := dspio.NewOfflineGrainWriter(1024, 1024, wsw)
 		buf := make([][]float64, wsr.NchRead())
 		for ch := range buf {
 			buf[ch] = make([]float64, 8192)

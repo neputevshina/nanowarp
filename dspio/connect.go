@@ -151,7 +151,7 @@ func Copy(prr error, r SignalReader, w SignalWriter, buf [][]float64) (written i
 		no, err = w.SignalWrite(nil, sl)
 		if no < 0 || n < no {
 			if err == nil {
-				err = fmt.Errorf(`invalid write result, written %v, expected to write %v`, no, n)
+				err = fmt.Errorf(`dspio.Copy: invalid write result, written %v, expected to write %v`, no, n)
 			}
 			return
 		}

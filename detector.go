@@ -138,20 +138,26 @@ func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 	// This function is expected to exit when io.EOF is encountered.
 }
 
-func (n *detector) dilate(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
+type onset struct {
+	i    int
+	pow  float64
+	bins int
+}
+
+func (n *detector) dilate(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan onset) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}
-	gr := dspio.NewOfflineGrainReader(n.nfft, n.hop, ar)
-	gw := dspio.NewOfflineGrainWriter(n.nfft, n.hop, aw)
+	step := even(int(float64(n.m.maxN) / stretch))
+	gr := dspio.NewOfflineGrainReader(step, step/2, ar)
+	gw := dspio.NewOfflineGrainWriter(step, step/2, aw)
 	gs := make([][]float64, 2)
 	for ch := range gs {
 		gs[ch] = make([]float64, n.nfft)
 	}
 
-	fr := make([]float64, n.nbuf)
 	for {
 		_, err := gr.SignalRead(nil, gs)
 		if err != nil {
@@ -161,11 +167,13 @@ func (n *detector) dilate(ar dspio.SignalReader, aw dspio.SignalWriter) (err err
 			return err
 		}
 
-		c := n.advance(gs[0], gs[1])
+		n.m.Reset(step)
+		for i := range gs[0][:step/2] {
+			// Center-windowed dilation
+			gs[1][i], _ = n.m.Filt(gs[0][i+step/2], bang{})
+		}
 
-		fill(fr, sum(c[:]))
-		mul(fr, n.a.Wr)
-		_, err = gw.SignalWrite(nil, [][]float64{fr, fr})
+		_, err = gw.SignalWrite(nil, [][]float64{gs[1]})
 		if err != nil {
 			return err
 		}
