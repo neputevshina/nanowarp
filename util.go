@@ -342,7 +342,7 @@ func linf(x complex128) float64 {
 }
 
 func even(x int) int {
-	return x - x%2 + 1
+	return x + x%2
 }
 
 func softmax(a []float64) {

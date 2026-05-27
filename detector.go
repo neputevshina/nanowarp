@@ -96,7 +96,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 }
 
 func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
-	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
+	fmt.Fprintln(os.Stderr, `(*detector).OnsetFunctionWriter`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
@@ -130,7 +130,7 @@ func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWri
 
 		// mul(fr, n.a.Wr)
 		mul(fl, n.a.Wr)
-		_, err = gw.SignalWrite(nil, [][]float64{fr, fl})
+		_, err = gw.SignalWrite(nil, [][]float64{fl, fr})
 		if err != nil {
 			return err
 		}
@@ -144,8 +144,8 @@ type onset struct {
 	bins int
 }
 
-func (n *detector) dilate(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan onset) (err error) {
-	fmt.Fprintln(os.Stderr, `(*detector).onsetFunctionWriter`)
+func (n *detector) Dilate(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan onset) (err error) {
+	fmt.Fprintln(os.Stderr, `(*detector).Dilate`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
@@ -155,9 +155,10 @@ func (n *detector) dilate(ar dspio.SignalReader, aw dspio.SignalWriter, stretch 
 	gw := dspio.NewOfflineGrainWriter(step, step/2, aw)
 	gs := make([][]float64, 2)
 	for ch := range gs {
-		gs[ch] = make([]float64, n.nfft)
+		gs[ch] = make([]float64, step)
 	}
 
+	n.m.Reset(step)
 	for {
 		_, err := gr.SignalRead(nil, gs)
 		if err != nil {
@@ -167,13 +168,12 @@ func (n *detector) dilate(ar dspio.SignalReader, aw dspio.SignalWriter, stretch 
 			return err
 		}
 
-		n.m.Reset(step)
 		for i := range gs[0][:step/2] {
 			// Center-windowed dilation
 			gs[1][i], _ = n.m.Filt(gs[0][i+step/2], bang{})
 		}
 
-		_, err = gw.SignalWrite(nil, [][]float64{gs[1]})
+		_, err = gw.SignalWrite(nil, [][]float64{gs[1], gs[0]})
 		if err != nil {
 			return err
 		}
