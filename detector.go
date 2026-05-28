@@ -95,7 +95,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	return
 }
 
-func (n *detector) OnsetFunctionWriter(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
+func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).OnsetFunctionWriter`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
@@ -144,7 +144,7 @@ type onset struct {
 	bins int
 }
 
-func (n *detector) Dilate(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan onset) (err error) {
+func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan onset) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).Dilate`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {

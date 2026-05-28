@@ -67,8 +67,12 @@ unmodified.
   - Or use the large BPM-independent peak selection window (≥300 ms) and force the reset when enough correlation with the original is obtained. 
     Very cheap, we always have both spectra for each grain, xcorr is one conjugate and multiplication away.
     Might require doing it per-band and using some psychoacoustics to do it both regularly and unnoticeable.
+- Some more onset detectors:
+  - https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
+  - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
+  - Probably expecting some regular beat might be bad for some types of music.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
-- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't.
+- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't, but it's still a cool concept to try.
 - Phase resets probably could be made smoother [by non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) for several frames before the reset.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.

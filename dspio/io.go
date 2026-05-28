@@ -15,6 +15,16 @@ type SignalWriter interface {
 	SignalWrite(prr error, buf [][]float64) (n int, err error)
 }
 
+type SignalWriteCloser interface {
+	SignalWriter
+	io.Closer
+}
+
+type SignalReadCloser interface {
+	SignalReader
+	io.Closer
+}
+
 func ReadAll(prr error, r SignalReader) (d [][]float64, err error) {
 	if prr != nil {
 		return nil, prr

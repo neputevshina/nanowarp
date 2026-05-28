@@ -36,7 +36,7 @@ func experiments(n int, inputfile *os.File, output string) {
 			panic(err)
 		}
 		dt := nanowarp.DetectorNew(1024, int(wsw.Format.SampleRate), 30, 300)
-		err = dt.OnsetFunctionWriter(wsr, wsw)
+		err = dt.NoveltyCurveProcess(wsr, wsw)
 		if err != nil {
 			panic(err)
 		}
@@ -95,19 +95,16 @@ func experiments(n int, inputfile *os.File, output string) {
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
-			err := dt.OnsetFunctionWriter(wsr, pi)
-			if err != nil {
-				panic(err)
-			}
-			pi.Close()
-			wg.Done()
+			defer wg.Done()
+			// This piece of shit must be deferred after `defer wg.Done()` or else we get deadlock.
+			// No, wg.Go() won't work.
+			// Closing the pipe inside processors after EOF won't work either.
+			defer pi.Close()
+			_ = dt.NoveltyCurveProcess(wsr, pi)
 		}()
 		go func() {
-			err := dt.Dilate(po, wsw, 1, nil)
-			if err != nil {
-				panic(err)
-			}
-			wg.Done()
+			defer wg.Done()
+			_ = dt.DilatePeakSelectProcess(po, wsw, 1, nil)
 		}()
 		wg.Wait()
 	}

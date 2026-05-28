@@ -3,7 +3,12 @@ package dspio
 import "fmt"
 
 type GrainReader struct {
-	Hop       int // Can be freely changed outside
+	// Hop is the read advance in samples.
+	//
+	// Can be freely changed outside as long as it is
+	// less than value returned by [GrainReader.N] and
+	// is the same as in the corresponding [GrainWriter].
+	Hop       int
 	n         int
 	nch       int
 	inbuss    [][]float64
@@ -18,14 +23,13 @@ type GrainReader struct {
 // The output latency in a resulting uniform GrainReader/GrainWriter system is equal
 // to nfft and it will be reflected in the output sample stream.
 // If you need a non-uniform reader for offline processing without the need
-// to compensate latency, use [NewOfflineGrainReader].
+// to manually compensate latency, use [NewOfflineGrainReader].
 func NewGrainReader(nfft, hop int, r SignalReader) (g *GrainReader) {
 	return newGrainReader(nfft, hop, r, false)
 }
 
 // NewOfflineGrainReader constructs a new grain reader for offline use.
 //
-// The resulting reader will skip
 // NOTE: It MUST be paired with an offline GrainWriter.
 func NewOfflineGrainReader(nfft, hop int, r SignalReader) (g *GrainReader) {
 	return newGrainReader(nfft, hop, r, true)
@@ -47,6 +51,7 @@ func newGrainReader(nfft, hop int, r SignalReader, offline bool) (g *GrainReader
 	return
 }
 
+// N returns the grain size of the reader in samples.
 func (r *GrainReader) N() int { return r.n }
 
 func (r *GrainReader) Offline() bool { return r.offline }
@@ -78,7 +83,7 @@ func (r *GrainReader) SignalRead(prr error, grain [][]float64) (n int, err error
 			r.slicebuss[ch] = r.inbuss[ch][fillStart:][s:]
 		}
 		n, err = r.r.SignalRead(nil, r.slicebuss)
-		// TODO Will drop the whole frame on EOF, pls fix.
+		// TODO(neputevshina): Will drop the whole frame on EOF, pls fix.
 		if err != nil {
 			return s, err
 		}
@@ -90,12 +95,18 @@ func (r *GrainReader) SignalRead(prr error, grain [][]float64) (n int, err error
 	return s, nil
 }
 
+// NchRead returns the minimum expected by the reader number of channels in the input buffer of a SignalRead call.
 func (r *GrainReader) NchRead() int { return r.nch }
 
 var _ SignalReader = &GrainReader{}
 
 type GrainWriter struct {
-	Hop       int // Can be freely changed outside
+	// Hop is the write advance in samples.
+	//
+	// Can be freely changed outside as long as it is
+	// less than value returned by [GrainWriter.N] and
+	// is the same as in the corresponding [GrainReader].
+	Hop       int
 	n         int
 	nch       int
 	outbuss   [][]float64
@@ -131,6 +142,7 @@ func newGrainWriter(nfft, hop int, w SignalWriter, offline bool) (g *GrainWriter
 	return
 }
 
+// N returns the grain size of this writer in samples.
 func (w *GrainWriter) N() int { return w.n }
 
 func (r *GrainWriter) Offline() bool { return r.offline }
@@ -188,6 +200,7 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 	return s, nil
 }
 
+// NchWrite returns the minimum expected by the writer number of channels in the input buffer of a SignalWrite call.
 func (w *GrainWriter) NchWrite() int { return w.nch }
 
 var _ SignalWriter = &GrainWriter{}
