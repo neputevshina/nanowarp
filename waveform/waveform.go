@@ -30,6 +30,7 @@ func Dump(prr error, b []float64) error {
 // DumpWrited prints the waveform of the audio to out.
 func DumpWriter(prr error, out io.Writer, b []float64) error {
 	const height = 12
+	const pixheight = height * 3
 	if prr != nil {
 		return prr
 	}
@@ -47,22 +48,20 @@ func DumpWriter(prr error, out io.Writer, b []float64) error {
 		}
 	}
 
-	column := make([]bool, height*6)
-	blines := make([][]bool, height*6)
+	column := make([]bool, pixheight)
+	blines := make([][]bool, pixheight)
 	for i := 0; i < len(b); i += symb {
 		fill(column, false)
 		sl := b[i:min(len(b), i+symb)]
-		h := float64(height * 6)
+		h := float64(pixheight)
 
-		floor := func(x float64) int { return int(math.Round(x)) }
+		floor := func(x float64) int { return int(math.Floor(x)) }
+		ceil := func(x float64) int { return int(math.Ceil(x)) }
 
-		ma, mi := floor(h*((-slices.Max(sl))/2+0.5)), min(height*6, floor(h*((-slices.Min(sl))/2+0.5))+1)
+		ma, mi := floor(h*((-slices.Max(sl))/2+.5)), ceil(h*((-slices.Min(sl))/2+.5))
 		fill(column[ma:mi], true)
-		if ma+1 == mi {
-			column[min(len(column)-1, ma)] = true
-		}
 
-		for i := range height * 6 {
+		for i := range pixheight {
 			blines[i] = append(blines[i], column[i])
 		}
 	}
@@ -83,13 +82,13 @@ func DumpWriter(prr error, out io.Writer, b []float64) error {
 		lines[i] = make([]rune, w)
 	}
 	for x := 0; x < len(blines[0]); x += 2 {
-		for y := 0; y < len(blines); y += 6 {
+		for y := 0; y < len(blines); y += 3 {
 			i := g(x, y) | g(x+1, y)<<1 |
 				g(x, y+1)<<2 | g(x+1, y+1)<<3 |
 				g(x, y+2)<<4 | g(x+1, y+2)<<5
 			r := Lookup[i]
-			if y/6 < len(lines) && x/2 < len(lines[0]) {
-				lines[y/6][x/2] = r
+			if y/3 < len(lines) && x/2 < len(lines[0]) {
+				lines[y/3][x/2] = r
 			}
 		}
 	}
@@ -112,8 +111,9 @@ func DumpWriter(prr error, out io.Writer, b []float64) error {
 	return nil
 }
 
-func fill[T any](s []T, e T) {
+func fill[T any](s []T, e T) int {
 	for i := range s {
 		s[i] = e
 	}
+	return len(s)
 }
