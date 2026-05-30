@@ -33,14 +33,10 @@ type wbufs struct {
 	X, Y, Xd, Xt, L, R, Lo, Ro  []complex128 // Complex spectra
 }
 
-func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
+func warperNew(nbuf, osamp, olap int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Only 2x oversampling works, no more, no less.
-	nfft := nextpow2(nbuf * 2)
+	nfft := nextpow2(nbuf * osamp)
 	nbins := nfft/2 + 1
-	olap := 4
-	if nanowarp.opts.Quality >= 1 {
-		olap = 8
-	}
 	n = &warper{
 		nfft:  nfft,
 		nbins: nbins,
@@ -98,7 +94,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, nil, abs(c), c == 1, n.root.opts.Quality == -1)
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, nil, abs(c), n.root.opts.Quality >= 0 && c == 1)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -133,7 +129,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset, _ bool) {
+func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -167,8 +163,8 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 	// TODO Works ONLY with 2x FFT oversampling.
 	olap := float64(n.nbuf / n.hop)
 	osampc := float64(n.nfft) / float64(n.nbuf)
-	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc*olap)
-	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
+	tadv := gettadv(a.X[:n.nbins], a.Xd, olap*osampc)
+	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch*2./osampc)
 
 	// Forced phase reset.
 	bash := func() {
@@ -259,4 +255,24 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 skip:
 	defft(loutgrain, a.Lo, true)
 	defft(routgrain, a.Ro, true)
+}
+
+func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
+	return func(j int) float64 {
+		if mag(x[j]) == 0 {
+			return 0
+		}
+		// NOTE Try len(x)-1 instead. Sounds worse on my $4 speakers.
+		// FIXME Works ONLY with nbuf=4096, nfft=8192 (oversampling 2).
+		return -real(xt[j]/x[j])/float64(len(x))*math.Pi*stretch - math.Pi/2
+	}
+}
+
+func gettadv(x, xd []complex128, olap float64) func(w int) float64 {
+	return func(j int) float64 {
+		if mag(x[j]) < 1e-6 {
+			return 0
+		}
+		return (math.Pi*float64(j) + imag(xd[j]/x[j])) / (olap / 2)
+	}
 }

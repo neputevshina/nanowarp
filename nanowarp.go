@@ -42,7 +42,8 @@ type Options struct {
 
 	// Set algorithm quality.
 	//  -1: Don't perform transient separation, output raw PVDR without phase resets.
-	//      4x overlap. Fastest.
+	//      4x overlap. Fastest and currently the smoothest with OK transient preservation
+	//	and excellent tonal quality.
 	//  0:  Extract transients and reset the phase on them. 4x overlap. Slow.
 	//  1:  Same as 0, but with 8x overlap. Slowest with diminishing returns.
 	Quality int
@@ -83,8 +84,12 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	if opts.PickingMs == 0 {
 		opts.PickingMs = 250
 	}
+	olap := 4
+	if opts.Quality == 1 {
+		olap *= 2
+	}
 
-	n.warper = warperNew(4096*w, n)
+	n.warper = warperNew(4096*w, 2, olap, n)
 	n.detector = DetectorNew(1024, samplerate, opts.TransientMs, opts.PickingMs)
 
 	return

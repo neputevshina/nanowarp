@@ -98,27 +98,6 @@ func makeslices(a any, nbins, nfft int) {
 	}
 }
 
-func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
-	return func(j int) float64 {
-		if mag(x[j]) == 0 {
-			return 0
-		}
-		// TODO This phase correction value is guaranteed to be wrong but is mostly correct.
-		// len(x)-1 == nfft/2, this results in clearer sound than with nbins == nfft/2+1
-		// FIXME Works ONLY with nbuf=4096, nfft=8192 (oversampling 2).
-		return -real(xt[j]/x[j])/float64(len(x)-1)*math.Pi*stretch - math.Pi/2
-	}
-}
-
-func gettadv(x, xd []complex128, olap float64) func(w int) float64 {
-	return func(j int) float64 {
-		if mag(x[j]) < 1e-6 {
-			return 0
-		}
-		return (math.Pi*float64(j) + imag(xd[j]/x[j])) / (olap / 2)
-	}
-}
-
 func hann(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
