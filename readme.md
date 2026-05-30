@@ -74,6 +74,10 @@ unmodified.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't, but it's still a cool concept to keep in mind.
 - Phase resets probably could be made smoother [by non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) for several frames before the reset.
+  - This is only method I could think of which will help **remove pre-echo on very large (>4x) stetches**.
+  - Not too complex, though. Basically run PVDR in reverse (almost) for several frames before the transient 1x coefficient switch and then weld 
+    the future and the past with the remaining accumulated non-causal phase frame.
+  - **If this resolves interruptions, we won't have to perform non-linear scaling of transients, we'll just reset the phase every nbuf**.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 - We can probably reset the phases not for the whole frame, but only for a most prominent region. Either:
