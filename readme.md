@@ -72,7 +72,7 @@ unmodified.
   - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
   - Probably expecting some regular beat might be bad for some types of music.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
-- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't, but it's still a cool concept to try.
+- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't, but it's still a cool concept to keep in mind.
 - Phase resets probably could be made smoother [by non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) for several frames before the reset.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.

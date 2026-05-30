@@ -27,14 +27,15 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, Mid, M, P, Phase, Pphase        []float64 // Scratch buffers
-	Fadv, Pfadv, Ldiff, Rdiff          []float64
-	W, Wr, Wd, Wt                      []float64    // Window functions
-	X, Y, Xd, Xt, L, Ld, R, Rd, Lo, Ro []complex128 // Complex spectra
+	S, Mid, M, P, Phase, Pphase, Co []float64 // Scratch buffers
+	Fadv                            []float64
+	W, Wr, Wd, Wt                   []float64    // Window functions
+	X, Y, Xd, Xt, L, R, Lo, Ro, Z   []complex128 // Complex spectra
 }
 
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
-	nfft := nextpow2(nbuf) * 2
+	// FIXME Only 2x oversampling works, no more, no less.
+	nfft := nextpow2(nbuf * 2)
 	nbins := nfft/2 + 1
 	olap := 4
 	if nanowarp.opts.Quality >= 1 {
@@ -96,12 +97,8 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				c = 1
 			}
 		}
-		tensec := 10 * n.root.fs
-		if n.root.opts.Quality == -1 && j%tensec < (j-n.hop)%tensec {
-			c = 1
-		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, nil, abs(c), c == 1)
+		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, nil, abs(c), c == 1, n.root.opts.Quality == -1)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -136,13 +133,23 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset bool) {
+func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset, docorr bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
 		copy(a.S, grain)
 		mul(a.S, w)
 		n.fft.Coefficients(x, a.S)
+	}
+	defft := func(out []float64, x []complex128, w bool) {
+		n.fft.Sequence(a.S, x)
+		for j := range a.S {
+			a.S[j] /= n.norm
+		}
+		if w {
+			mul(a.S, a.Wr)
+		}
+		copy(out, a.S)
 	}
 
 	for i := range lingrain {
@@ -159,18 +166,21 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	// TODO Works ONLY with 2x FFT oversampling.
 	olap := float64(n.nbuf / n.hop)
-	osampc := 2.
-	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc, olap)
+	osampc := float64(n.nfft) / float64(n.nbuf)
+	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc*olap)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
 	// Forced phase reset.
-	if reset {
+	bash := func() {
 		for w := range a.Phase {
 			a.Pphase[w] = cmplx.Phase(a.X[w])
 		}
 		copy(a.P, a.M)
 		copy(a.Lo, a.L)
 		copy(a.Ro, a.R)
+	}
+	if reset {
+		bash()
 		goto skip
 	}
 
@@ -240,20 +250,27 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 	copy(a.P, a.M)
 	for w := range a.Phase {
 		// Add stereo phase differences back through multiplication.
-		a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Phase[w])
-		a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Phase[w])
+		p := cmplx.Rect(1, a.Phase[w])
+		a.Lo[w] = a.L[w] * p
+		a.Ro[w] = a.R[w] * p
 		a.Pphase[w] = princarg(a.Phase[w])
-	}
-	goto skip
-skip:
-	defft := func(out []float64, x []complex128) {
-		n.fft.Sequence(a.S, x)
-		for j := range a.S {
-			a.S[j] /= n.norm
+		if docorr {
+			a.Z[w] = p * complex(a.M[w], 0)
+			// Cross-correlate the output grain with the input grain.
+			a.Z[w] *= cmplx.Conj(a.X[w])
 		}
-		mul(a.S, a.Wr)
-		copy(out, a.S)
 	}
-	defft(loutgrain, a.Lo)
-	defft(routgrain, a.Ro)
+
+	defft(a.Co, a.Z, false)
+	if docorr {
+		// Reset the phase if the output grain is correlated with the input.
+		xcorr := min(n.nfft-argmax(a.Co[n.nfft/2:])+1, argmax(a.Co[:n.nfft/2]))
+		if xcorr == 0 {
+			bash()
+		}
+	}
+
+skip:
+	defft(loutgrain, a.Lo, true)
+	defft(routgrain, a.Ro, true)
 }
