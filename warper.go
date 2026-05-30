@@ -27,10 +27,10 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, Mid, M, P, Phase, Pphase, Co []float64 // Scratch buffers
-	Fadv                            []float64
-	W, Wr, Wd, Wt                   []float64    // Window functions
-	X, Y, Xd, Xt, L, R, Lo, Ro, Z   []complex128 // Complex spectra
+	S, Mid, M, P, Phase, Pphase []float64 // Scratch buffers
+	Fadv                        []float64
+	W, Wr, Wd, Wt               []float64    // Window functions
+	X, Y, Xd, Xt, L, R, Lo, Ro  []complex128 // Complex spectra
 }
 
 func warperNew(nbuf int, nanowarp *Nanowarp) (n *warper) {
@@ -133,7 +133,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset, docorr bool) {
+func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset, _ bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -254,20 +254,6 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 		a.Lo[w] = a.L[w] * p
 		a.Ro[w] = a.R[w] * p
 		a.Pphase[w] = princarg(a.Phase[w])
-		if docorr {
-			a.Z[w] = p * complex(a.M[w], 0)
-			// Cross-correlate the output grain with the input grain.
-			a.Z[w] *= cmplx.Conj(a.X[w])
-		}
-	}
-
-	defft(a.Co, a.Z, false)
-	if docorr {
-		// Reset the phase if the output grain is correlated with the input.
-		xcorr := min(n.nfft-argmax(a.Co[n.nfft/2:])+1, argmax(a.Co[:n.nfft/2]))
-		if xcorr == 0 {
-			bash()
-		}
 	}
 
 skip:
