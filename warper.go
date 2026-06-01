@@ -97,22 +97,22 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			future := j + n.nbuf
 			filt := future-lastone > n.root.fs*n.root.opts.TransientMs/1000
 			if h > 0 && future < len(lout) && coeffs[future] == 1 && filt {
-				lastone = future
-				pin = j
-				h = -n.hop
-				j = future
+				// lastone = future
+				// pin = j
+				// h = -n.hop
+				// j = future
 				println(`future:`, pin, `-`, future, `,`, future-pin)
 			}
 		}
 
-		i := int(phasor[max(0, j)] - float64(n.nbuf/2))
+		i := int(phasor[max(0, j)])
 
-		if i > len(lin)-n.nbuf {
+		if i > len(lin)-n.nbuf/2 {
 			break
 		}
 		for ch := range grainbuf {
 			clear(ingrain[ch])
-			copy(ingrain[ch][max(0, -i):], input[ch][max(0, i):clamp(0, len(lin), i+n.nbuf)])
+			copy(ingrain[ch][max(0, -(i-n.nbuf/2)):], input[ch][max(0, i-n.nbuf/2):clamp(0, len(lin), i+n.nbuf/2)])
 		}
 
 		c := 1.
