@@ -93,8 +93,8 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		// Non-causality.
 		// TODO Totally implementable with fixed lookahead.
 		if j > 0 {
-			// j + n.nbuf*int(math.Ceil(1/coeffs[j]))
-			future := j + n.nbuf*int(math.Ceil(1/coeffs[j]))/n.olap
+			// j + n.nbuf*int(math.Ceil(1/coeffs[j]))/n.olap
+			future := j + n.nbuf
 			filt := future-lastone > n.root.fs*n.root.opts.TransientMs/1000
 			if h > 0 && future < len(lout) && coeffs[future] == 1 && filt {
 				lastone = future
@@ -143,8 +143,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		}
 
 		// Cut pre-echo in transient regions.
-		// TODO Probably won't need this after non-causal PGHI is implemented.
-		// FIXME Does not work with non-causality.
+		// TODO Works strange after implementing non-causality.
 		d := j - lastone
 		if h > 0 && d > 0 && d < n.nbuf/2 {
 			for ch := range grainbuf {
