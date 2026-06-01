@@ -18,22 +18,25 @@ type warper struct {
 	olap  int
 	root  *Nanowarp
 
-	fft  *fourier.FFT
-	arm  []bool
-	norm float64
-	heap hp
-	img  [][]float64
+	fft         *fourier.FFT
+	arm         []bool
+	norm, wgain float64
+	heap        hp
+	img         [][]float64
 
 	a wbufs
 }
 type wbufs struct {
-	S, Mid, M, P, Phase, Pphase []float64 // Scratch buffers
-	Fadv                        []float64
-	W, Wr, Wd, Wt               []float64    // Window functions
-	X, Y, Xd, Xt, L, R, Lo, Ro  []complex128 // Complex spectra
+	S, Mid, M, P               []float64 // Scratch buffers
+	Phase, Rphase              []float64 // Current phases (advances)
+	Pphase, Nphase             []float64 // Phase accumulators
+	Fadv                       []float64
+	W, Wr, Wd, Wt              []float64      // Window functions
+	X, E, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
+	C, Co                      [][]complex128 // Channels
 }
 
-func warperNew(nbuf, osamp, olap int, nanowarp *Nanowarp) (n *warper) {
+func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Only 2x oversampling works, no more, no less.
 	nfft := nextpow2(nbuf * osamp)
 	nbins := nfft/2 + 1
@@ -47,7 +50,7 @@ func warperNew(nbuf, osamp, olap int, nanowarp *Nanowarp) (n *warper) {
 	}
 	a := &n.a
 
-	makeslices(a, nbins, nfft)
+	makeslices(a, nbins, nfft, nch)
 
 	// Exceptions
 	a.Phase = make([]float64, nbins)
@@ -59,7 +62,8 @@ func warperNew(nbuf, osamp, olap int, nanowarp *Nanowarp) (n *warper) {
 	windowT(a.W[:nbuf], a.Wt[:nbuf])
 	copy(a.Wr[:nbuf], a.W[:nbuf])
 	slices.Reverse(a.Wr[:nbuf])
-	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * windowGain(n.a.W)
+	n.wgain = windowGain(n.a.W)
+	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * n.wgain
 
 	n.fft = fourier.NewFFT(nfft)
 
@@ -68,10 +72,12 @@ func warperNew(nbuf, osamp, olap int, nanowarp *Nanowarp) (n *warper) {
 
 func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
-	get := func() []float64 { return make([]float64, n.nfft) }
-	lgrainbuf, rgrainbuf := get(), get()
-	lingrain, ringrain := get(), get()
 
+	input := make2(2, len(lin))
+	grainbuf := make2(2, n.nfft)
+	ingrain := make2(2, n.nfft)
+	copy(input[0], lin)
+	copy(input[1], rin)
 	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
@@ -82,10 +88,11 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		if i > len(lin)-n.nbuf {
 			break
 		}
-		clear(lingrain)
-		clear(ringrain)
-		copy(lingrain[max(0, -i):], lin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
-		copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		for ch := range grainbuf {
+			clear(ingrain[ch])
+			copy(ingrain[ch][max(0, -i):], input[ch][max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		}
+
 		c := 1.
 		if j > 0 {
 			c = 1 / coeffs[j]
@@ -94,34 +101,34 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		n.advance(lingrain, ringrain, lgrainbuf, rgrainbuf, nil, abs(c), n.root.opts.Quality >= 0 && c == 1)
+		n.advance2(ingrain, grainbuf, abs(c), n.root.opts.Quality >= 0 && c == 1)
 
 		// Cut pre-echo in transient regions.
+		// TODO Probably won't need this after non-causal PGHI is implemented.
 		d := j - lastone
 		if c == 1 {
 			lastone = j
 		} else if d < n.nbuf/2 {
-			z := func(grain []float64) {
-				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+			for ch := range grainbuf {
+				rr := grainbuf[ch][max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
 				for i := range rr {
 					rr[i] *= float64(i) / float64(len(rr))
 				}
-				fill(grain[:n.nbuf/2-d-n.hop], 0)
+				fill(grainbuf[ch][:n.nbuf/2-d-n.hop], 0)
 			}
-			z(lgrainbuf)
-			z(rgrainbuf)
 		}
 
 		if n.root.opts.Onsets && c != 1 {
-			clear(lgrainbuf)
-			clear(rgrainbuf)
+			for ch := range grainbuf {
+				clear(grainbuf[ch])
+			}
 		}
 
 		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 
-		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -j):])
-		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
+		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
 	}
 }
 
@@ -129,7 +136,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset bool) {
+func (n *warper) advance(present, output [][]float64, stretch float64, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -148,12 +155,11 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 		copy(out, a.S)
 	}
 
-	for i := range lingrain {
-		a.Mid[i] = lingrain[i] + ringrain[i]
+	clear(a.Mid)
+	for ch := range present {
+		add(a.Mid, present[ch])
+		enfft(a.C[ch], a.W, present[ch])
 	}
-
-	enfft(a.L, a.W, lingrain)
-	enfft(a.R, a.W, ringrain)
 
 	enfft(a.X, a.W, a.Mid)
 	enfft(a.Xd, a.Wd, a.Mid)
@@ -169,15 +175,24 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 	// Forced phase reset.
 	bash := func() {
 		for w := range a.Phase {
-			a.Pphase[w] = cmplx.Phase(a.X[w])
+			a.P[w], a.Pphase[w] = cmplx.Polar(a.X[w])
 		}
-		copy(a.P, a.M)
-		copy(a.Lo, a.L)
-		copy(a.Ro, a.R)
+		for ch := range present {
+			// This is the only known way to correctly scale gains.
+			enfft(a.Co[ch], a.W, present[ch])
+			defft(output[ch], a.Co[ch], true)
+			// And this works with -40 dB difference.
+			// copy(output[ch], present[ch])
+			// mul(output[ch], a.W)
+			// mul(output[ch], a.Wr)
+			// scale(output[ch], (1+n.wgain*float64(n.nbuf)/float64(n.hop))/2)
+			// Where this only must be enough:
+			// scale(output[ch], n.wgain*float64(n.nbuf)/float64(n.hop))
+		}
 	}
 	if reset {
 		bash()
-		goto skip
+		return
 	}
 
 	for w := range a.X {
@@ -201,9 +216,12 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 			p = complex(1, 0)
 		}
 		a.M[w] = m
-
-		a.L[w] /= p
-		a.R[w] /= p
+		a.E[w] = p
+	}
+	for ch := range present {
+		for w := range a.X {
+			a.C[ch][w] /= a.E[w]
+		}
 	}
 
 	n.heap = make(hp, n.nbins)
@@ -246,15 +264,17 @@ func (n *warper) advance(lingrain, ringrain, loutgrain, routgrain, future []floa
 	copy(a.P, a.M)
 	for w := range a.Phase {
 		// Add stereo phase differences back through multiplication.
-		p := cmplx.Rect(1, a.Phase[w])
-		a.Lo[w] = a.L[w] * p
-		a.Ro[w] = a.R[w] * p
+		a.E[w] = cmplx.Rect(1, a.Phase[w])
+	}
+	for w := range a.Phase {
 		a.Pphase[w] = princarg(a.Phase[w])
 	}
-
-skip:
-	defft(loutgrain, a.Lo, true)
-	defft(routgrain, a.Ro, true)
+	for ch := range output {
+		for w := range a.X {
+			a.Co[ch][w] = a.C[ch][w] * a.E[w]
+		}
+		defft(output[ch], a.Co[ch], true)
+	}
 }
 
 func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {

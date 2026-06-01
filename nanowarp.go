@@ -89,7 +89,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 		olap *= 2
 	}
 
-	n.warper = warperNew(4096*w, 2, olap, n)
+	n.warper = warperNew(4096*w, 2, olap, 2, n)
 	n.detector = DetectorNew(1024, samplerate, opts.TransientMs, opts.PickingMs)
 
 	return

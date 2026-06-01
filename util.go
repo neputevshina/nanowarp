@@ -78,20 +78,22 @@ func clamp[T constraints.Ordered](a, b, x T) T {
 	return max(a, min(b, x))
 }
 
-func makeslices(a any, nbins, nfft int) {
+func makeslices(a any, nbins, nfft, nch int) {
 	rn := reflect.ValueOf(a).Elem()
 	for i := 0; i < rn.NumField(); i++ {
 		f := rn.Field(i)
 		if f.Kind() == reflect.Slice {
 			c := f.Interface()
-			switch c := c.(type) {
+			switch c.(type) {
 			case []complex128:
 				f.Set(reflect.ValueOf(make([]complex128, nbins)))
 			case []float64:
 				f.Set(reflect.ValueOf(make([]float64, nfft)))
 			case [][]complex128:
-				for i := range c {
-					c[i] = make([]complex128, nbins)
+				f.Set(reflect.ValueOf(make([][]complex128, nch)))
+				s := f.Interface().([][]complex128)
+				for i := range nch {
+					s[i] = make([]complex128, nbins)
 				}
 			}
 		}
@@ -135,6 +137,8 @@ func niemitalo(out []float64) {
 	clear(out[int(nfft)*6/8:])
 }
 
+// windowGain returns the squared window gain for correcting the output grain
+// gain after double (for fft and ifft) application of the window.
 func windowGain(w []float64) (a float64) {
 	for _, e := range w {
 		a += e * e
@@ -333,4 +337,12 @@ func softmax(a []float64) {
 	for i := range a {
 		a[i] = math.Exp2(a[i]) / expsum
 	}
+}
+
+func make2(nch, n int) [][]float64 {
+	g := make([][]float64, nch)
+	for ch := range g {
+		g[ch] = make([]float64, n)
+	}
+	return g
 }

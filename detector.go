@@ -48,7 +48,7 @@ func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 		corr:  corr,
 		fs:    fs,
 	}
-	makeslices(&n.a, nbins, nfft)
+	makeslices(&n.a, nbins, nfft, 0)
 
 	// Asymmetric window requires applying reversed copy of itself on synthesis stage.
 	niemitalo(n.a.Wf)
