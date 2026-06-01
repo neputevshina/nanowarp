@@ -73,17 +73,38 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
+	println := func(a ...any) {
+		// println(a...)
+	}
 
 	input := make2(2, len(lin))
 	grainbuf := make2(2, n.nfft)
 	ingrain := make2(2, n.nfft)
 	copy(input[0], lin)
 	copy(input[1], rin)
-	lastone := 0
-	for j := -n.nbuf; ; j += n.hop {
+	h := n.hop
+	pin, lastone := 0, 0
+	// TODO Centered, not left-aligned j index.
+	for j := -n.nbuf; ; j += h {
 		if j > len(lout)-n.nbuf {
 			break
 		}
+
+		// Non-causality.
+		// TODO Totally implementable with fixed lookahead.
+		if j > 0 {
+			// j + n.nbuf*int(math.Ceil(1/coeffs[j]))
+			future := j + n.nbuf*int(math.Ceil(1/coeffs[j]))/n.olap
+			filt := future-lastone > n.root.fs*n.root.opts.TransientMs/1000
+			if h > 0 && future < len(lout) && coeffs[future] == 1 && filt {
+				lastone = future
+				pin = j
+				h = -n.hop
+				j = future
+				println(`future:`, pin, `-`, future, `,`, future-pin)
+			}
+		}
+
 		i := int(phasor[max(0, j)] - float64(n.nbuf/2))
 
 		if i > len(lin)-n.nbuf {
@@ -103,18 +124,29 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		}
 
 		if n.root.opts.Quality >= 0 && c == 1 {
-			n.resetPast(ingrain)
-			n.bypassGrain(ingrain, grainbuf)
+			// It gets here twice, so output a grain only on positive front.
+			if h > 0 {
+				println(`reset past:`, j)
+				n.resetPast(ingrain)
+				n.bypassGrain(ingrain, grainbuf)
+			} else if h < 0 {
+				println(`reset future:`, j)
+				n.resetFuture(ingrain)
+			}
 		} else {
-			n.advance(ingrain, grainbuf, abs(c), 1)
+			d := int(h / n.hop)
+			if j == pin {
+				d = 0
+				println(`collision:`, pin)
+			}
+			n.advance(ingrain, grainbuf, abs(c), d)
 		}
 
 		// Cut pre-echo in transient regions.
 		// TODO Probably won't need this after non-causal PGHI is implemented.
+		// FIXME Does not work with non-causality.
 		d := j - lastone
-		if c == 1 {
-			lastone = j
-		} else if d < n.nbuf/2 {
+		if h > 0 && d > 0 && d < n.nbuf/2 {
 			for ch := range grainbuf {
 				rr := grainbuf[ch][max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
 				for i := range rr {
@@ -135,6 +167,10 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+
+		if h < 0 && j == pin {
+			h = n.hop
+		}
 	}
 }
 
@@ -267,10 +303,10 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 	for j := range a.X {
 		n.arm[j] = true
 		// NOTE: Attention here if breaks.
-		if direction >= 0 {
+		if direction == 0 && a.P[j] > 1e-6 || direction > 0 {
 			n.heap[j] = heaptriple{a.P[j], j, -1}
 		}
-		if direction <= 0 {
+		if direction == 0 && a.F[j] > 1e-6 || direction < 0 {
 			n.heap[j] = heaptriple{a.F[j], j, 1}
 		}
 	}
