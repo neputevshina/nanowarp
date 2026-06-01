@@ -73,9 +73,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
-	println := func(a ...any) {
-		// println(a...)
-	}
+	println := func(a ...any) {}
 
 	input := make2(2, len(lin))
 	grainbuf := make2(2, n.nfft)
@@ -84,20 +82,27 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	copy(input[1], rin)
 	h := n.hop
 	pin, lastone := 0, 0
-	// TODO Centered, not left-aligned j index.
 	for j := -n.nbuf; ; j += h {
 		if j > len(lout)-n.nbuf {
 			break
 		}
 
+		c := 1.
+		if j > 0 {
+			c = 1 / coeffs[j]
+			if c != c || math.IsInf(c, 0) {
+				c = 1
+			}
+		}
+
 		// Non-causality.
 		// TODO Totally implementable with fixed lookahead.
-		if j > 0 {
-			// j + n.nbuf*int(math.Ceil(1/coeffs[j]))/n.olap
-			future := j + n.nbuf
+		if j > 0 && h > 0 {
+			// future := j + n.nbuf*int(math.Ceil(c))/n.olap
+			future := j + int(math.Ceil(float64(n.hop)*c))
 			filt := future-lastone > n.root.fs*n.root.opts.TransientMs/1000
-			if h > 0 && future < len(lout) && coeffs[future] == 1 && filt {
-				// lastone = future
+			if future < len(lout) && coeffs[future] == 1 && filt {
+				lastone = future
 				// pin = j
 				// h = -n.hop
 				// j = future
@@ -112,15 +117,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		}
 		for ch := range grainbuf {
 			clear(ingrain[ch])
-			copy(ingrain[ch][max(0, -(i-n.nbuf/2)):], input[ch][max(0, i-n.nbuf/2):clamp(0, len(lin), i+n.nbuf/2)])
-		}
-
-		c := 1.
-		if j > 0 {
-			c = 1 / coeffs[j]
-			if c != c || math.IsInf(c, 0) {
-				c = 1
-			}
+			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][max(0, i-n.nbuf/2):clamp(0, len(lin), i+n.nbuf/2)])
 		}
 
 		if n.root.opts.Quality >= 0 && c == 1 {
@@ -130,7 +127,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				n.resetPast(ingrain)
 				n.bypassGrain(ingrain, grainbuf)
 			} else if h < 0 {
-				println(`reset future:`, j)
+				// println(`reset future:`, j)
 				n.resetFuture(ingrain)
 			}
 		} else {
@@ -167,7 +164,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
 
-		if h < 0 && j == pin {
+		if h < 0 && j <= pin {
 			h = n.hop
 		}
 	}
@@ -301,7 +298,6 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 
 	for j := range a.X {
 		n.arm[j] = true
-		// NOTE: Attention here if breaks.
 		if direction == 0 && a.P[j] > 1e-6 || direction > 0 {
 			n.heap[j] = heaptriple{a.P[j], j, -1}
 		}
