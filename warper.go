@@ -29,7 +29,7 @@ type warper struct {
 type wbufs struct {
 	S, Mid, M, P, F            []float64 // Scratch buffers
 	Ph                         []float64 // Current phase
-	Phpast, Phfuture           []float64 // Phase accumulators
+	Past, Future               []float64 // Phase accumulators
 	Fadv                       []float64
 	W, Wr, Wd, Wt              []float64      // Window functions
 	X, E, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
@@ -66,7 +66,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * n.wgain
 
 	n.fft = fourier.NewFFT(nfft)
-	n.heap = make(hp, n.nbins)
+	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
 
 	return
 }
@@ -102,7 +102,12 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		n.advance(ingrain, grainbuf, abs(c), 1, n.root.opts.Quality >= 0 && c == 1)
+		if n.root.opts.Quality >= 0 && c == 1 {
+			n.resetPast(ingrain)
+			n.bypassGrain(ingrain, grainbuf)
+		} else {
+			n.advance(ingrain, grainbuf, abs(c), 1)
+		}
 
 		// Cut pre-echo in transient regions.
 		// TODO Probably won't need this after non-causal PGHI is implemented.
@@ -133,6 +138,68 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	}
 }
 
+func (n *warper) enfft(x []complex128, w, grain []float64) {
+	a := &n.a
+	clear(a.S)
+	copy(a.S, grain)
+	mul(a.S, w)
+	n.fft.Coefficients(x, a.S)
+}
+func (n *warper) defft(out []float64, x []complex128, w bool) {
+	a := &n.a
+	n.fft.Sequence(a.S, x)
+	for j := range a.S {
+		a.S[j] /= n.norm
+	}
+	if w {
+		mul(a.S, a.Wr)
+	}
+	copy(out, a.S)
+}
+
+func (n *warper) resetPast(present [][]float64) {
+	a := &n.a
+	clear(a.Mid)
+	for ch := range present {
+		add(a.Mid, present[ch])
+		n.enfft(a.C[ch], a.W, present[ch])
+	}
+	n.enfft(a.X, a.W, a.Mid)
+	for w := range a.Ph {
+		a.P[w], a.Past[w] = cmplx.Polar(a.X[w])
+	}
+}
+
+func (n *warper) resetFuture(present [][]float64) {
+	a := &n.a
+	clear(a.Mid)
+	for ch := range present {
+		add(a.Mid, present[ch])
+		n.enfft(a.C[ch], a.W, present[ch])
+	}
+	n.enfft(a.X, a.W, a.Mid)
+	for w := range a.Ph {
+		a.F[w], a.Future[w] = cmplx.Polar(a.X[w])
+	}
+}
+
+func (n *warper) bypassGrain(present, output [][]float64) {
+	a := &n.a
+	for ch := range present {
+		// This is the only known way to correctly scale gains.
+		n.enfft(a.Co[ch], a.W, present[ch])
+		n.defft(output[ch], a.Co[ch], true)
+		// And this works with -40 dB difference.
+		// copy(output[ch], present[ch])
+		// mul(output[ch], a.W)
+		// mul(output[ch], a.Wr)
+		// scale(output[ch], (1+n.wgain*float64(n.nbuf)/float64(n.hop))/2)
+		// Where this is must be the last line:
+		// scale(output[ch], n.wgain*float64(n.nbuf)/float64(n.hop))
+		// Probably there is something wrong in gonum FFT implementation.
+	}
+}
+
 // advance adds to the phase of the output by one frame using
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
@@ -140,34 +207,18 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 // If direction is 1, it is doing forward integration.
 // If it is -1, it is doing backward integration.
 // If it is 0, integration is performed in both directions.
-func (n *warper) advance(present, output [][]float64, stretch float64, direction int, reset bool) {
+func (n *warper) advance(present, output [][]float64, stretch float64, direction int) {
 	a := &n.a
-	enfft := func(x []complex128, w, grain []float64) {
-		clear(a.S)
-		copy(a.S, grain)
-		mul(a.S, w)
-		n.fft.Coefficients(x, a.S)
-	}
-	defft := func(out []float64, x []complex128, w bool) {
-		n.fft.Sequence(a.S, x)
-		for j := range a.S {
-			a.S[j] /= n.norm
-		}
-		if w {
-			mul(a.S, a.Wr)
-		}
-		copy(out, a.S)
-	}
 
 	clear(a.Mid)
 	for ch := range present {
 		add(a.Mid, present[ch])
-		enfft(a.C[ch], a.W, present[ch])
+		n.enfft(a.C[ch], a.W, present[ch])
 	}
 
-	enfft(a.X, a.W, a.Mid)
-	enfft(a.Xd, a.Wd, a.Mid)
-	enfft(a.Xt, a.Wt, a.Mid)
+	n.enfft(a.X, a.W, a.Mid)
+	n.enfft(a.Xd, a.Wd, a.Mid)
+	n.enfft(a.Xt, a.Wt, a.Mid)
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	// TODO Works ONLY with 2x FFT oversampling.
@@ -175,28 +226,6 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 	osampc := float64(n.nfft) / float64(n.nbuf)
 	tadv := gettadv(a.X[:n.nbins], a.Xd, olap*osampc)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch*2./osampc)
-
-	// Forced phase reset.
-	if reset {
-		for w := range a.Ph {
-			a.P[w], a.Phpast[w] = cmplx.Polar(a.X[w])
-		}
-		copy(a.Phfuture, a.Phpast)
-		for ch := range present {
-			// This is the only known way to correctly scale gains.
-			enfft(a.Co[ch], a.W, present[ch])
-			defft(output[ch], a.Co[ch], true)
-			// And this works with -40 dB difference.
-			// copy(output[ch], present[ch])
-			// mul(output[ch], a.W)
-			// mul(output[ch], a.Wr)
-			// scale(output[ch], (1+n.wgain*float64(n.nbuf)/float64(n.hop))/2)
-			// Where this is must be the last line:
-			// scale(output[ch], n.wgain*float64(n.nbuf)/float64(n.hop))
-			// Probably there is something wrong in gonum FFT implementation.
-		}
-		return
-	}
 
 	for w := range a.X {
 		// TODO Probably it will be more numerically stable to limit the phase accuum to
@@ -227,6 +256,11 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 		}
 	}
 
+	if direction == 0 {
+		n.heap = n.heap[:n.nbins*2]
+	} else {
+		n.heap = n.heap[:n.nbins]
+	}
 	clear(n.heap)
 	clear(n.arm)
 
@@ -250,14 +284,14 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 		case 1:
 			if n.arm[w] {
 				adv := tadv(w)
-				a.Ph[w] = a.Phfuture[w] - adv
+				a.Ph[w] = a.Future[w] - adv
 				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
 		case -1:
 			if n.arm[w] {
 				adv := tadv(w)
-				a.Ph[w] = a.Phpast[w] + adv
+				a.Ph[w] = a.Past[w] + adv
 				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
@@ -288,16 +322,16 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 	}
 	for w := range a.Ph {
 		if direction > 0 {
-			a.Phpast[w] = princarg(a.Ph[w])
+			a.Past[w] = princarg(a.Ph[w])
 		} else if direction < 0 {
-			a.Phfuture[w] = princarg(a.Ph[w])
+			a.Future[w] = princarg(a.Ph[w])
 		}
 	}
 	for ch := range output {
 		for w := range a.X {
 			a.Co[ch][w] = a.C[ch][w] * a.E[w]
 		}
-		defft(output[ch], a.Co[ch], true)
+		n.defft(output[ch], a.Co[ch], true)
 	}
 }
 
