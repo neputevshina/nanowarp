@@ -27,9 +27,9 @@ type warper struct {
 	a wbufs
 }
 type wbufs struct {
-	S, Mid, M, P               []float64 // Scratch buffers
-	Phase, Rphase              []float64 // Current phases (advances)
-	Pphase, Nphase             []float64 // Phase accumulators
+	S, Mid, M, P, F            []float64 // Scratch buffers
+	Ph                         []float64 // Current phase
+	Phpast, Phfuture           []float64 // Phase accumulators
 	Fadv                       []float64
 	W, Wr, Wd, Wt              []float64      // Window functions
 	X, E, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
@@ -53,7 +53,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	makeslices(a, nbins, nfft, nch)
 
 	// Exceptions
-	a.Phase = make([]float64, nbins)
+	a.Ph = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
 	blackmanHarris(a.W[:nbuf])
@@ -66,6 +66,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * n.wgain
 
 	n.fft = fourier.NewFFT(nfft)
+	n.heap = make(hp, n.nbins)
 
 	return
 }
@@ -101,7 +102,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		n.advance2(ingrain, grainbuf, abs(c), n.root.opts.Quality >= 0 && c == 1)
+		n.advance(ingrain, grainbuf, abs(c), 1, n.root.opts.Quality >= 0 && c == 1)
 
 		// Cut pre-echo in transient regions.
 		// TODO Probably won't need this after non-causal PGHI is implemented.
@@ -136,7 +137,10 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advance(present, output [][]float64, stretch float64, reset bool) {
+// If direction is 1, it is doing forward integration.
+// If it is -1, it is doing backward integration.
+// If it is 0, integration is performed in both directions.
+func (n *warper) advance(present, output [][]float64, stretch float64, direction int, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -173,10 +177,11 @@ func (n *warper) advance(present, output [][]float64, stretch float64, reset boo
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch*2./osampc)
 
 	// Forced phase reset.
-	bash := func() {
-		for w := range a.Phase {
-			a.P[w], a.Pphase[w] = cmplx.Polar(a.X[w])
+	if reset {
+		for w := range a.Ph {
+			a.P[w], a.Phpast[w] = cmplx.Polar(a.X[w])
 		}
+		copy(a.Phfuture, a.Phpast)
 		for ch := range present {
 			// This is the only known way to correctly scale gains.
 			enfft(a.Co[ch], a.W, present[ch])
@@ -186,12 +191,10 @@ func (n *warper) advance(present, output [][]float64, stretch float64, reset boo
 			// mul(output[ch], a.W)
 			// mul(output[ch], a.Wr)
 			// scale(output[ch], (1+n.wgain*float64(n.nbuf)/float64(n.hop))/2)
-			// Where this only must be enough:
+			// Where this is must be the last line:
 			// scale(output[ch], n.wgain*float64(n.nbuf)/float64(n.hop))
+			// Probably there is something wrong in gonum FFT implementation.
 		}
-	}
-	if reset {
-		bash()
 		return
 	}
 
@@ -224,50 +227,71 @@ func (n *warper) advance(present, output [][]float64, stretch float64, reset boo
 		}
 	}
 
-	n.heap = make(hp, n.nbins)
+	clear(n.heap)
 	clear(n.arm)
 
 	for j := range a.X {
 		n.arm[j] = true
-		n.heap[j] = heaptriple{a.P[j], j, -1}
+		// NOTE: Attention here if breaks.
+		if direction >= 0 {
+			n.heap[j] = heaptriple{a.P[j], j, -1}
+		}
+		if direction <= 0 {
+			n.heap[j] = heaptriple{a.F[j], j, 1}
+		}
 	}
 	heapInit(&n.heap)
 
 	// Do PGHI.
 	for len(n.heap) > 0 {
-		h := heapPop(&n.heap).(heaptriple)
+		h := heapPop(&n.heap)
 		w := h.w
 		switch h.t {
+		case 1:
+			if n.arm[w] {
+				adv := tadv(w)
+				a.Ph[w] = a.Phfuture[w] - adv
+				n.arm[w] = false
+				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
+			}
 		case -1:
 			if n.arm[w] {
 				adv := tadv(w)
-				a.Phase[w] = a.Pphase[w] + adv
+				a.Ph[w] = a.Phpast[w] + adv
 				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
 		case 0:
 			if w > 1 && n.arm[w-1] {
 				adv := -a.Fadv[w-1]
-				a.Phase[w-1] = a.Phase[w] + adv
+				a.Ph[w-1] = a.Ph[w] + adv
 				n.arm[w-1] = false
 				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
 				adv := a.Fadv[w+1]
-				a.Phase[w+1] = a.Phase[w] + adv
+				a.Ph[w+1] = a.Ph[w] + adv
 				n.arm[w+1] = false
 				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 			}
 		}
 	}
 
-	copy(a.P, a.M)
-	for w := range a.Phase {
-		// Add stereo phase differences back through multiplication.
-		a.E[w] = cmplx.Rect(1, a.Phase[w])
+	if direction > 0 {
+		copy(a.P, a.M)
+	} else if direction < 0 {
+		copy(a.F, a.M)
 	}
-	for w := range a.Phase {
-		a.Pphase[w] = princarg(a.Phase[w])
+	for w := range a.Ph {
+		// Add stereo phase differences back through multiplication.
+		a.E[w] = cmplx.Rect(1, a.Ph[w])
+	}
+	for w := range a.Ph {
+		if direction > 0 {
+			a.Phpast[w] = princarg(a.Ph[w])
+		} else if direction < 0 {
+			a.Phfuture[w] = princarg(a.Ph[w])
+		}
 	}
 	for ch := range output {
 		for w := range a.X {

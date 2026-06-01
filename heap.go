@@ -14,7 +14,7 @@ func (h hp) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 func (h *hp) Push(x any) {
 	*h = append(*h, x.(heaptriple))
 }
-func (h *hp) Pop() any {
+func (h *hp) Pop() heaptriple {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -44,7 +44,7 @@ func heapPush(h *hp, x any) {
 // heapPop removes and returns the minimum element (according to Less) from the heap.
 // The complexity is O(log n) where n = h.Len().
 // heapPop is equivalent to [heapRemove](h, 0).
-func heapPop(h *hp) any {
+func heapPop(h *hp) heaptriple {
 	n := h.Len() - 1
 	h.Swap(0, n)
 	heapdown(h, 0, n)
@@ -53,7 +53,7 @@ func heapPop(h *hp) any {
 
 // heapRemove removes and returns the element at index i from the heap.
 // The complexity is O(log n) where n = h.Len().
-func heapRemove(h *hp, i int) any {
+func heapRemove(h *hp, i int) heaptriple {
 	n := h.Len() - 1
 	if n != i {
 		h.Swap(i, n)
