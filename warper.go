@@ -87,25 +87,28 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			break
 		}
 
-		c := 1.
-		if j > 0 {
-			c = 1 / coeffs[j]
-			if c != c || math.IsInf(c, 0) {
-				c = 1
+		c := func() float64 {
+			c := 1.
+			if j > 0 {
+				c = 1 / coeffs[j]
+				if c != c || math.IsInf(c, 0) {
+					c = 1
+				}
 			}
+			return c
 		}
 
 		// Non-causality.
 		// TODO Totally implementable with fixed lookahead.
 		if j > 0 && h > 0 {
-			// future := j + n.nbuf*int(math.Ceil(c))/n.olap
-			future := j + int(math.Ceil(float64(n.hop)*c))
+			// future := j + int(math.Ceil(float64(n.hop)*c))
+			future := j + n.nbuf
 			filt := future-lastone > n.root.fs*n.root.opts.TransientMs/1000
 			if future < len(lout) && coeffs[future] == 1 && filt {
 				lastone = future
-				// pin = j
-				// h = -n.hop
-				// j = future
+				pin = j
+				h = -n.hop
+				j = future //- n.hop
 				println(`future:`, pin, `-`, future, `,`, future-pin)
 			}
 		}
@@ -120,23 +123,22 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][max(0, i-n.nbuf/2):clamp(0, len(lin), i+n.nbuf/2)])
 		}
 
-		if n.root.opts.Quality >= 0 && c == 1 {
-			// It gets here twice, so output a grain only on positive front.
+		if n.root.opts.Quality >= 0 && c() == 1 {
 			if h > 0 {
 				println(`reset past:`, j)
 				n.resetPast(ingrain)
-				n.bypassGrain(ingrain, grainbuf)
 			} else if h < 0 {
-				// println(`reset future:`, j)
+				println(`reset future:`, j)
 				n.resetFuture(ingrain)
 			}
+			n.bypassGrain(ingrain, grainbuf)
 		} else {
 			d := int(h / n.hop)
 			if j == pin {
 				d = 0
 				println(`collision:`, pin)
 			}
-			n.advance(ingrain, grainbuf, abs(c), d)
+			n.advance(ingrain, grainbuf, abs(c()), d)
 		}
 
 		// Cut pre-echo in transient regions.
@@ -152,20 +154,24 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		if n.root.opts.Onsets && c != 1 {
+		if n.root.opts.Onsets && c() != 1 {
 			for ch := range grainbuf {
 				clear(grainbuf[ch])
 			}
 		}
 
+		// if h > 0 {
 		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-
 		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+		// }
+		// if h < 0 {
+		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+		// }
 
 		if h < 0 && j <= pin {
 			h = n.hop
+			j = lastone
 		}
 	}
 }
