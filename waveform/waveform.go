@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 
+	"golang.org/x/exp/constraints"
 	"golang.org/x/term"
 )
 
@@ -29,6 +30,7 @@ func Dump(prr error, b []float64) error {
 
 // DumpWrited prints the waveform of the audio to out.
 func DumpWriter(prr error, out io.Writer, b []float64) error {
+	b = slices.Clone(b)
 	const height = 12
 	const pixheight = height * 3
 	if prr != nil {
@@ -44,7 +46,7 @@ func DumpWriter(prr error, out io.Writer, b []float64) error {
 	absmax := max(gmax, -gmin)
 	if absmax != 0 {
 		for i := range b {
-			b[i] /= absmax
+			b[i] = unmix(gmin, gmax, b[i])
 		}
 	}
 
@@ -58,8 +60,12 @@ func DumpWriter(prr error, out io.Writer, b []float64) error {
 		floor := func(x float64) int { return int(math.Floor(x)) }
 		ceil := func(x float64) int { return int(math.Ceil(x)) }
 
-		ma, mi := floor(h*((-slices.Max(sl))/2+.5)), ceil(h*((-slices.Min(sl))/2+.5))
+		ma := clamp(0, len(column)-1, floor(h*(1-slices.Max(sl))))
+		mi := clamp(0, len(column)-1, ceil(h*(1-slices.Min(sl))))
 		fill(column[ma:mi], true)
+		if ma == mi {
+			column[ma] = true
+		}
 
 		for i := range pixheight {
 			blines[i] = append(blines[i], column[i])
@@ -116,4 +122,12 @@ func fill[T any](s []T, e T) int {
 		s[i] = e
 	}
 	return len(s)
+}
+
+func unmix[F constraints.Float](a, b, x F) F {
+	return (x - a) / (b - a)
+}
+
+func clamp[T constraints.Ordered](a, b, x T) T {
+	return max(a, min(b, x))
 }
