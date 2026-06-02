@@ -71,9 +71,9 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
+func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64, causal bool) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
-	println := func(a ...any) {}
+	// println := func(a ...any) {}
 
 	input := make2(2, len(lin))
 	grainbuf := make2(2, n.nfft)
@@ -81,7 +81,9 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	copy(input[0], lin)
 	copy(input[1], rin)
 	h := n.hop
-	pin, lastone := 0, 0
+	// causal = true
+	pin, lastone, firstone := 0, 0, 0
+	latch := true
 	for j := -n.nbuf; ; j += h {
 		if j > len(lout)-n.nbuf {
 			break
@@ -99,28 +101,44 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		}
 
 		// Non-causality.
-		// TODO Totally implementable with fixed lookahead.
-		if j > 0 && h > 0 {
-			// future := j + int(math.Ceil(float64(n.hop)*c))
-			future := j + n.nbuf
-			filt := future-lastone > n.root.fs*n.root.opts.TransientMs/1000
+		if j > 0 && h > 0 && !causal {
+			// TODO Compensate this.
+			lookahead := int(math.Ceil(float64(n.hop) * c()))
+			future := j + lookahead
+			filt := future-firstone > n.root.fs*n.root.opts.TransientMs/1000
 			if future < len(lout) && coeffs[future] == 1 && filt {
-				lastone = future
+				// Don't do anti-causal part if there is an overlap with the reset grain.
+				if lookahead < n.nbuf {
+					goto next
+				}
 				pin = j
 				h = -n.hop
-				j = future //- n.hop
-				println(`future:`, pin, `-`, future, `,`, future-pin)
+				j = future
+				println(`future:`, pin, `-`, future, `, lah:`, lookahead)
 			}
 		}
+	next:
 
-		i := int(phasor[max(0, j)])
+		d := j - lastone
+		if c() == 1 {
+			lastone = j
+			if latch {
+				println(`firstone:`, j)
+				firstone = j
+			}
+			latch = false
+		} else {
+			latch = true
+		}
 
-		if i > len(lin)-n.nbuf/2 {
+		i := int(phasor[max(0, j)] - float64(n.nbuf/2))
+
+		if i > len(lin)-n.nbuf {
 			break
 		}
 		for ch := range grainbuf {
 			clear(ingrain[ch])
-			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][max(0, i-n.nbuf/2):clamp(0, len(lin), i+n.nbuf/2)])
+			copy(ingrain[ch][max(0, -i):], input[ch][max(0, i):clamp(0, len(lin), i+n.nbuf)])
 		}
 
 		if n.root.opts.Quality >= 0 && c() == 1 {
@@ -143,13 +161,13 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		// Cut pre-echo in transient regions.
 		// TODO Works strange after implementing non-causality.
-		d := j - lastone
-		if h > 0 && d > 0 && d < n.nbuf/2 {
+		if h > 0 && c() != 1 && d < n.nbuf/2 {
 			for ch := range grainbuf {
 				rr := grainbuf[ch][max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
 				for i := range rr {
 					rr[i] *= float64(i) / float64(len(rr))
 				}
+				// println(n.nbuf/2, d, n.hop, j, lastone)
 				fill(grainbuf[ch][:n.nbuf/2-d-n.hop], 0)
 			}
 		}
@@ -183,6 +201,7 @@ func (n *warper) enfft(x []complex128, w, grain []float64) {
 	mul(a.S, w)
 	n.fft.Coefficients(x, a.S)
 }
+
 func (n *warper) defft(out []float64, x []complex128, w bool) {
 	a := &n.a
 	n.fft.Sequence(a.S, x)
