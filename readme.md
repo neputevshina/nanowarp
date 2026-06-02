@@ -89,6 +89,10 @@ unmodified.
   - It is enough to split the signal to four bands probably, crossovers are at 250-820-2500 Hz
   - And then drop the band if cross-correlation is low or if a band's response in a softmaxed vector is lower than 0.25.
   - Bass activation triggers everything
+- There is pre- and post-echo of size hop×stretch for EVERY vertical motion in spectrum. 
+  - And on high frequencies it's even echo in frequency, not only time.
+- **gonum has vectorized [complex](https://pkg.go.dev/gonum.org/v1/gonum@v0.17.0/cmplxs) and [float](https://pkg.go.dev/gonum.org/v1/gonum@v0.17.0/floats) operations. USE THIS.**
+
 
 ### Testing strategy
 - Various impulse train signals
@@ -117,10 +121,7 @@ for {
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
-- Phase interruption on incorrectly detected transients results in chopped sound. 
-  Fixed by improving onset detection. PVSOLA had been tried with unsatisfactory results.
-- heap.go and rankfilt.go are two different implementations of the same thing. 
-  Leave only one of them.
+- Triples the sound on extreme (>4x) time stretches. The bane of all PVDR-based algorithms.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)

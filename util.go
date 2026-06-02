@@ -101,6 +101,7 @@ func makeslices(a any, nbins, nfft, nch int) {
 }
 
 func hann(out []float64) {
+	// 3 echoes of transients after stretch
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
 		out[i] = 0.5 * (1 - math.Cos(2*math.Pi*x))
@@ -108,13 +109,35 @@ func hann(out []float64) {
 }
 
 func blackmanHarris(out []float64) {
+	// 3 echoes
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
 		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
 	}
 }
 
+func poisson(out []float64, decaydb float64) {
+	// 5 echoes
+	for i := range out {
+		N := float64(len(out) - 1)
+		x := float64(i) / N
+		out[i] = math.Exp(-abs(x) * 2 * decaydb / (8.69 * N))
+	}
+}
+
+func avciNacaroglu(out []float64, a float64) {
+	// 3 echoes
+	// Avci-Nacaroglu exponential window, an approximation to DPSS (like Kaiser) window without
+	// the need of a modified Bessel function (which is almost exclusive for Python and Matlab).
+	for i := range out {
+		N := float64(len(out))
+		x := float64(i) / N
+		out[i] = math.Exp(math.Pi * a * (math.Sqrt(1-math.Pow(2*x-1, 2)) - 1))
+	}
+}
+
 func niemitalo(out []float64) {
+	// 3 VERY FAINT echoes, but breaks tonals
 	// https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing
 	nfft := float64(len(out))
 	clear(out)

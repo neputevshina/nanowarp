@@ -7,7 +7,9 @@ import (
 	"os"
 	"slices"
 
+	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/dsp/fourier"
+	"gonum.org/v1/gonum/floats"
 )
 
 type warper struct {
@@ -56,14 +58,22 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	a.Ph = make([]float64, nbins)
 	n.arm = make([]bool, nbins)
 
-	blackmanHarris(a.W[:nbuf])
+	s := func(w []float64) []float64 {
+		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
+		return w[:nbuf]
+	}
+	blackmanHarris(s(a.W))
 
-	windowDx(a.W[:nbuf], a.Wd[:nbuf])
-	windowT(a.W[:nbuf], a.Wt[:nbuf])
-	copy(a.Wr[:nbuf], a.W[:nbuf])
-	slices.Reverse(a.Wr[:nbuf])
+	windowDx(s(a.W), s(a.Wd))
+	windowT(s(a.W), s(a.Wt))
+	copy(s(a.Wr), s(a.W))
+	slices.Reverse(s(a.Wr))
 	n.wgain = windowGain(n.a.W)
 	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * n.wgain
+
+	// waveform.Dump(nil, a.W)
+	// waveform.Dump(nil, a.Wt)
+	// waveform.Dump(nil, a.Wd)
 
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
@@ -101,7 +111,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		if !causal && j > 0 && h > 0 {
 			// TODO Compensate this.
-			lookahead := int(math.Ceil(float64(n.hop) * c()))
+			lookahead := int(math.Ceil(float64(n.hop)*c())) * 5
 			future := j + lookahead
 			filt := future-firstone > n.root.fs*n.root.opts.TransientMs/1000
 			if future < len(lout) && coeffs[future] == 1 && filt {
@@ -130,14 +140,14 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			latch = true
 		}
 
-		i := int(phasor[max(0, j)] - float64(n.nbuf/2))
+		i := int(phasor[max(0, j)])
 
-		if i > len(lin)-n.nbuf {
+		if i > len(lin)+n.nbuf/2 {
 			break
 		}
 		for ch := range grainbuf {
 			clear(ingrain[ch])
-			copy(ingrain[ch][max(0, -i):], input[ch][max(0, i):clamp(0, len(lin), i+n.nbuf)])
+			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][max(0, i-n.nbuf/2):clamp(0, len(lin), i+n.nbuf/2)])
 		}
 
 		if n.root.opts.Quality >= 0 && c() == 1 {
@@ -177,14 +187,14 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		// if h > 0 {
-		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
-		// }
-		// if h < 0 {
-		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
-		// }
+		if h > 0 {
+			loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+			floats.Add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+		}
+		if h < 0 {
+			routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+			floats.Add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+		}
 
 		if h < 0 && j <= pin {
 			h = n.hop
@@ -197,16 +207,16 @@ func (n *warper) enfft(x []complex128, w, grain []float64) {
 	a := &n.a
 	clear(a.S)
 	copy(a.S, grain)
-	mul(a.S, w)
+	if w != nil {
+		mul(a.S, w)
+	}
 	n.fft.Coefficients(x, a.S)
 }
 
 func (n *warper) defft(out []float64, x []complex128, w bool) {
 	a := &n.a
 	n.fft.Sequence(a.S, x)
-	for j := range a.S {
-		a.S[j] /= n.norm
-	}
+	floats.Scale(1./n.norm, a.S)
 	if w {
 		mul(a.S, a.Wr)
 	}
@@ -217,7 +227,7 @@ func (n *warper) resetPast(present [][]float64) {
 	a := &n.a
 	clear(a.Mid)
 	for ch := range present {
-		add(a.Mid, present[ch])
+		floats.Add(a.Mid, present[ch])
 		n.enfft(a.C[ch], a.W, present[ch])
 	}
 	n.enfft(a.X, a.W, a.Mid)
@@ -230,7 +240,7 @@ func (n *warper) resetFuture(present [][]float64) {
 	a := &n.a
 	clear(a.Mid)
 	for ch := range present {
-		add(a.Mid, present[ch])
+		floats.Add(a.Mid, present[ch])
 		n.enfft(a.C[ch], a.W, present[ch])
 	}
 	n.enfft(a.X, a.W, a.Mid)
@@ -268,7 +278,7 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 
 	clear(a.Mid)
 	for ch := range present {
-		add(a.Mid, present[ch])
+		floats.Add(a.Mid, present[ch])
 		n.enfft(a.C[ch], a.W, present[ch])
 	}
 
@@ -278,9 +288,8 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	// TODO Works ONLY with 2x FFT oversampling.
-	olap := float64(n.nbuf / n.hop)
 	osampc := float64(n.nfft) / float64(n.nbuf)
-	tadv := gettadv(a.X[:n.nbins], a.Xd, olap*osampc)
+	tadv := gettadv(a.X[:n.nbins], a.Xd, float64(n.olap)*osampc)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch*2./osampc)
 
 	for w := range a.X {
@@ -335,33 +344,36 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		w := h.w
-		switch h.t {
+		t := h.t
+		// TODO Multiframe
+		// https://ltfat.org/notes/ltfatnote040.pdf, page 5
+		switch t {
 		case 1:
 			if n.arm[w] {
 				adv := tadv(w)
 				a.Ph[w] = a.Future[w] - adv
 				n.arm[w] = false
-				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
+				heapPush(&n.heap, heaptriple{a.M[w], w, t - 1})
 			}
 		case -1:
 			if n.arm[w] {
 				adv := tadv(w)
 				a.Ph[w] = a.Past[w] + adv
 				n.arm[w] = false
-				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
+				heapPush(&n.heap, heaptriple{a.M[w], w, t + 1})
 			}
 		case 0:
 			if w > 1 && n.arm[w-1] {
 				adv := -a.Fadv[w-1]
 				a.Ph[w-1] = a.Ph[w] + adv
 				n.arm[w-1] = false
-				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
+				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, t})
 			}
 			if w < n.nbins-1 && n.arm[w+1] {
 				adv := a.Fadv[w+1]
 				a.Ph[w+1] = a.Ph[w] + adv
 				n.arm[w+1] = false
-				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
+				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, t})
 			}
 		}
 	}
@@ -383,9 +395,7 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 		}
 	}
 	for ch := range output {
-		for w := range a.X {
-			a.Co[ch][w] = a.C[ch][w] * a.E[w]
-		}
+		cmplxs.MulTo(a.Co[ch], a.C[ch], a.E)
 		n.defft(output[ch], a.Co[ch], true)
 	}
 }
