@@ -73,7 +73,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64, causal bool) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
-	// println := func(a ...any) {}
+	println := func(a ...any) {}
 
 	input := make2(2, len(lin))
 	grainbuf := make2(2, n.nfft)
@@ -81,7 +81,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	copy(input[0], lin)
 	copy(input[1], rin)
 	h := n.hop
-	// causal = true
 	pin, lastone, firstone := 0, 0, 0
 	latch := true
 	for j := -n.nbuf; ; j += h {
@@ -100,8 +99,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			return c
 		}
 
-		// Non-causality.
-		if j > 0 && h > 0 && !causal {
+		if !causal && j > 0 && h > 0 {
 			// TODO Compensate this.
 			lookahead := int(math.Ceil(float64(n.hop) * c()))
 			future := j + lookahead
@@ -119,6 +117,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 		}
 	next:
 
+		_ = firstone
 		d := j - lastone
 		if c() == 1 {
 			lastone = j
