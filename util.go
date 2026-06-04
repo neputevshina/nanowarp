@@ -80,20 +80,43 @@ func clamp[T constraints.Ordered](a, b, x T) T {
 
 func makeslices(a any, nbins, nfft, nch int) {
 	rn := reflect.ValueOf(a).Elem()
+	tf := reflect.TypeOf(a).Elem()
 	for i := 0; i < rn.NumField(); i++ {
 		f := rn.Field(i)
+		ln := map[string]int{
+			`nbins`: nbins,
+			`nfft`:  nfft,
+			// `lah`:   lah,
+			`nch`: nch,
+		}[tf.Field(i).Tag.Get("size")]
+
 		if f.Kind() == reflect.Slice {
 			c := f.Interface()
 			switch c.(type) {
 			case []complex128:
-				f.Set(reflect.ValueOf(make([]complex128, nbins)))
+				if ln == 0 {
+					ln = nbins
+				}
+				f.Set(reflect.ValueOf(make([]complex128, ln)))
 			case []float64:
-				f.Set(reflect.ValueOf(make([]float64, nfft)))
+				if ln == 0 {
+					ln = nfft
+				}
+				f.Set(reflect.ValueOf(make([]float64, ln)))
 			case [][]complex128:
-				f.Set(reflect.ValueOf(make([][]complex128, nch)))
+				if ln == 0 {
+					ln = nch
+				}
+				f.Set(reflect.ValueOf(make([][]complex128, ln)))
 				s := f.Interface().([][]complex128)
-				for i := range nch {
+				for i := range s {
 					s[i] = make([]complex128, nbins)
+				}
+			case [][]float64:
+				f.Set(reflect.ValueOf(make([][]float64, ln)))
+				s := f.Interface().([][]float64)
+				for i := range s {
+					s[i] = make([]float64, nbins)
 				}
 			}
 		}

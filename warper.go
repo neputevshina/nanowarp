@@ -13,24 +13,27 @@ import (
 )
 
 type warper struct {
-	nfft  int
-	nbuf  int
-	nbins int
-	hop   int
-	olap  int
-	root  *Nanowarp
+	nfft  int     // DFT size, a power of 2
+	nbuf  int     // Effective window size, nbuf<nfft
+	hop   int     // Window output hop size
+	lah   int     // Non-causal PGHI lookahead in frames (hop sizes)
+	nbins int     // nfft/2+1, Number of DFT bins
+	olap  int     // nbuf/hop, Window ovelap
+	osamp float64 // nfft/nbuf, Zero-padding ratio
+
+	root *Nanowarp
 
 	fft         *fourier.FFT
-	arm         []bool
-	norm, wgain float64
-	heap        hp
-	img         [][]float64
+	arm         []bool  // PGHI done mask, 2D, shift addressed
+	norm, wgain float64 // Global normalization factor and grain-only normalization factor
+	heap        hp      // PGHI heap
 
 	a wbufs
 }
+
 type wbufs struct {
 	S, Mid, M, P, F            []float64 // Scratch buffers
-	Ph                         []float64 // Current phase
+	Ph                         []float64 `size:"nbins"` // Current phase
 	Past, Future               []float64 // Phase accumulators
 	Fadv                       []float64
 	W, Wr, Wd, Wt              []float64      // Window functions
@@ -41,22 +44,20 @@ type wbufs struct {
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Only 2x oversampling works, no more, no less.
 	nfft := nextpow2(nbuf * osamp)
-	nbins := nfft/2 + 1
 	n = &warper{
 		nfft:  nfft,
-		nbins: nbins,
+		nbins: nfft/2 + 1,
 		nbuf:  nbuf,
 		hop:   nbuf / olap,
 		olap:  olap,
+		osamp: float64(osamp),
 		root:  nanowarp,
+		lah:   olap * osamp * 2,
 	}
 	a := &n.a
 
-	makeslices(a, nbins, nfft, nch)
-
-	// Exceptions
-	a.Ph = make([]float64, nbins)
-	n.arm = make([]bool, nbins)
+	makeslices(a, n.nbins, nfft, nch)
+	n.arm = make([]bool, n.nbins*n.lah)
 
 	s := func(w []float64) []float64 {
 		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
@@ -69,14 +70,14 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	copy(s(a.Wr), s(a.W))
 	slices.Reverse(s(a.Wr))
 	n.wgain = windowGain(n.a.W)
-	n.norm = float64(nfft) / float64(n.hop) * float64(nfft) * n.wgain
+	n.norm = float64(nfft) * float64(n.olap) * n.osamp * n.wgain
 
 	// waveform.Dump(nil, a.W)
 	// waveform.Dump(nil, a.Wt)
 	// waveform.Dump(nil, a.Wd)
 
 	n.fft = fourier.NewFFT(nfft)
-	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
+	n.heap = make(hp, n.lah*n.nbins) // 2 for future and past.
 
 	return
 }
@@ -165,7 +166,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				d = 0
 				println(`collision:`, pin)
 			}
-			n.advance(ingrain, grainbuf, abs(c()), d)
+			n.advance([][][]float64{ingrain}, grainbuf, abs(c()), d)
 		}
 
 		// Cut pre-echo in transient regions.
@@ -187,14 +188,14 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		if h > 0 {
-			loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-			floats.Add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
-		}
-		if h < 0 {
-			routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-			floats.Add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
-		}
+		// if h > 0 {
+		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+		// }
+		// if h < 0 {
+		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+		// }
 
 		if h < 0 && j <= pin {
 			h = n.hop
@@ -273,8 +274,10 @@ func (n *warper) bypassGrain(present, output [][]float64) {
 // If direction is 1, it is doing forward integration.
 // If it is -1, it is doing backward integration.
 // If it is 0, integration is performed in both directions.
-func (n *warper) advance(present, output [][]float64, stretch float64, direction int) {
+func (n *warper) advance(fs [][][]float64, output [][]float64, stretch float64, direction int) {
 	a := &n.a
+
+	present := fs[0]
 
 	clear(a.Mid)
 	for ch := range present {
@@ -288,9 +291,8 @@ func (n *warper) advance(present, output [][]float64, stretch float64, direction
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	// TODO Works ONLY with 2x FFT oversampling.
-	osampc := float64(n.nfft) / float64(n.nbuf)
-	tadv := gettadv(a.X[:n.nbins], a.Xd, float64(n.olap)*osampc)
-	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch*2./osampc)
+	tadv := gettadv(a.X, a.Xd, float64(n.olap)*n.osamp)
+	fadv := getfadv(a.X, a.Xt, stretch*2./n.osamp)
 
 	for w := range a.X {
 		// TODO Probably it will be more numerically stable to limit the phase accuum to
