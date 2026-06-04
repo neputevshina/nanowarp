@@ -60,8 +60,8 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.arm = make([]bool, n.nbins*n.lah)
 
 	s := func(w []float64) []float64 {
-		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
-		return w[:nbuf]
+		return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
+		// return w[:nbuf]
 	}
 	blackmanHarris(s(a.W))
 
