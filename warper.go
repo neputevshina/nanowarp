@@ -297,17 +297,20 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	n.heap = n.heap[:0]
 	clear(n.heap)
 
-	for t := range n.lah {
+	for t := range Ph {
 		clear(arm[t])
 		for w := range n.nbins {
 			// Frames on sides of the framebuffer are the past frame after the
 			// previous transient, and the future frame, which is the first
 			// frame of a transient.
-			// They are the ground truths for the current step of integration.
+			//
+			// They are ground truths for the current step of integration, so they are
+			// added to the heap and not armed for phase reconstruction.
 			if t > 0 && t < n.lah {
 				arm[t][w] = true
+			} else {
+				n.heap = append(n.heap, heaptriple{M[t][w], w, t})
 			}
-			n.heap = append(n.heap, heaptriple{M[t][w], w, t})
 		}
 	}
 	heapInit(&n.heap)
@@ -321,7 +324,7 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 			arm[t-1][w] = false
 			heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
 		}
-		if t < n.lah-1 && arm[t+1][w] {
+		if t < len(Ph)-1 && arm[t+1][w] {
 			Ph[t+1][w] = Ph[t][w] + Tadv[t+1][w]
 			arm[t+1][w] = false
 			heapPush(&n.heap, heaptriple{M[t+1][w], w, t + 1})
@@ -348,7 +351,7 @@ func (n *warper) synthesize(output [][]float64, C, Co [][]complex128, E []comple
 	}
 
 	for w := range Ph {
-		// Add stereo phase differences back through multiplication.
+		// Add stereo phase differences back through complex multiplication.
 		E[w] = cmplx.Rect(1, Ph[w])
 	}
 	for ch := range output {
@@ -371,44 +374,7 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, stretch float64) 
 
 	n.analyze(present, a.C, a.X, a.Xd, a.Xt, a.E, a.Fadv, a.Tadv, a.M, stretch)
 
-	n.heap = n.heap[:n.nbins]
-	clear(n.heap)
-	clear(n.arm[0])
-	for j := range a.X {
-		n.arm[0][j] = true
-		n.heap[j] = heaptriple{a.P[j], j, -1}
-	}
-	heapInit(&n.heap)
-
-	// Do PGHI.
-	for len(n.heap) > 0 {
-		h := heapPop(&n.heap)
-		w := h.w
-		t := h.t
-		switch t {
-		case -1:
-			if n.arm[0][w] {
-				a.Ph[w] = a.Past[w] + a.Tadv[w]
-				n.arm[0][w] = false
-				heapPush(&n.heap, heaptriple{a.M[w], w, t + 1})
-			}
-		case 0:
-			// NOTE > and >= here is a significant difference.
-			//
-			// Do listening test on a good equipment to decide which is best.
-			// On my $4 speakers > sounds more «bright», «airy», which is probably better.
-			if w >= 1 && n.arm[0][w-1] {
-				a.Ph[w-1] = a.Ph[w] - a.Fadv[w-1]
-				n.arm[0][w-1] = false
-				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, t})
-			}
-			if w < n.nbins-1 && n.arm[0][w+1] {
-				a.Ph[w+1] = a.Ph[w] + a.Fadv[w+1]
-				n.arm[0][w+1] = false
-				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, t})
-			}
-		}
-	}
+	n.integrate([][]float64{nil, a.Fadv}, [][]float64{nil, a.Tadv}, [][]float64{a.P, a.M}, [][]float64{a.Past, a.Ph}, n.arm)
 
 	n.synthesize(output, a.C, a.Co, a.E, a.Ph, a.Past, a.P, a.M, true)
 }
