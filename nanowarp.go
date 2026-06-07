@@ -157,7 +157,11 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 			// which current coefficient describes).
 			fill(coeffs[i+tsa/2:j-tsa/2], (t/s-x)/(t-x))
 		}
-
+	}
+	for i, c := range coeffs {
+		if c != c || math.IsInf(c, 0) || c == 0 {
+			coeffs[i] = 1
+		}
 	}
 }
 
