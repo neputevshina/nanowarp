@@ -37,7 +37,7 @@ type wbufs struct {
 	Past, Future               []float64 // Phase accumulators
 	Fadv, Tadv                 []float64
 	W, Wr, Wd, Wt              []float64      // Window functions
-	X, E, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
+	X, Y, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
 	C, Co                      [][]complex128 // Channels
 }
 
@@ -94,19 +94,18 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	ingrain := make2(2, n.nfft)
 	copy(input[0], lin)
 	copy(input[1], rin)
-	h := n.hop
-	pin, lastone, firstone := 0, 0, 0
+	lastone, firstone := 0, 0
 	latch := true
-	for j := -n.nbuf; ; j += h {
+	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
 			break
 		}
 
-		c := func() float64 {
+		c := func(j int) float64 {
 			c := 1.
 			if j > 0 {
-				c = 1 / coeffs[j]
-				if c != c || math.IsInf(c, 0) {
+				c = coeffs[j]
+				if c != c || math.IsInf(c, 0) || c == 0 {
 					c = 1
 				}
 			}
@@ -115,25 +114,14 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		if !causal && j > 0 {
 			// TODO Compensate this.
-			lookahead := int(math.Ceil(float64(n.hop)*c())) * 5
-			future := j + lookahead
+			future := j + n.hop*n.lah
 			filt := future-firstone > n.root.fs*n.root.opts.TransientMs/1000
 			if future < len(lout) && coeffs[future] == 1 && filt {
-				// Don't do anti-causal part if there is an overlap with the reset grain.
-				if lookahead < n.nbuf {
-					goto next
-				}
-				pin = j
-				h = -n.hop
-				j = future
-				println(`future:`, pin, `-`, future, `, lah:`, lookahead)
 			}
 		}
-	next:
 
-		_ = firstone
 		d := j - lastone
-		if c() == 1 {
+		if c(j) == 1 {
 			lastone = j
 			if latch {
 				println(`firstone:`, j)
@@ -154,21 +142,17 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][max(0, i-n.nbuf/2):])
 		}
 
-		if n.root.opts.Quality >= 0 && c() == 1 {
+		if n.root.opts.Quality >= 0 && c(j) == 1 {
 			println(`reset past:`, j)
 			n.resetPast(ingrain)
 			n.bypassGrain(ingrain, grainbuf)
 		} else {
-			if j == pin {
-				d = 0
-				println(`collision:`, pin)
-			}
-			n.advance([][][]float64{ingrain}, grainbuf, abs(c()))
+			n.advance([][][]float64{ingrain}, grainbuf, c(j))
 		}
 
 		// Cut pre-echo in transient regions.
 		// TODO Works strange after implementing non-causality.
-		if c() != 1 && d < n.nbuf/2 {
+		if c(j) != 1 && d < n.nbuf/2 {
 			for ch := range grainbuf {
 				rr := grainbuf[ch][max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
 				for i := range rr {
@@ -179,7 +163,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 		}
 
-		if n.root.opts.Onsets && c() != 1 {
+		if n.root.opts.Onsets && c(j) != 1 {
 			for ch := range grainbuf {
 				clear(grainbuf[ch])
 			}
@@ -190,11 +174,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
-
-		if h < 0 && j <= pin {
-			h = n.hop
-			j = lastone
-		}
 	}
 }
 
@@ -248,7 +227,7 @@ func (n *warper) bypassGrain(present, output [][]float64) {
 	}
 }
 
-func (n *warper) analyze(present [][]float64, C [][]complex128, X, Xd, Xt, E []complex128, Fadv, Tadv, M []float64, stretch float64) {
+func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M []float64, speedup float64) {
 	a := &n.a
 
 	clear(a.Mid)
@@ -257,20 +236,20 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, X, Xd, Xt, E []c
 		n.enfft(C[ch], a.W, present[ch])
 	}
 
-	n.enfft(X, a.W, a.Mid)
-	n.enfft(Xd, a.Wd, a.Mid)
-	n.enfft(Xt, a.Wt, a.Mid)
+	n.enfft(a.X, a.W, a.Mid)
+	n.enfft(a.Xd, a.Wd, a.Mid)
+	n.enfft(a.Xt, a.Wt, a.Mid)
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
-	for w := range X {
+	for w := range a.X {
 		// TODO Probably it will be more numerically stable to limit the phase accuum to
 		// 0..1 and scale back to -π..π range at the poltocar conversion.
 		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
-		Fadv[w] = princarg(getfadv(X, Xt, stretch*2./n.osamp)(w))
-		Tadv[w] = gettadv(X, Xd, float64(n.olap)*n.osamp)(w)
+		Fadv[w] = princarg(getfadv(a.X, a.Xt, 2./n.osamp/speedup)(w))
+		Tadv[w] = gettadv(a.X, a.Xd, float64(n.olap)*n.osamp)(w)
 	}
 
-	for w := range X {
+	for w := range a.X {
 		// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 		// NB: Phase difference in polar coordinates is complex division in cartesian.
 		//     Phase sum is conversely a multiply.
@@ -278,17 +257,17 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, X, Xd, Xt, E []c
 		//
 		// See “Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
 		// real-time realization for a commercial music product.”
-		m := mag(X[w])
-		p := X[w] / complex(m, 0)
+		m := mag(a.X[w])
+		p := a.X[w] / complex(m, 0)
 		if m < 1e-6 {
 			p = complex(1, 0)
 		}
 		M[w] = m
-		E[w] = p
+		a.Y[w] = p
 	}
 	for ch := range present {
-		for w := range X {
-			C[ch][w] /= E[w]
+		for w := range a.X {
+			C[ch][w] /= a.Y[w]
 		}
 	}
 }
@@ -297,18 +276,18 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	n.heap = n.heap[:0]
 	clear(n.heap)
 
+	// Frames on sides of the framebuffer are the past frame after the
+	// previous transient, and the future frame, which is the first
+	// frame of a transient.
+	//
+	// They are ground truths for the current step of integration, so they are
+	// added to the heap and not armed for phase reconstruction.
 	for t := range Ph {
-		clear(arm[t])
-		for w := range n.nbins {
-			// Frames on sides of the framebuffer are the past frame after the
-			// previous transient, and the future frame, which is the first
-			// frame of a transient.
-			//
-			// They are ground truths for the current step of integration, so they are
-			// added to the heap and not armed for phase reconstruction.
-			if t > 0 && t < n.lah {
-				arm[t][w] = true
-			} else {
+		if t > 0 && t < n.lah {
+			fill(arm[t], true)
+		} else {
+			fill(arm[t], false)
+			for w := range n.nbins {
 				n.heap = append(n.heap, heaptriple{M[t][w], w, t})
 			}
 		}
@@ -342,20 +321,14 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	}
 }
 
-func (n *warper) synthesize(output [][]float64, C, Co [][]complex128, E []complex128, Ph, Past, P, M []float64, causal bool) {
-	if causal {
-		for w := range Ph {
-			Past[w] = princarg(Ph[w])
-		}
-		copy(P, M)
-	}
-
+func (n *warper) synthesize(output [][]float64, C, Co [][]complex128, Ph []float64) {
+	a := &n.a
 	for w := range Ph {
 		// Add stereo phase differences back through complex multiplication.
-		E[w] = cmplx.Rect(1, Ph[w])
+		a.Y[w] = cmplx.Rect(1, Ph[w])
 	}
 	for ch := range output {
-		cmplxs.MulTo(Co[ch], C[ch], E)
+		cmplxs.MulTo(Co[ch], C[ch], a.Y)
 		n.defft(output[ch], Co[ch], true)
 	}
 }
@@ -364,19 +337,21 @@ func (n *warper) synthesize(output [][]float64, C, Co [][]complex128, E []comple
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-// If direction is 1, it is doing forward integration.
-// If it is -1, it is doing backward integration.
-// If it is 0, integration is performed in both directions.
-func (n *warper) advance(fs [][][]float64, output [][]float64, stretch float64) {
+func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) {
 	a := &n.a
 
 	present := fs[0]
 
-	n.analyze(present, a.C, a.X, a.Xd, a.Xt, a.E, a.Fadv, a.Tadv, a.M, stretch)
+	n.analyze(present, a.C, a.Fadv, a.Tadv, a.M, speedup)
 
 	n.integrate([][]float64{nil, a.Fadv}, [][]float64{nil, a.Tadv}, [][]float64{a.P, a.M}, [][]float64{a.Past, a.Ph}, n.arm)
 
-	n.synthesize(output, a.C, a.Co, a.E, a.Ph, a.Past, a.P, a.M, true)
+	for w := range a.Ph {
+		a.Past[w] = princarg(a.Ph[w])
+	}
+	copy(a.P, a.M)
+
+	n.synthesize(output, a.C, a.Co, a.Ph)
 }
 
 func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
