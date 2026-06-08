@@ -96,13 +96,13 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	// TODO Arbitrary number of channels, including mono
 	input := make2(2, len(lin))
 	grainbuf := make2(2, n.nfft)
+	grainbufs := make3(n.lah, 2, n.nfft)
 	ingrain := make2(2, n.nfft)
-	outgrain := make2(2, 0)
 	copy(input[0], lin)
 	copy(input[1], rin)
 	waveform.Dump(nil, coeffs)
 
-	n.incrop = make3(n.lah, 2, n.nbins)
+	n.incrop = make3(n.lah, 2, n.nfft)
 	n.outcrop = make3(n.lah, 2, 0)
 
 	h := n.hop
@@ -130,7 +130,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			latch = true
 		}
 
-		cropin := func(j int) [][]float64 {
+		suck := func(j int) [][]float64 {
 			i := int(phasor[max(0, j)])
 			for ch := range grainbuf {
 				clear(ingrain[ch])
@@ -139,33 +139,35 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			}
 			return ingrain
 		}
-		cropout := func(j int) [][]float64 {
-			outgrain[0] = lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-			outgrain[1] = rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-			return outgrain
+		exhale := func(j int, grainbuf [][]float64) {
+			loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+			add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+
+			routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+			add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
 		}
 
-		if !causal && j > 0 {
+		future := j + n.hop*n.lah
+		filt := future-firstone >= n.root.fs*n.root.opts.TransientMs/1000 // Only upper front of transient.
+		if !causal && j > 0 && future < len(lout) && c(future) == 1 && filt {
 			// TODO Compensate this.
 			// lookahead := int(math.Ceil(float64(n.hop)*c())) * n.lah
-			future := j + n.hop*n.lah
-			filt := future-firstone >= n.root.fs*n.root.opts.TransientMs/1000 // Only upper front of transient.
-			if future < len(lout) && c(future) == 1 && filt {
-				n.resetFuture(cropin(future))
-				for i := 0; i < n.lah; i++ {
-					ci := cropin(j + n.hop*i)
-					for ch := range grainbuf {
-						copy(n.incrop[i][ch], ci[ch])
-						n.outcrop[i] = cropout(j)
-					}
+			n.resetFuture(suck(future))
+			for i := 0; i < n.lah; i++ {
+				ci := suck(j + n.hop*i)
+				for ch := range grainbuf {
+					copy(n.incrop[i][ch], ci[ch])
 				}
-				n.stitch(n.incrop, n.outcrop, c(j)) // TODO Individual speedup for each grain
-				j = future + n.hop
-				continue
 			}
+			n.stitch(n.incrop, grainbufs, c(j)) // TODO Individual speedup for each grain
+			for i := 0; i < n.lah; i++ {
+				exhale(j+n.hop*i, grainbufs[i])
+			}
+			j = future + n.hop
+			continue
 		} else if n.root.opts.Quality >= 0 && c(j) == 1 {
 			println(`reset past:`, j)
-			g := cropin(j)
+			g := suck(j)
 			n.resetPast(g)
 			n.bypassGrain(g, grainbuf)
 		} else {
@@ -173,7 +175,7 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				d = 0
 				println(`collision:`, pin)
 			}
-			n.advance([][][]float64{cropin(j)}, grainbuf, abs(c(j)))
+			n.advance([][][]float64{suck(j)}, grainbuf, abs(c(j)))
 		}
 
 		// Cut pre-echo in transient regions.
@@ -376,14 +378,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	}
 }
 
-func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph, Past, P, M []float64, causal bool) {
+func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph []float64) {
 	a := &n.a
-	if causal {
-		for w := range Ph {
-			Past[w] = princarg(Ph[w])
-		}
-		copy(P, M)
-	}
 
 	for w := range Ph {
 		// Add stereo phase differences back through complex multiplication.
@@ -397,7 +393,6 @@ func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph, Past, P, M
 
 // advance calculates the next frame of the output by one frame using
 // real-time phase gradient heap integration (RTPGHI).
-
 func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) {
 	a := &n.a
 
@@ -407,21 +402,26 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) 
 
 	n.integrate([][]float64{nil, a.Fadv}, [][]float64{nil, a.Tadv}, [][]float64{a.P, a.M}, [][]float64{a.Past, a.Ph}, n.arm)
 
-	n.synthesize(output, a.C, a.Ph, a.Past, a.P, a.M, true)
+	for w := range a.Ph {
+		a.Past[w] = princarg(a.Ph[w])
+	}
+	copy(a.P, a.M)
+
+	n.synthesize(output, a.C, a.Ph)
 }
 
 // stitch reconstructs the phase between fs[0] and fs[len(fs)-1] frames.
 func (n *warper) stitch(fs [][][]float64, output [][][]float64, speedup float64) {
 	a := &n.a
 
-	for t := range n.lah {
-		n.analyze(fs[t], a.Cs[t], a.Fadvs[t], a.Tadvs[t], a.Ms[t], speedup)
+	for t := range n.lah - 2 {
+		n.analyze(fs[t+1], a.Cs[t+1], a.Fadvs[t+1], a.Tadvs[t+1], a.Ms[t+1], speedup)
 	}
 
 	n.integrate(a.Fadvs, a.Tadvs, a.Ms, a.Phs, n.arm)
 
-	for i := range n.lah - 1 {
-		n.synthesize(output[i], a.Cs[i], a.Phs[i], nil, nil, a.Ms[i], false)
+	for i := range n.lah {
+		n.synthesize(output[i], a.Cs[i], a.Phs[i])
 	}
 }
 
