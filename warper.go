@@ -39,6 +39,9 @@ type wbufs struct {
 	W, Wr, Wd, Wt              []float64      // Window functions
 	X, Y, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
 	C, Co                      [][]complex128 // Channels
+
+	Cs                    [][][]complex128
+	Phs, Fadvs, Tadvs, Ms [][]float64 `size:"lah"`
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -52,11 +55,12 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap * osamp * 2,
+		lah:   olap + 1,
 	}
 	a := &n.a
 
-	makeslices(a, n.nbins, nfft, nch)
+	makeslices(a, n.nbins, nfft, nch, n.lah)
+
 	n.arm = make([][]bool, n.lah)
 	for i := range n.arm {
 		n.arm[i] = make([]bool, n.nbins)
@@ -96,20 +100,20 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	copy(input[1], rin)
 	lastone, firstone := 0, 0
 	latch := true
+	c := func(j int) float64 {
+		c := 1.
+		if j > 0 {
+			c = coeffs[j]
+			if c != c || math.IsInf(c, 0) || c == 0 {
+				c = 1
+			}
+		}
+		return c
+	}
+
 	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
 			break
-		}
-
-		c := func(j int) float64 {
-			c := 1.
-			if j > 0 {
-				c = coeffs[j]
-				if c != c || math.IsInf(c, 0) || c == 0 {
-					c = 1
-				}
-			}
-			return c
 		}
 
 		if !causal && j > 0 {
@@ -158,7 +162,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				for i := range rr {
 					rr[i] *= float64(i) / float64(len(rr))
 				}
-				// println(n.nbuf/2, d, n.hop, j, lastone)
 				fill(grainbuf[ch][:n.nbuf/2-d-n.hop], 0)
 			}
 		}
@@ -174,6 +177,61 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+	}
+}
+
+func (n *warper) process4(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
+	fmt.Fprintln(os.Stderr, `(*warper).process4`)
+	// println := func(a ...any) {}
+
+	input := make2(2, len(lin))
+	grainbuf := make2(2, n.nfft)
+	ingrains := make3(n.lah, 2, n.nfft)
+	outgrains := make3(n.lah, 2, n.nfft)
+	copy(input[0], lin)
+	copy(input[1], rin)
+	speedups := make([]float64, n.lah)
+	c := func(j int) float64 {
+		c := 1.
+		if j > 0 {
+			c = coeffs[j]
+			if c != c || math.IsInf(c, 0) || c == 0 {
+				c = 1
+			}
+		}
+		return c
+	}
+	getgrain := func(ingrain [][]float64, j int) {
+		i := int(phasor[max(0, j)])
+		for ch := range grainbuf {
+			clear(ingrain[ch])
+			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][max(0, i-n.nbuf/2):])
+		}
+	}
+	addgrain := func(j int, grainbuf [][]float64) {
+		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+
+		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+	}
+	_ = addgrain
+
+	for j := -n.nbuf; ; j += n.hop * (n.lah - 1) {
+		if j > len(lout)-(n.hop*n.lah) {
+			break
+		}
+
+		for i := range n.lah {
+			getgrain(ingrains[i], j+i*n.hop)
+			// 2 frames out of lah are speed 1
+			speedups[i] = c(j+i*n.hop) * float64(n.lah-2) / float64(n.lah)
+		}
+		n.stitch(true, true, ingrains, outgrains, speedups)
+		n.bypassGrain(ingrains[0], outgrains[0])
+		for i := range n.lah - 1 {
+			addgrain(j+i*n.hop, outgrains[i])
+		}
 	}
 }
 
@@ -227,18 +285,31 @@ func (n *warper) bypassGrain(present, output [][]float64) {
 	}
 }
 
-func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M []float64, speedup float64) {
+func (n *warper) bash(present [][]float64, C [][]complex128, M, Ph []float64, Mid []float64) {
+	a := &n.a
+	clear(Mid)
+	for ch := range present {
+		floats.Add(Mid, present[ch])
+		n.enfft(C[ch], a.W, present[ch])
+	}
+	n.enfft(a.X, a.W, Mid)
+	for w := range n.nbins {
+		M[w], Ph[w] = cmplx.Polar(a.X[w])
+	}
+}
+
+func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, Mid []float64, speedup float64) {
 	a := &n.a
 
-	clear(a.Mid)
+	clear(Mid)
 	for ch := range present {
-		floats.Add(a.Mid, present[ch])
+		floats.Add(Mid, present[ch])
 		n.enfft(C[ch], a.W, present[ch])
 	}
 
-	n.enfft(a.X, a.W, a.Mid)
-	n.enfft(a.Xd, a.Wd, a.Mid)
-	n.enfft(a.Xt, a.Wt, a.Mid)
+	n.enfft(a.X, a.W, Mid)
+	n.enfft(a.Xd, a.Wd, Mid)
+	n.enfft(a.Xt, a.Wt, Mid)
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	for w := range a.X {
@@ -321,15 +392,15 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	}
 }
 
-func (n *warper) synthesize(output [][]float64, C, Co [][]complex128, Ph []float64) {
+func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph []float64) {
 	a := &n.a
 	for w := range Ph {
 		// Add stereo phase differences back through complex multiplication.
 		a.Y[w] = cmplx.Rect(1, Ph[w])
 	}
 	for ch := range output {
-		cmplxs.MulTo(Co[ch], C[ch], a.Y)
-		n.defft(output[ch], Co[ch], true)
+		cmplxs.MulTo(a.X, C[ch], a.Y)
+		n.defft(output[ch], a.X, true)
 	}
 }
 
@@ -342,7 +413,7 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) 
 
 	present := fs[0]
 
-	n.analyze(present, a.C, a.Fadv, a.Tadv, a.M, speedup)
+	n.analyze(present, a.C, a.Fadv, a.Tadv, a.M, a.Mid, speedup)
 
 	n.integrate([][]float64{nil, a.Fadv}, [][]float64{nil, a.Tadv}, [][]float64{a.P, a.M}, [][]float64{a.Past, a.Ph}, n.arm)
 
@@ -351,7 +422,31 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) 
 	}
 	copy(a.P, a.M)
 
-	n.synthesize(output, a.C, a.Co, a.Ph)
+	n.synthesize(output, a.C, a.Ph)
+}
+
+// stitch reconstructs the phase between fs[0] and fs[n.lah-1] frames.
+func (n *warper) stitch(g0, glast bool, fs [][][]float64, output [][][]float64, speedup []float64) {
+	a := &n.a
+
+	last := len(fs) - 1
+	if g0 {
+		n.bash(fs[0], a.Cs[0], a.Ms[0], a.Phs[0], a.Mid)
+	}
+	if glast {
+		n.bash(fs[last], a.Cs[last], a.Ms[last], a.Phs[last], a.Mid)
+	}
+	for t := range last - 1 {
+		n.analyze(fs[t+1], a.Cs[t+1], a.Fadvs[t+1], a.Tadvs[t+1], a.Ms[t+1], a.Mid, speedup[t+1])
+		// println(t + 1)
+		// waveform.Dump(nil, fs[t+1][0])
+	}
+
+	n.integrate(a.Fadvs, a.Tadvs, a.Ms, a.Phs, n.arm)
+
+	for i := range last + 1 {
+		n.synthesize(output[i], a.Cs[i], a.Phs[i])
+	}
 }
 
 func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
