@@ -55,7 +55,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap + 1,
+		lah:   olap*4 + 1,
 	}
 	a := &n.a
 
@@ -70,7 +70,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
 		return w[:nbuf]
 	}
-	blackmanHarris(s(a.W))
+	hann(s(a.W))
 
 	windowDx(s(a.W), s(a.Wd))
 	windowT(s(a.W), s(a.Wt))
@@ -191,22 +191,18 @@ func (n *warper) process4(lin, rin, lout, rout []float64, coeffs, phasor []float
 	copy(input[0], lin)
 	copy(input[1], rin)
 	speedups := make([]float64, n.lah)
-	c := func(j int) float64 {
-		c := 1.
-		if j > 0 {
-			c = coeffs[j]
-			if c != c || math.IsInf(c, 0) || c == 0 {
-				c = 1
-			}
-		}
-		return c
-	}
-	getgrain := func(ingrain [][]float64, j int) {
+
+	getgrain := func(ingrain [][]float64, j int) bool {
 		i := int(phasor[max(0, j)])
-		for ch := range grainbuf {
-			clear(ingrain[ch])
-			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][max(0, i-n.nbuf/2):])
+		if i > len(lin)-n.nbuf {
+			return true
 		}
+		for ch := range grainbuf {
+			// fill(ingrain[ch], 1)
+			clear(ingrain[ch])
+			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][clamp(0, len(lout)-n.nfft, i-n.nbuf/2):])
+		}
+		return false
 	}
 	addgrain := func(j int, grainbuf [][]float64) {
 		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
@@ -216,22 +212,30 @@ func (n *warper) process4(lin, rin, lout, rout []float64, coeffs, phasor []float
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
 	}
 	_ = addgrain
+	_ = speedups
 
-	for j := -n.nbuf; ; j += n.hop * (n.lah - 1) {
-		if j > len(lout)-(n.hop*n.lah) {
+	for j := -n.nbuf; ; {
+		if j > len(lout)-(n.hop*n.lah*2) {
 			break
 		}
 
+		if coeffs[max(0, j)] == 1 {
+			getgrain(ingrains[0], j)
+			n.bypassGrain(ingrains[0], outgrains[0])
+			addgrain(j, outgrains[0])
+			j += n.hop
+			continue
+		}
+
 		for i := range n.lah {
-			getgrain(ingrains[i], j+i*n.hop)
-			// 2 frames out of lah are speed 1
-			speedups[i] = c(j+i*n.hop) * float64(n.lah-2) / float64(n.lah)
+			getgrain(ingrains[i], j+(i-1)*n.hop)
+			speedups[i] = coeffs[j+(i-1)*n.hop]
 		}
 		n.stitch(true, true, ingrains, outgrains, speedups)
-		n.bypassGrain(ingrains[0], outgrains[0])
 		for i := range n.lah - 1 {
-			addgrain(j+i*n.hop, outgrains[i])
+			addgrain(j+i*n.hop, outgrains[1:][i])
 		}
+		j += n.hop * (n.lah - 1)
 	}
 }
 
@@ -278,8 +282,6 @@ func (n *warper) bypassGrain(present, output [][]float64) {
 		// copy(output[ch], present[ch])
 		// mul(output[ch], a.W)
 		// mul(output[ch], a.Wr)
-		// scale(output[ch], (1+n.wgain*float64(n.nbuf)/float64(n.hop))/2)
-		// Where this is must be the last line:
 		// scale(output[ch], n.wgain*float64(n.nbuf)/float64(n.hop))
 		// Probably there is something wrong in gonum FFT implementation.
 	}

@@ -140,6 +140,7 @@ func hann(out []float64) {
 	}
 }
 
+// TODO Does not achieve perfect reconstruction.
 func blackmanHarris(out []float64) {
 	// 3 echoes
 	for i := range out {
