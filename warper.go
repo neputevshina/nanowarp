@@ -55,7 +55,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap*2 + 1,
+		lah:   olap*120 + 1,
 	}
 	a := &n.a
 
@@ -240,7 +240,8 @@ func (n *warper) process4(lin, rin, lout, rout []float64, coeffs, phasor []float
 		for i := range n.lah {
 			j := j + (i-1)*n.hop
 			getgrain(ingrains[i], j)
-			speedups[i] = coeffs[j]
+			n, s, m := float64(n.nbuf), coeffs[i], float64(n.hop*n.lah)
+			speedups[i] = n*(1/s-1)/m + 1/s
 			p(`-`, j, coeffs[j])
 		}
 		n.stitch(true, true, ingrains, outgrains, speedups)
@@ -250,6 +251,58 @@ func (n *warper) process4(lin, rin, lout, rout []float64, coeffs, phasor []float
 		}
 		j += n.hop * (n.lah - 2)
 		p(`o`, j, coeffs[j])
+	}
+}
+
+func (n *warper) process5(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
+	fmt.Fprintln(os.Stderr, `(*warper).process4`)
+	// println := func(a ...any) {}
+
+	input := make2(2, len(lin))
+	grainbuf := make2(2, n.nfft)
+	ingrains := make3(n.lah, 2, n.nfft)
+	outgrains := make3(n.lah, 2, n.nfft)
+	copy(input[0], lin)
+	copy(input[1], rin)
+	speedups := make([]float64, n.lah)
+
+	getgrain := func(ingrain [][]float64, j int) {
+		i := int(phasor[max(0, j)])
+		if i > len(lin)-n.nbuf {
+			return
+		}
+		for ch := range grainbuf {
+			// fill(ingrain[ch], 1)
+			// continue
+			clear(ingrain[ch])
+			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][clamp(0, len(lout)-n.nfft, i-n.nbuf/2):])
+		}
+	}
+	addgrain := func(j int, grainbuf [][]float64) {
+		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+
+		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+	}
+	_ = addgrain
+
+	for j := -n.nbuf; ; j += n.hop * (n.lah - 1) {
+		if j > len(lout)-n.nbuf {
+			break
+		}
+		l := min((len(lout)-j)/n.hop, n.lah)
+		println(l)
+		for i := range l {
+			j := j + i*n.hop
+			getgrain(ingrains[i], j)
+			speedups[i] = coeffs[max(0, j)]
+		}
+		n.stitch(true, true, ingrains[:l], outgrains, speedups)
+		g := outgrains[1:l]
+		for i := range g {
+			addgrain(j+(i+1)*n.hop, g[i])
+		}
 	}
 }
 

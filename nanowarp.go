@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-
-	"github.com/neputevshina/nanowarp/waveform"
 )
 
 type Nanowarp struct {
@@ -106,11 +104,12 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 	coeffs := make([]float64, len(lout))
 	phasor := make([]float64, len(lout))
-	if n.opts.Quality == -2 {
+	if n.opts.Quality == -1 {
 		for j := range coeffs {
 			coeffs[j] = 1 / stretch
 		}
-	} else if n.opts.Quality == -1 {
+	} else if n.opts.Quality == -2 {
+		// For process4
 		type f = float64
 		s := stretch
 		h, lah := n.warper.hop, n.warper.lah-2
@@ -138,10 +137,9 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
 	println(int(phasor[argmax(phasor)]), int(stretch*float64(len(lin))))
-	waveform.Dump(nil, coeffs[:120000])
 
 	if n.opts.Quality == -1 {
-		n.warper.process4(lin, rin, lout, rout, coeffs, phasor)
+		n.warper.process5(lin, rin, lout, rout, coeffs, phasor)
 	} else {
 		n.warper.process3(lin, rin, lout, rout, coeffs, phasor, true)
 	}

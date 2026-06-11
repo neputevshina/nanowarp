@@ -64,22 +64,17 @@ unmodified.
   - Even simpler: use `-from` as a source of truth.
   - Or keep a cumulative average, and select peaks only from above it.
   - Or do live classification of the material and make the bin size smaller where no voice is found. Phase interruptions on instruments are much less noticeable.
-  - Or use the large BPM-independent peak selection window (≥300 ms) and force the reset when enough correlation with the original is obtained. 
+  - ~~Or use the large BPM-independent peak selection window (≥300 ms) and force the reset when enough correlation with the original is obtained. 
     Very cheap, we always have both spectra for each grain, xcorr is one conjugate and multiplication away.
-    Might require doing it per-band and using some psychoacoustics to do it both regularly and unnoticeable.
+    Might require doing it per-band and using some psychoacoustics to do it both regularly and unnoticeable.~~
 - Some more onset detectors:
   - https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
   - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
-  - Probably expecting some regular beat might be bad for some types of music.
+  - Expecting a regular beat might be bad for some types of music.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
 - ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't, but it's still a cool concept to keep in mind.
-- Phase resets probably could be made smoother [by non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) for several frames before the reset.
-  - This is only method I could think of which will help **remove pre-echo on very large (>4x) stetches**.
-  - ~~Not too complex, though. Basically run PVDR in reverse (almost) for several frames before the transient 1x coefficient switch and then weld 
-    the future and the past with the remaining accumulated non-causal phase frame.~~ Done.
-  - If this resolves interruptions, we won't have to perform non-linear scaling of transients, we'll just reset the phase every nbuf.
-    - It does not. But this is only because we need to perform large-windowed PVDR, with several frames before and after.
-    - Dependent on overlap. 3 frames before and 3 after (vs. current 1-1) will be enough for 4x overlap.
+- [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, ignoring overlap, 
+  so it is impossible to obtain globally coherent phase with phase resets using this method. We need a some way to use the phase of up to overlap number of frames.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 - We can probably reset the phases not for the whole frame, but only for a most prominent region. Either:
@@ -87,9 +82,11 @@ unmodified.
   - ~~use the total sum (like now), but find a prominent bin range and reset the phase only in it.~~
   - We can probably never reset the bass. Probably.
   - It is enough to split the signal to four bands probably, crossovers are at 250-820-2500 Hz
-  - And then drop the band if cross-correlation is low or if a band's response in a softmaxed vector is lower than 0.25.
+  - ~~And then drop the band if cross-correlation is low or if a band's response in a softmaxed vector is lower than 0.25.~~
   - Bass activation triggers everything
 - There is pre- and post-echo of size hop×stretch for EVERY vertical motion in spectrum. 
+  - This is the property of PGHI (that's window side lobes), mini-pvdr does the same.
+  - Apparent only on extreme stretches
   - And on high frequencies it's even echo in frequency, not only time.
 - **gonum has vectorized [complex](https://pkg.go.dev/gonum.org/v1/gonum@v0.17.0/cmplxs) and [float](https://pkg.go.dev/gonum.org/v1/gonum@v0.17.0/floats) operations. USE THIS.**
 
