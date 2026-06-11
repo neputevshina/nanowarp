@@ -111,16 +111,16 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			coeffs[j] = 1 / stretch
 		}
 	} else if n.opts.Quality == -1 {
-		nb, h, lah := n.warper.nbuf, n.warper.hop, n.warper.lah
-		rc := float64(lah*h) / float64(lah*h+nb)
-		for j := range coeffs {
-			p := j % (lah*h + nb)
-			if p <= nb {
-				coeffs[j] = 1
-			} else {
-				coeffs[j] = 1 / stretch * rc
-			}
+		type f = float64
+		s := stretch
+		h, lah := n.warper.hop, n.warper.lah-2
+		one, str := h*n.olap, h*lah
+		n, m := f(one), f(str)
+		for j := 0; j < len(coeffs)-one-str; j += one + str {
+			fill(coeffs[j:j+one], 1)
+			fill(coeffs[j+one:j+one+str], n*(1/s-1)/m+1/s)
 		}
+
 	} else {
 		poolstretch := 1.
 		if n.opts.ScalePool {
@@ -137,6 +137,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	for j := range phasor[1:] {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
+	println(int(phasor[argmax(phasor)]), int(stretch*float64(len(lin))))
 	waveform.Dump(nil, coeffs[:120000])
 
 	if n.opts.Quality == -1 {
