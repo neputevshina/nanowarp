@@ -135,7 +135,7 @@ func makeslices(a any, nbins, nfft, nch, lah int) {
 func hann(out []float64) {
 	// 3 echoes of transients after stretch
 	for i := range out {
-		x := float64(i) / float64(len(out)-1)
+		x := float64(i) / float64(len(out))
 		out[i] = 0.5 * (1 - math.Cos(2*math.Pi*x))
 	}
 }

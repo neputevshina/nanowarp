@@ -36,7 +36,7 @@ type wbufs struct {
 	Ph                         []float64 `size:"nbins"` // Current phase
 	Past, Future               []float64 // Phase accumulators
 	Fadv, Tadv                 []float64
-	W, Wr, Wd, Wt              []float64      // Window functions
+	W, Wr, Wd, Wt, Wdt         []float64      // Window functions
 	X, Y, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
 	C, Co                      [][]complex128 // Channels
 
@@ -68,12 +68,15 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 	s := func(w []float64) []float64 {
 		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
-		return w[:nbuf]
+		return w[:nbuf-1]
 	}
 	hann(s(a.W))
 
+	// FIXME Destination is the first argument by convention.
 	windowDx(s(a.W), s(a.Wd))
 	windowT(s(a.W), s(a.Wt))
+	windowT(s(a.Wd), s(a.Wdt))
+
 	copy(s(a.Wr), s(a.W))
 	slices.Reverse(s(a.Wr))
 	n.wgain = windowGain(n.a.W)
@@ -177,80 +180,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
-	}
-}
-
-func (n *warper) process4(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
-	fmt.Fprintln(os.Stderr, `(*warper).process4`)
-	// println := func(a ...any) {}
-
-	input := make2(2, len(lin))
-	grainbuf := make2(2, n.nfft)
-	ingrains := make3(n.lah, 2, n.nfft)
-	outgrains := make3(n.lah, 2, n.nfft)
-	copy(input[0], lin)
-	copy(input[1], rin)
-	speedups := make([]float64, n.lah)
-
-	getgrain := func(ingrain [][]float64, j int) {
-		i := int(phasor[max(0, j)])
-		if i > len(lin)-n.nbuf {
-			return
-		}
-		for ch := range grainbuf {
-			// fill(ingrain[ch], 1)
-			// continue
-			clear(ingrain[ch])
-			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][clamp(0, len(lout)-n.nfft, i-n.nbuf/2):])
-		}
-	}
-	addgrain := func(j int, grainbuf [][]float64) {
-		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
-
-		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
-	}
-	_ = addgrain
-	_ = speedups
-
-	pj, pi := 0, 0
-	for j := -n.nbuf; ; {
-		if j > len(lout)-(n.hop*n.lah*2) {
-			break
-		}
-		p := func(space string, j int, sc float64) {
-			// return
-
-			i := int(phasor[max(0, j)])
-			println(space, j, j-pj, i, i-pi, sc)
-			pj, pi = j, i
-		}
-
-		if coeffs[max(0, j)] == 1 {
-			p(` `, j, 1)
-			getgrain(ingrains[0], j)
-			n.bypassGrain(ingrains[0], outgrains[0])
-			addgrain(j, outgrains[0])
-
-			j += n.hop
-			continue
-		}
-
-		for i := range n.lah {
-			j := j + (i-1)*n.hop
-			getgrain(ingrains[i], j)
-			n, s, m := float64(n.nbuf), coeffs[i], float64(n.hop*n.lah)
-			speedups[i] = n*(1/s-1)/m + 1/s
-			p(`-`, j, coeffs[j])
-		}
-		n.stitch(true, true, ingrains, outgrains, speedups)
-		g := outgrains[1 : len(outgrains)-1]
-		for i := range g {
-			addgrain(j+i*n.hop, g[i])
-		}
-		j += n.hop * (n.lah - 2)
-		p(`o`, j, coeffs[j])
 	}
 }
 
@@ -379,6 +308,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 	n.enfft(a.X, a.W, Mid)
 	n.enfft(a.Xd, a.Wd, Mid)
 	n.enfft(a.Xt, a.Wt, Mid)
+	n.enfft(a.Y, a.Wdt, Mid)
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	for w := range a.X {
