@@ -70,7 +70,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
 		return w[:nbuf-1]
 	}
-	hann(s(a.W))
+	blackmanHarris(s(a.W))
 
 	// FIXME Destination is the first argument by convention.
 	windowDx(s(a.W), s(a.Wd))

@@ -119,6 +119,7 @@ for {
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
 - Triples the sound on extreme (>4x) time stretches. The bane of all PVDR-based algorithms.
+- [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) Elastiqué doesn't do that.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
