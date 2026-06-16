@@ -84,7 +84,7 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	if opts.PickingMs == 0 {
 		opts.PickingMs = 250
 	}
-	olap := 8
+	olap := 4
 	if opts.Quality == 1 {
 		olap *= 2
 	}
