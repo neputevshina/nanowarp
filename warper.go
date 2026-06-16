@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/neputevshina/nanowarp/oscope"
 	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/dsp/fourier"
 	"gonum.org/v1/gonum/floats"
@@ -55,7 +56,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap*120 + 1,
+		lah:   olap*300 + 1,
 	}
 	a := &n.a
 
@@ -68,7 +69,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 	s := func(w []float64) []float64 {
 		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
-		return w[:nbuf-1]
+		return w[:nbuf]
 	}
 	blackmanHarris(s(a.W))
 
@@ -364,31 +365,70 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	}
 	heapInit(&n.heap)
 
+	// lefts := make2(len(Fadv), n.nbins)
+
+	var rights, ups, downs [][]float64
+	if oscope.Enable {
+		rights = make2(len(Fadv), n.nbins)
+		ups = make2(len(Fadv), n.nbins)
+		downs = make2(len(Fadv), n.nbins)
+	}
+
 	// Do PGHI.
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		w, t := h.w, h.t
 		if t >= 1 && arm[t-1][w] {
+			if oscope.Enable {
+				rights[t][w] = 1
+			}
 			Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
 			arm[t-1][w] = false
 			heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
 		}
 		if t < len(Ph)-1 && arm[t+1][w] {
+			if oscope.Enable {
+				rights[t][w] = 1
+			}
 			Ph[t+1][w] = Ph[t][w] + Tadv[t+1][w]
 			arm[t+1][w] = false
 			heapPush(&n.heap, heaptriple{M[t+1][w], w, t + 1})
 		}
 		if w >= 1 && arm[t][w-1] {
+			if oscope.Enable {
+				downs[t][w] = 1
+			}
 			Ph[t][w-1] = Ph[t][w] - Fadv[t][w-1]
 			arm[t][w-1] = false
 			heapPush(&n.heap, heaptriple{M[t][w-1], w - 1, t})
 		}
 		if w < n.nbins-1 && arm[t][w+1] {
+			if oscope.Enable {
+				ups[t][w] = 1
+			}
 			Ph[t][w+1] = Ph[t][w] + Fadv[t][w+1]
 			arm[t][w+1] = false
 			heapPush(&n.heap, heaptriple{M[t][w+1], w + 1, t})
 		}
 	}
+	if oscope.Enable {
+		for _, e := range rights {
+			oscope.Oscope(e, oscope.Name(`rights`))
+		}
+		for _, e := range ups {
+			oscope.Oscope(e, oscope.Name(`ups`))
+		}
+		for _, e := range downs {
+			oscope.Oscope(e, oscope.Name(`downs`))
+		}
+		for _, e := range M {
+			for w := range e {
+				e[w] = math.Log10(e[w]) + 5
+			}
+			oscope.Oscope(e, oscope.Name(`mags`))
+		}
+	}
+
 }
 
 func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph []float64) {

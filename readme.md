@@ -39,7 +39,7 @@ to get the list of available options.
 
 Nanowarp is a phase gradient heap integration (PGHI) phase vocoder (aka PVDR)[1] where partial derivatives 
 of phase are obtained through time-frequency reassignment[2]. This way accurate phase-time 
-advance can be obtained using only one windowed grain instead of two.
+advance can be obtained using only one windowed grain instead of two for simplicity.
 
 Like in original implementation of PVDR, FFT is oversampled by factor of 2 with zero-padding. 
 Stereo coherence is obtained through stretching mono and adding complex phase difference of 
@@ -123,6 +123,7 @@ for {
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
+ see also https://github.com/ltfat/pvdoneright and https://github.com/y-fujii/mini_pvdr
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
 3. [Duxbury, C., Bello, J. P., Davies, M., & Sandler, M. (2003, September). Complex domain onset detection for musical signals. In Proc. Digital Audio Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.](https://www.dafx.de/paper-archive/2003/pdfs/dafx81.pdf)
 4. [Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a real-time realization for a commercial music product.](https://thesis.unipd.it/bitstream/20.500.12608/16470/1/tesi.pdf)

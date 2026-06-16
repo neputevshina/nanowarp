@@ -13,8 +13,8 @@ import (
 	"runtime/pprof"
 
 	"github.com/neputevshina/nanowarp"
+	"github.com/neputevshina/nanowarp/oscope"
 	"github.com/neputevshina/nanowarp/wav"
-	"github.com/neputevshina/nanowarp/waveform"
 )
 
 var println = fmt.Println
@@ -156,8 +156,6 @@ func main() {
 		}
 	}
 
-	_ = waveform.Dump(nil, left)
-
 	opts := nanowarp.Options{
 		Onsets:      *onsets,
 		Quality:     *q,
@@ -193,4 +191,6 @@ func main() {
 			panic(err)
 		}
 	}
+
+	oscope.Dump(nil, "./pics")
 }
