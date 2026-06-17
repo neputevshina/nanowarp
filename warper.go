@@ -7,7 +7,8 @@ import (
 	"os"
 	"slices"
 
-	"github.com/neputevshina/nanowarp/waveform"
+	"github.com/neputevshina/nanowarp/oscope"
+
 	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/dsp/fourier"
 	"gonum.org/v1/gonum/floats"
@@ -34,15 +35,16 @@ type warper struct {
 }
 
 type wbufs struct {
-	S, Mid, M             []float64 // Scratch buffers
-	P, Ph                 []float64 `size:"nbins"` // Current phase
-	Past                  []float64 // Phase accumulators
-	Fadv, Tadv            []float64
-	Fadvs, Tadvs, Ms, Phs [][]float64      `size:"lah"`
-	W, Wr, Wd, Wt         []float64        // Window functions
-	X, Y, Xd, Xt          []complex128     // Temporaries
-	C                     [][]complex128   // Channel differences
-	Cs                    [][][]complex128 // Channel difference frames
+	S, Mid, M, P, F            []float64 // Scratch buffers
+	Ph                         []float64 `size:"nbins"` // Current phase
+	Past, Future               []float64 // Phase accumulators
+	Fadv, Tadv                 []float64
+	W, Wr, Wd, Wt, Wdt         []float64      // Window functions
+	X, Y, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
+	C, Co                      [][]complex128 // Channels
+
+	Cs                    [][][]complex128
+	Phs, Fadvs, Tadvs, Ms [][]float64 `size:"lah"`
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -56,11 +58,12 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap * osamp * 2,
+		lah:   olap*300 + 1,
 	}
 	a := &n.a
 
 	makeslices(a, n.nbins, nfft, nch, n.lah)
+
 	n.arm = make([][]bool, n.lah)
 	for i := range n.arm {
 		n.arm[i] = make([]bool, n.nbins)
@@ -72,8 +75,11 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	}
 	blackmanHarris(s(a.W))
 
+	// FIXME Destination is the first argument by convention.
 	windowDx(s(a.W), s(a.Wd))
 	windowT(s(a.W), s(a.Wt))
+	windowT(s(a.Wd), s(a.Wdt))
+
 	copy(s(a.Wr), s(a.W))
 	slices.Reverse(s(a.Wr))
 	n.wgain = windowGain(n.a.W)
@@ -89,6 +95,195 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
+func (n *warper) process3old(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
+	fmt.Fprintln(os.Stderr, `(*warper).process3`)
+	get := func() []float64 { return make([]float64, n.nfft) }
+	lgrainbuf, rgrainbuf := get(), get()
+	lingrain, ringrain := get(), get()
+
+	lastone := 0
+	for j := -n.nbuf; ; j += n.hop {
+		if j > len(lout)-n.nbuf {
+			break
+		}
+		i := int(phasor[max(0, j)] - float64(n.nbuf/2))
+
+		if i > len(lin)-n.nbuf {
+			break
+		}
+		clear(lingrain)
+		clear(ringrain)
+		copy(lingrain[max(0, -i):], lin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
+		c := 1.
+		if j > 0 {
+			c = 1 / coeffs[j]
+			if c != c || math.IsInf(c, 0) {
+				c = 1
+			}
+		}
+		tensec := 10 * n.root.fs
+		if n.root.opts.Quality == -1 && j%tensec < (j-n.hop)%tensec {
+			c = 1
+		}
+
+		n.advanceOld(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c), c == 1)
+
+		// Cut pre-echo in transient regions.
+		d := j - lastone
+		if c == 1 {
+			lastone = j
+		} else if d < n.nbuf/2 {
+			z := func(grain []float64) {
+				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+				for i := range rr {
+					rr[i] *= float64(i) / float64(len(rr))
+				}
+				fill(grain[:n.nbuf/2-d-n.hop], 0)
+			}
+			z(lgrainbuf)
+			z(rgrainbuf)
+		}
+
+		if n.root.opts.Onsets && c != 1 {
+			clear(lgrainbuf)
+			clear(rgrainbuf)
+		}
+
+		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+
+		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -j):])
+		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
+	}
+}
+
+// advance adds to the phase of the output by one frame using
+// phase gradient heap integration.
+// See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
+// (https://arxiv.org/pdf/2202.07382)
+func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset bool) {
+	a := &n.a
+	enfft := func(x []complex128, w, grain []float64) {
+		clear(a.S)
+		copy(a.S, grain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
+
+	for i := range lingrain {
+		a.Mid[i] = lingrain[i] + ringrain[i]
+	}
+
+	enfft(a.L, a.W, lingrain)
+	enfft(a.R, a.W, ringrain)
+
+	enfft(a.X, a.W, a.Mid)
+	enfft(a.Xd, a.Wd, a.Mid)
+	enfft(a.Xt, a.Wt, a.Mid)
+
+	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+	// TODO Works ONLY with 2x FFT oversampling.
+	olap := float64(n.nbuf / n.hop)
+	osampc := 2.
+	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc*olap)
+	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
+
+	// Forced phase reset.
+	if reset {
+		for w := range a.Ph {
+			a.Past[w] = cmplx.Phase(a.X[w])
+		}
+		copy(a.P, a.M)
+		copy(a.Lo, a.L)
+		copy(a.Ro, a.R)
+		goto skip
+	}
+
+	for w := range a.X {
+		// TODO Probably it will be more numerically stable to limit the phase accuum to
+		// 0..1 and scale back to -π..π range at the poltocar conversion.
+		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
+		a.Fadv[w] = princarg(fadv(w))
+	}
+
+	for w := range a.X {
+		// Encode stereo phase differences and stretch mid only, keep original magnitudes.
+		// NB: Phase difference in polar coordinates is complex division in cartesian.
+		//     Phase sum is conversely a multiply.
+		//     Hypot and multiplication are always cheaper than Atan2 and Sincos.
+		//
+		// See “Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
+		// real-time realization for a commercial music product.”
+		m := mag(a.X[w])
+		p := a.X[w] / complex(m, 0)
+		if m < 1e-6 {
+			p = complex(1, 0)
+		}
+		a.M[w] = m
+
+		a.L[w] /= p
+		a.R[w] /= p
+	}
+
+	n.heap = make(hp, n.nbins)
+
+	clear(n.arm[0])
+	for j := range a.X {
+		n.arm[0][j] = true
+		n.heap[j] = heaptriple{a.P[j], j, -1}
+	}
+	heapInit(&n.heap)
+
+	// Do PGHI.
+	for len(n.heap) > 0 {
+		h := heapPop(&n.heap)
+		w := h.w
+		switch h.t {
+		case -1:
+			if n.arm[0][w] {
+				adv := tadv(w)
+				a.Ph[w] = a.Past[w] + adv
+				n.arm[0][w] = false
+				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
+			}
+		case 0:
+			if w > 1 && n.arm[0][w-1] {
+				adv := -a.Fadv[w-1]
+				a.Ph[w-1] = a.Ph[w] + adv
+				n.arm[0][w-1] = false
+				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
+			}
+			if w < n.nbins-1 && n.arm[0][w+1] {
+				adv := a.Fadv[w+1]
+				a.Ph[w+1] = a.Ph[w] + adv
+				n.arm[0][w+1] = false
+				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
+			}
+		}
+	}
+
+	copy(a.P, a.M)
+	for w := range a.Ph {
+		// Add stereo phase differences back through multiplication.
+		a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Ph[w])
+		a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Ph[w])
+		a.Past[w] = princarg(a.Ph[w])
+	}
+	goto skip
+skip:
+	defft := func(out []float64, x []complex128) {
+		n.fft.Sequence(a.S, x)
+		for j := range a.S {
+			a.S[j] /= n.norm
+		}
+		mul(a.S, a.Wr)
+		copy(out, a.S)
+	}
+	defft(loutgrain, a.Lo)
+	defft(routgrain, a.Ro)
+}
+
 func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float64, causal bool) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	println := func(a ...any) {}
@@ -100,26 +295,34 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	ingrain := make2(2, n.nfft)
 	copy(input[0], lin)
 	copy(input[1], rin)
-	waveform.Dump(nil, coeffs)
-
-	n.incrop = make3(n.lah, 2, n.nfft)
-	n.outcrop = make3(n.lah, 2, 0)
-
-	h := n.hop
-	pin, lastone, firstone := 0, 0, 0
+	lastone, firstone := 0, 0
 	latch := true
-	for j := -n.nbuf; ; j += h {
-		c := func(j int) float64 {
-			return coeffs[max(0, j)]
+	c := func(j int) float64 {
+		c := 1.
+		if j > 0 {
+			c = coeffs[j]
+			if c != c || math.IsInf(c, 0) || c == 0 {
+				c = 1
+			}
 		}
+		return c
+	}
 
+	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
 			break
 		}
 
-		_ = firstone
+		if !causal && j > 0 {
+			// TODO Compensate this.
+			future := j + n.hop*n.lah
+			filt := future-firstone > n.root.fs*n.root.opts.TransientMs/1000
+			if future < len(lout) && coeffs[future] == 1 && filt {
+			}
+		}
+
 		d := j - lastone
-		if j > 0 && coeffs[j] == 1 {
+		if c(j) == 1 {
 			lastone = j
 			if latch {
 				println(`firstone:`, j)
@@ -147,35 +350,13 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 			add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
 		}
 
-		future := j + n.hop*n.lah
-		filt := future-firstone >= n.root.fs*n.root.opts.TransientMs/1000 // Only upper front of transient.
-		if !causal && j > 0 && future < len(lout) && c(future) == 1 && filt {
-			// TODO Compensate this.
-			// lookahead := int(math.Ceil(float64(n.hop)*c())) * n.lah
-			n.resetFuture(suck(future))
-			for i := 0; i < n.lah; i++ {
-				ci := suck(j + n.hop*i)
-				for ch := range grainbuf {
-					copy(n.incrop[i][ch], ci[ch])
-				}
-			}
-			n.stitch(n.incrop, grainbufs, c(j)) // TODO Individual speedup for each grain
-			for i := 0; i < n.lah; i++ {
-				exhale(j+n.hop*i, grainbufs[i])
-			}
-			j = future + n.hop
-			continue
-		} else if n.root.opts.Quality >= 0 && c(j) == 1 {
+		if n.root.opts.Quality >= 0 && c(j) == 1 {
 			println(`reset past:`, j)
 			g := suck(j)
 			n.resetPast(g)
 			n.bypassGrain(g, grainbuf)
 		} else {
-			if j == pin {
-				d = 0
-				println(`collision:`, pin)
-			}
-			n.advance([][][]float64{suck(j)}, grainbuf, abs(c(j)))
+			n.advance([][][]float64{ingrain}, grainbuf, c(j))
 		}
 
 		// Cut pre-echo in transient regions.
@@ -186,7 +367,6 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 				for i := range rr {
 					rr[i] *= float64(i) / float64(len(rr))
 				}
-				// println(n.nbuf/2, d, n.hop, j, lastone)
 				fill(grainbuf[ch][:n.nbuf/2-d-n.hop], 0)
 			}
 		}
@@ -202,10 +382,57 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
 		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+	}
+}
 
-		if h < 0 && j <= pin {
-			h = n.hop
-			j = lastone
+func (n *warper) process5(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
+	fmt.Fprintln(os.Stderr, `(*warper).process4`)
+	// println := func(a ...any) {}
+
+	input := make2(2, len(lin))
+	grainbuf := make2(2, n.nfft)
+	ingrains := make3(n.lah, 2, n.nfft)
+	outgrains := make3(n.lah, 2, n.nfft)
+	copy(input[0], lin)
+	copy(input[1], rin)
+	speedups := make([]float64, n.lah)
+
+	getgrain := func(ingrain [][]float64, j int) {
+		i := int(phasor[max(0, j)])
+		if i > len(lin)-n.nbuf {
+			return
+		}
+		for ch := range grainbuf {
+			// fill(ingrain[ch], 1)
+			// continue
+			clear(ingrain[ch])
+			copy(ingrain[ch][max(0, -i+n.nbuf/2):], input[ch][clamp(0, len(lout)-n.nfft, i-n.nbuf/2):])
+		}
+	}
+	addgrain := func(j int, grainbuf [][]float64) {
+		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(loutgrain, grainbuf[0][clamp(0, n.nbuf, -j):])
+
+		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
+		add(routgrain, grainbuf[1][clamp(0, n.nbuf, -j):])
+	}
+	_ = addgrain
+
+	for j := -n.nbuf; ; j += n.hop * (n.lah - 1) {
+		if j > len(lout)-n.nbuf {
+			break
+		}
+		l := min((len(lout)-j)/n.hop, n.lah)
+		println(l)
+		for i := range l {
+			j := j + i*n.hop
+			getgrain(ingrains[i], j)
+			speedups[i] = coeffs[max(0, j)]
+		}
+		n.stitch(true, true, ingrains[:l], outgrains, speedups)
+		g := outgrains[1:l]
+		for i := range g {
+			addgrain(j+(i+1)*n.hop, g[i])
 		}
 	}
 }
@@ -268,29 +495,40 @@ func (n *warper) bypassGrain(present, output [][]float64) {
 		// copy(output[ch], present[ch])
 		// mul(output[ch], a.W)
 		// mul(output[ch], a.Wr)
-		// scale(output[ch], (1+n.wgain*float64(n.nbuf)/float64(n.hop))/2)
-		// Where this is must be the last line:
 		// scale(output[ch], n.wgain*float64(n.nbuf)/float64(n.hop))
 		// Probably there is something wrong in gonum FFT implementation.
 	}
 }
 
-func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M []float64, speedup float64) {
+func (n *warper) bash(present [][]float64, C [][]complex128, M, Ph []float64, Mid []float64) {
 	a := &n.a
-	nb := n.nbins
-
-	clear(a.Mid)
+	clear(Mid)
 	for ch := range present {
-		floats.Add(a.Mid, present[ch])
+		floats.Add(Mid, present[ch])
+		n.enfft(C[ch], a.W, present[ch])
+	}
+	n.enfft(a.X, a.W, Mid)
+	for w := range n.nbins {
+		M[w], Ph[w] = cmplx.Polar(a.X[w])
+	}
+}
+
+func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, Mid []float64, speedup float64) {
+	a := &n.a
+
+	clear(Mid)
+	for ch := range present {
+		floats.Add(Mid, present[ch])
 		n.enfft(C[ch], a.W, present[ch])
 	}
 
-	n.enfft(a.X, a.W, a.Mid)
-	n.enfft(a.Xd, a.Wd, a.Mid)
-	n.enfft(a.Xt, a.Wt, a.Mid)
+	n.enfft(a.X, a.W, Mid)
+	n.enfft(a.Xd, a.Wd, Mid)
+	n.enfft(a.Xt, a.Wt, Mid)
+	n.enfft(a.Y, a.Wdt, Mid)
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
-	for w := range nb {
+	for w := range a.X {
 		// TODO Probably it will be more numerically stable to limit the phase accuum to
 		// 0..1 and scale back to -π..π range at the poltocar conversion.
 		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
@@ -298,7 +536,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M []
 		Tadv[w] = gettadv(a.X, a.Xd, float64(n.olap)*n.osamp)(w)
 	}
 
-	for w := range nb {
+	for w := range a.X {
 		// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 		// NB: Phase difference in polar coordinates is complex division in cartesian.
 		//     Phase sum is conversely a multiply.
@@ -315,7 +553,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M []
 		a.Y[w] = p
 	}
 	for ch := range present {
-		for w := range nb {
+		for w := range a.X {
 			C[ch][w] /= a.Y[w]
 		}
 	}
@@ -333,13 +571,13 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	n.heap = n.heap[:0]
 	clear(n.heap)
 
-	for t := range Fadv {
-		// Frames on sides of the framebuffer are the past frame accumulated long
-		// after the previous transient, and the future frame, which is the first
-		// frame of the next transient.
-		//
-		// They are ground truths for the current step of integration, so only
-		// they are added to the heap and not armed for phase reconstruction.
+	// Frames on sides of the framebuffer are the past frame after the
+	// previous transient, and the future frame, which is the first
+	// frame of a transient.
+	//
+	// They are ground truths for the current step of integration, so they are
+	// added to the heap and not armed for phase reconstruction.
+	for t := range Ph {
 		if t > 0 && t < n.lah {
 			fill(arm[t], true)
 		} else {
@@ -351,31 +589,75 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	}
 	heapInit(&n.heap)
 
+	oscope.Enable = true
+
+	// lefts := make2(len(Fadv), n.nbins)
+
+	var rights, ups, downs [][]float64
+	if oscope.Enable {
+		rights = make2(len(Fadv), n.nbins)
+		ups = make2(len(Fadv), n.nbins)
+		downs = make2(len(Fadv), n.nbins)
+	}
+
 	// Do PGHI.
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		w, t := h.w, h.t
-		if t >= 1 && arm[t-1][w] {
-			Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
-			arm[t-1][w] = false
-			heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
-		}
+		// if t >= 1 && arm[t-1][w] {
+		// 	if oscope.Enable {
+		// 		rights[t][w] = 1
+		// 	}
+		// 	Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
+		// 	arm[t-1][w] = false
+		// 	heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
+		// }
 		if t < len(Ph)-1 && arm[t+1][w] {
+			if oscope.Enable {
+				rights[t][w] = 1
+			}
 			Ph[t+1][w] = Ph[t][w] + Tadv[t+1][w]
 			arm[t+1][w] = false
 			heapPush(&n.heap, heaptriple{M[t+1][w], w, t + 1})
 		}
 		if w >= 1 && arm[t][w-1] {
+			if oscope.Enable {
+				downs[t][w] = 1
+			}
 			Ph[t][w-1] = Ph[t][w] - Fadv[t][w-1]
 			arm[t][w-1] = false
 			heapPush(&n.heap, heaptriple{M[t][w-1], w - 1, t})
 		}
 		if w < n.nbins-1 && arm[t][w+1] {
+			if oscope.Enable {
+				ups[t][w] = 1
+			}
 			Ph[t][w+1] = Ph[t][w] + Fadv[t][w+1]
 			arm[t][w+1] = false
 			heapPush(&n.heap, heaptriple{M[t][w+1], w + 1, t})
 		}
 	}
+	if oscope.Enable {
+		for _, e := range rights {
+			oscope.Oscope(e, oscope.Name(`rights`))
+		}
+		for _, e := range ups {
+			oscope.Oscope(e, oscope.Name(`ups`))
+		}
+		for _, e := range downs {
+			oscope.Oscope(e, oscope.Name(`downs`))
+		}
+		for _, e := range M {
+			clear(n.a.S)
+			for w := 1; w < len(e)-1; w++ {
+				if e[w-1] < e[w] && e[w+1] < e[w] {
+					n.a.S[w] = 1
+				}
+			}
+			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`mags`))
+		}
+	}
+
 }
 
 func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph []float64) {
@@ -398,7 +680,7 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) 
 
 	present := fs[0]
 
-	n.analyze(present, a.C, a.Fadv, a.Tadv, a.M, speedup)
+	n.analyze(present, a.C, a.Fadv, a.Tadv, a.M, a.Mid, speedup)
 
 	n.integrate([][]float64{nil, a.Fadv}, [][]float64{nil, a.Tadv}, [][]float64{a.P, a.M}, [][]float64{a.Past, a.Ph}, n.arm)
 
@@ -410,17 +692,26 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) 
 	n.synthesize(output, a.C, a.Ph)
 }
 
-// stitch reconstructs the phase between fs[0] and fs[len(fs)-1] frames.
-func (n *warper) stitch(fs [][][]float64, output [][][]float64, speedup float64) {
+// stitch reconstructs the phase between fs[0] and fs[n.lah-1] frames.
+func (n *warper) stitch(g0, glast bool, fs [][][]float64, output [][][]float64, speedup []float64) {
 	a := &n.a
 
-	for t := range n.lah - 2 {
-		n.analyze(fs[t+1], a.Cs[t+1], a.Fadvs[t+1], a.Tadvs[t+1], a.Ms[t+1], speedup)
+	last := len(fs) - 1
+	if g0 {
+		n.bash(fs[0], a.Cs[0], a.Ms[0], a.Phs[0], a.Mid)
+	}
+	if glast {
+		n.bash(fs[last], a.Cs[last], a.Ms[last], a.Phs[last], a.Mid)
+	}
+	for t := range last - 1 {
+		n.analyze(fs[t+1], a.Cs[t+1], a.Fadvs[t+1], a.Tadvs[t+1], a.Ms[t+1], a.Mid, speedup[t+1])
+		// println(t + 1)
+		// waveform.Dump(nil, fs[t+1][0])
 	}
 
 	n.integrate(a.Fadvs, a.Tadvs, a.Ms, a.Phs, n.arm)
 
-	for i := range n.lah {
+	for i := range last + 1 {
 		n.synthesize(output[i], a.Cs[i], a.Phs[i])
 	}
 }

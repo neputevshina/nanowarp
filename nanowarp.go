@@ -108,6 +108,18 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		for j := range coeffs {
 			coeffs[j] = 1 / stretch
 		}
+	} else if n.opts.Quality == -2 {
+		// For process4
+		type f = float64
+		s := stretch
+		h, lah := n.warper.hop, n.warper.lah-2
+		one, str := h*n.olap, h*lah
+		n, m := f(one), f(str)
+		for j := 0; j < len(coeffs)-one-str; j += one + str {
+			fill(coeffs[j:j+one], 1)
+			fill(coeffs[j+one:j+one+str], n*(1/s-1)/m+1/s)
+		}
+
 	} else {
 		poolstretch := 1.
 		if n.opts.ScalePool {
@@ -124,8 +136,14 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	for j := range phasor[1:] {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
+	println(int(phasor[argmax(phasor)]), int(stretch*float64(len(lin))))
 
-	n.warper.process3(lin, rin, lout, rout, coeffs, phasor, true)
+	if n.opts.Quality == -1 {
+		n.warper.process5(lin, rin, lout, rout, coeffs, phasor)
+	} else {
+		n.warper.process3old(lin, rin, lout, rout, coeffs, phasor)
+	}
+
 }
 
 func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {

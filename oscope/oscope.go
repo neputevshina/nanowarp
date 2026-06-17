@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"slices"
 	"strconv"
 
 	"golang.org/x/exp/constraints"
@@ -21,7 +22,9 @@ type where [2]uintptr
 
 var watches = map[where]*watch{}
 
-type Etc any
+type Etc = any
+
+type Name string
 
 type watch struct {
 	outfile string
@@ -52,8 +55,16 @@ func Oscope(a any, etc ...Etc) {
 		if !ok {
 			panic(`oscope.Oscope: can't identify a function that is not traceable on the stack`)
 		}
+		fn := ""
+		i := slices.IndexFunc(etc, func(e Etc) bool { _, k := e.(Name); return k })
+		if i >= 0 {
+			fn = string(etc[i].(Name))
+		} else {
+			fn = fmt.Sprintf("%s:%d(%d)", path.Base(file), line, wh[1])
+		}
+
 		watches[wh] = &watch{
-			outfile: fmt.Sprintf("%s:%d(%d)", path.Base(file), line, wh[1]),
+			outfile: fn,
 			etc:     etc,
 			elem:    a,
 		}
