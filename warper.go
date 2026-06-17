@@ -98,34 +98,30 @@ func (n *warper) process3old(lin, rin, lout, rout []float64, coeffs, phasor []fl
 	get := func() []float64 { return make([]float64, n.nfft) }
 	lgrainbuf, rgrainbuf := get(), get()
 	lingrain, ringrain := get(), get()
+	lfuture, rfuture := get(), get()
 
 	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
 		if j > len(lout)-n.nbuf {
 			break
 		}
-		i := int(phasor[max(0, j)] - float64(n.nbuf/2))
+		fi := func(j int) int { return int(phasor[max(0, j)]) }
+		i := fi(j)
+		c := 1 / coeffs[max(0, j)]
 
-		if i > len(lin)-n.nbuf {
-			break
+		cut := func(lingrain, lin []float64, i int) {
+			copy(lingrain[max(0, -(i-n.nbuf/2)):], lin[max(0, (i-n.nbuf/2)):clamp(0, len(lin), i+n.nbuf/2)])
 		}
-		clear(lingrain)
-		clear(ringrain)
-		copy(lingrain[max(0, -i):], lin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
-		copy(ringrain[max(0, -i):], rin[max(0, i):clamp(0, len(lin), i+n.nbuf)])
-		c := 1.
-		if j > 0 {
-			c = 1 / coeffs[j]
-			if c != c || math.IsInf(c, 0) {
-				c = 1
-			}
-		}
-		tensec := 10 * n.root.fs
-		if n.root.opts.Quality == -1 && j%tensec < (j-n.hop)%tensec {
-			c = 1
+		cut(lingrain, lin, i)
+		cut(ringrain, rin, i)
+		if c == 1 {
+			cut(lfuture, lin, fi(j+n.hop))
+			cut(rfuture, rin, fi(j+n.hop))
+			add(lfuture, rfuture)
+			scale(lfuture, 0.5)
 		}
 
-		n.advanceOld(lingrain, ringrain, lgrainbuf, rgrainbuf, abs(c), c == 1)
+		n.advanceOld(lingrain, ringrain, lgrainbuf, rgrainbuf, lfuture, abs(c), c == 1)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -187,17 +183,6 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc*olap)
 	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
-	// Forced phase reset.
-	if reset {
-		for w := range a.Ph {
-			a.Past[w] = cmplx.Phase(a.X[w])
-		}
-		copy(a.P, a.M)
-		copy(a.Lo, a.L)
-		copy(a.Ro, a.R)
-		goto skip
-	}
-
 	for w := range a.X {
 		// TODO Probably it will be more numerically stable to limit the phase accuum to
 		// 0..1 and scale back to -π..π range at the poltocar conversion.
@@ -222,6 +207,16 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 
 		a.L[w] /= p
 		a.R[w] /= p
+	}
+
+	if reset {
+		for w := range a.Ph {
+			a.Past[w] = cmplx.Phase(a.X[w])
+		}
+		copy(a.P, a.M)
+		copy(a.Lo, a.L)
+		copy(a.Ro, a.R)
+		goto skip
 	}
 
 	n.heap = make(hp, n.nbins)
@@ -611,6 +606,12 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 		for _, e := range downs {
 			oscope.Oscope(e, oscope.Name(`downs`))
+		}
+		for t := range downs {
+			for w := range downs[t] {
+				n.a.S[w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w] > 1)
+			}
+			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridges`))
 		}
 		for _, e := range M {
 			clear(n.a.S)

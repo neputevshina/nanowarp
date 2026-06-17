@@ -58,7 +58,10 @@ unmodified.
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
-- There exists a [“beat-emphasis onset detection function”](https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).
+- Turns out, “phase gradient heap integration” probably doesn't need a heap. You __probably__ can work it out from local maxima (find all 
+  points which are greater than its two neighbors) with the simple round-robin list. Will SIGNIFICANTLY boost the performance if true.
+- There exists a [“beat-emphasis onset detection function”](
+  https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).
   - Or just make an informed guess of `-poolms` based on estimated uniform BPM. Much simpler and faster, probably as much effective.
   - In the latter case, the novelty curve “max pool” (per time bin) detection (vs. dilation as now) is probably more preferable.
   - Even simpler: use `-from` as a source of truth.
@@ -72,7 +75,9 @@ unmodified.
   - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
   - Expecting a regular beat might be bad for some types of music.
 - SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
-- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ It can't, but it's still a cool concept to keep in mind.
+- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ 
+  ~~It can't, but it's still a cool concept to keep in mind.~~
+  It actually can, but you need to see where points are coming from, not where they lead.
 - [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, ignoring overlap, 
   so it is impossible to obtain globally coherent phase with phase resets using this method. We need a some way to use the phase of up to overlap number of frames.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
