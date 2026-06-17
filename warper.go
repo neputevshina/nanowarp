@@ -160,7 +160,7 @@ func (n *warper) process3old(lin, rin, lout, rout []float64, coeffs, phasor []fl
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain []float64, stretch float64, reset bool) {
+func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -553,6 +553,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 	}
 	heapInit(&n.heap)
+
+	oscope.Enable = true
 
 	// lefts := make2(len(Fadv), n.nbins)
 
