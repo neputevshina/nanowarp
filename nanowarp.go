@@ -141,7 +141,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	if n.opts.Quality == -1 {
 		n.warper.process5(lin, rin, lout, rout, coeffs, phasor)
 	} else {
-		n.warper.process3(lin, rin, lout, rout, coeffs, phasor, true)
+		n.warper.process3old(lin, rin, lout, rout, coeffs, phasor)
 	}
 
 }
