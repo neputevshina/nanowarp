@@ -209,23 +209,30 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 		a.R[w] /= p
 	}
 
-	if reset {
-		for w := range a.Ph {
-			a.Past[w] = cmplx.Phase(a.X[w])
-		}
-		copy(a.P, a.M)
-		copy(a.Lo, a.L)
-		copy(a.Ro, a.R)
-		goto skip
-	}
-
 	n.heap = make(hp, n.nbins)
 
-	clear(n.arm[0])
-	for j := range a.X {
-		n.arm[0][j] = true
-		n.heap[j] = heaptriple{a.P[j], j, -1}
+	clear(a.F)
+	if reset {
+		for w := range a.Ph {
+			a.F[w] = cmplx.Phase(a.X[w])
+		}
+		enfft(a.Y, a.W, future)
 	}
+	clear(n.arm[0])
+	for w := range a.X {
+		if reset && w > 1 && w < n.nbins-1 {
+			// Reset the phase only on points that are not local maxima both in time and frequency.
+			b := boolfloat
+			c := b(a.M[w] >= a.M[w-1]) + b(a.M[w] >= a.M[w+1]) + b(a.M[w] >= mag(a.Y[w]))
+			if c <= 2 {
+				continue
+			}
+		}
+		a.F[w] = 0
+		n.arm[0][w] = true
+		n.heap[w] = heaptriple{a.P[w], w, -1}
+	}
+
 	heapInit(&n.heap)
 
 	// Do PGHI.
@@ -259,8 +266,13 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 	copy(a.P, a.M)
 	for w := range a.Ph {
 		// Add stereo phase differences back through multiplication.
-		a.Lo[w] = a.L[w] * cmplx.Rect(1, a.Ph[w])
-		a.Ro[w] = a.R[w] * cmplx.Rect(1, a.Ph[w])
+		ph := a.Ph[w]
+		if a.F[w] != 0 {
+			ph = a.F[w]
+		}
+		phasor := cmplx.Rect(1, ph)
+		a.Lo[w] = a.L[w] * phasor
+		a.Ro[w] = a.R[w] * phasor
 		a.Past[w] = princarg(a.Ph[w])
 	}
 	goto skip
@@ -551,27 +563,26 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 
 	oscope.Enable = true
 
-	// lefts := make2(len(Fadv), n.nbins)
-
-	var rights, ups, downs [][]float64
+	var rights, ups, downs, lefts [][]float64
 	if oscope.Enable {
 		rights = make2(len(Fadv), n.nbins)
 		ups = make2(len(Fadv), n.nbins)
 		downs = make2(len(Fadv), n.nbins)
+		lefts = make2(len(Fadv), n.nbins)
 	}
 
 	// Do PGHI.
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		w, t := h.w, h.t
-		// if t >= 1 && arm[t-1][w] {
-		// 	if oscope.Enable {
-		// 		rights[t][w] = 1
-		// 	}
-		// 	Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
-		// 	arm[t-1][w] = false
-		// 	heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
-		// }
+		if t >= 1 && arm[t-1][w] {
+			if oscope.Enable {
+				lefts[t][w] = 1
+			}
+			Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
+			arm[t-1][w] = false
+			heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
+		}
 		if t < len(Ph)-1 && arm[t+1][w] {
 			if oscope.Enable {
 				rights[t][w] = 1
@@ -598,6 +609,9 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 	}
 	if oscope.Enable {
+		for _, e := range lefts {
+			oscope.Oscope(e, oscope.Name(`lefts`))
+		}
 		for _, e := range rights {
 			oscope.Oscope(e, oscope.Name(`rights`))
 		}
@@ -609,7 +623,7 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 		for t := range downs {
 			for w := range downs[t] {
-				n.a.S[w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w] > 1)
+				n.a.S[w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w]+lefts[t][w] > 1)
 			}
 			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridges`))
 		}

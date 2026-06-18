@@ -58,7 +58,7 @@ unmodified.
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
-- Turns out, “phase gradient heap integration” probably doesn't need a heap. You __probably__ can work it out from local maxima (find all 
+- Turns out, “phase gradient heap integration” probably doesn't need a heap. You _probably_ can work it out from local maxima (find all 
   points which are greater than its two neighbors) with the simple round-robin list. Will SIGNIFICANTLY boost the performance if true.
 - There exists a [“beat-emphasis onset detection function”](
   https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).

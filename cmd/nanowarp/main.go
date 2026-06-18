@@ -30,6 +30,7 @@ var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var q = flag.Int("q", 0, "quality, run “go doc nanowarp.Options.Quality” for help")
 var onsetms = flag.Int("onsetms", 30, "onset size in milliseconds")
 var poolms = flag.Int("poolms", 250, "time of onset detection bucket in milliseconds")
+var outpool = flag.Bool("outpool", false, "measure pooling bucket in milliseconds of output, not input")
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp")
 
 func main() {
@@ -161,6 +162,7 @@ func main() {
 		Quality:     *q,
 		TransientMs: *onsetms,
 		PickingMs:   *poolms,
+		ScalePool:   *outpool,
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
