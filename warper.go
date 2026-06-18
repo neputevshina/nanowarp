@@ -213,22 +213,10 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 
 	clear(a.F)
 	if reset {
-		for w := range a.Ph {
-			a.F[w] = cmplx.Phase(a.X[w])
-		}
 		enfft(a.Y, a.W, future)
 	}
 	clear(n.arm[0])
 	for w := range a.X {
-		if reset && w > 1 && w < n.nbins-1 {
-			// Reset the phase only on points that are not local maxima both in time and frequency.
-			b := boolfloat
-			c := b(a.M[w] >= a.M[w-1]) + b(a.M[w] >= a.M[w+1]) + b(a.M[w] >= mag(a.Y[w]))
-			if c <= 2 {
-				continue
-			}
-		}
-		a.F[w] = 0
 		n.arm[0][w] = true
 		n.heap[w] = heaptriple{a.P[w], w, -1}
 	}
@@ -242,6 +230,7 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 		switch h.t {
 		case -1:
 			if n.arm[0][w] {
+				a.F[w]++
 				adv := tadv(w)
 				a.Ph[w] = a.Past[w] + adv
 				n.arm[0][w] = false
@@ -249,12 +238,14 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 			}
 		case 0:
 			if w > 1 && n.arm[0][w-1] {
+				a.F[w]++
 				adv := -a.Fadv[w-1]
 				a.Ph[w-1] = a.Ph[w] + adv
 				n.arm[0][w-1] = false
 				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && n.arm[0][w+1] {
+				a.F[w]++
 				adv := a.Fadv[w+1]
 				a.Ph[w+1] = a.Ph[w] + adv
 				n.arm[0][w+1] = false
@@ -267,13 +258,13 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 	for w := range a.Ph {
 		// Add stereo phase differences back through multiplication.
 		ph := a.Ph[w]
-		if a.F[w] != 0 {
-			ph = a.F[w]
+		if reset && a.F[w] < 3 {
+			ph = cmplx.Phase(a.X[w])
 		}
 		phasor := cmplx.Rect(1, ph)
 		a.Lo[w] = a.L[w] * phasor
 		a.Ro[w] = a.R[w] * phasor
-		a.Past[w] = princarg(a.Ph[w])
+		a.Past[w] = princarg(ph)
 	}
 	goto skip
 skip:
@@ -575,14 +566,14 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		w, t := h.w, h.t
-		if t >= 1 && arm[t-1][w] {
-			if oscope.Enable {
-				lefts[t][w] = 1
-			}
-			Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
-			arm[t-1][w] = false
-			heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
-		}
+		// if t >= 1 && arm[t-1][w] {
+		// 	if oscope.Enable {
+		// 		lefts[t][w] = 1
+		// 	}
+		// 	Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
+		// 	arm[t-1][w] = false
+		// 	heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
+		// }
 		if t < len(Ph)-1 && arm[t+1][w] {
 			if oscope.Enable {
 				rights[t][w] = 1
@@ -610,31 +601,64 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	}
 	if oscope.Enable {
 		for _, e := range lefts {
-			oscope.Oscope(e, oscope.Name(`lefts`))
+			oscope.Oscope(slices.Clone(e), oscope.Name(`lefts`))
+			clear(e)
 		}
 		for _, e := range rights {
-			oscope.Oscope(e, oscope.Name(`rights`))
+			oscope.Oscope(slices.Clone(e), oscope.Name(`rights`))
+			clear(e)
 		}
 		for _, e := range ups {
-			oscope.Oscope(e, oscope.Name(`ups`))
+			oscope.Oscope(slices.Clone(e), oscope.Name(`ups`))
+			clear(e)
 		}
 		for _, e := range downs {
-			oscope.Oscope(e, oscope.Name(`downs`))
+			oscope.Oscope(slices.Clone(e), oscope.Name(`downs`))
+			clear(e)
+		}
+		for t, e := range M {
+			clear(n.a.S)
+			for w := 1; w < len(e)-1; w++ {
+				ups[t][w] = e[w] - e[w+1]
+				downs[t][w] = e[w] - e[w-1]
+				rights[t][w] = e[w] - M[min(len(M)-1, t+1)][w]
+
+				// if e[w-1] < e[w] {
+				// 	downs[t][w] = 1
+				// }
+				// if e[w+1] < e[w] {
+				// 	ups[t][w] = 1
+				// }
+				// if M[min(len(M)-1, t+1)][w] < e[w] {
+				// 	rights[t][w] = 1
+				// }
+			}
+			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`mags`))
+			clear(n.a.S)
+			b := boolfloat
+			for w := 1; w < len(e)-1; w++ {
+				c := b(M[t][w] >= M[t][w-1]) + b(M[t][w] >= M[t][w+1]) + b(M[t][w] >= M[min(len(M)-1, t+1)][w])
+				n.a.S[w] = c / 3
+			}
+			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridge2`))
+		}
+		for _, e := range lefts {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`lefts`))
+		}
+		for _, e := range rights {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`rights`))
+		}
+		for _, e := range ups {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`ups`))
+		}
+		for _, e := range downs {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`downs`))
 		}
 		for t := range downs {
 			for w := range downs[t] {
 				n.a.S[w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w]+lefts[t][w] > 1)
 			}
 			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridges`))
-		}
-		for _, e := range M {
-			clear(n.a.S)
-			for w := 1; w < len(e)-1; w++ {
-				if e[w-1] < e[w] && e[w+1] < e[w] {
-					n.a.S[w] = 1
-				}
-			}
-			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`mags`))
 		}
 	}
 
