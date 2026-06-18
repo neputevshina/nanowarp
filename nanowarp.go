@@ -136,13 +136,8 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	for j := range phasor[1:] {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
-	println(int(phasor[argmax(phasor)]), int(stretch*float64(len(lin))))
 
-	if n.opts.Quality == -1 {
-		n.warper.process5(lin, rin, lout, rout, coeffs, phasor)
-	} else {
-		n.warper.process3old(lin, rin, lout, rout, coeffs, phasor)
-	}
+	n.warper.process3old(lin, rin, lout, rout, coeffs, phasor)
 
 }
 
