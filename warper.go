@@ -520,7 +520,8 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 		if m < 1e-6 {
 			p = complex(1, 0)
 		}
-		M[w] = m
+		// 4.5 dB/octave tilt
+		M[w] = m * (1 - math.Pow(float64(w/n.nbins), 1./2.82))
 		a.Y[w] = p
 	}
 	for ch := range present {
@@ -576,8 +577,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		// }
 		if t < len(Ph)-1 && arm[t+1][w] {
 			if oscope.Enable {
-				rights[t+1][w] = 1
-				// rights[t][w] = 1
+				// rights[t+1][w] = 1
+				rights[t][w] = 1
 			}
 			Ph[t+1][w] = Ph[t][w] + Tadv[t+1][w]
 			arm[t+1][w] = false
@@ -585,8 +586,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 		if w >= 1 && arm[t][w-1] {
 			if oscope.Enable {
-				// downs[t][w] = 1
-				downs[t][w-1] = 1
+				downs[t][w] = 1
+				// downs[t][w-1] = 1
 			}
 			Ph[t][w-1] = Ph[t][w] - Fadv[t][w-1]
 			arm[t][w-1] = false
@@ -594,8 +595,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 		if w < n.nbins-1 && arm[t][w+1] {
 			if oscope.Enable {
-				// ups[t][w] = 1
-				ups[t][w+1] = 1
+				ups[t][w] = 1
+				// ups[t][w+1] = 1
 			}
 			Ph[t][w+1] = Ph[t][w] + Fadv[t][w+1]
 			arm[t][w+1] = false
@@ -673,7 +674,7 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 			clear(n.a.S)
 			for w := range e {
 				n.a.S[w] = map[float64]float64{
-					downs[t][w]: 0, rights[t][w]: 1, ups[t][w]: 0.5}[max(downs[t][w], rights[t][w], ups[t][w])]
+					downs[t][w]: 0, 1.2 * rights[t][w]: 1, ups[t][w]: 0.5}[max(downs[t][w], 1.2*rights[t][w], ups[t][w])]
 			}
 			copy(n.a.As[t], n.a.S)
 			oscope.Oscope(slices.Clone(n.a.S[:n.nbins]), oscope.Name(`ridges-mag`))
