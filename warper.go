@@ -576,8 +576,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		// }
 		if t < len(Ph)-1 && arm[t+1][w] {
 			if oscope.Enable {
-				// rights[t+1][w] = 1
-				rights[t][w] = 1
+				rights[t+1][w] = 1
+				// rights[t][w] = 1
 			}
 			Ph[t+1][w] = Ph[t][w] + Tadv[t+1][w]
 			arm[t+1][w] = false
@@ -585,8 +585,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 		if w >= 1 && arm[t][w-1] {
 			if oscope.Enable {
-				downs[t][w] = 1
-				// downs[t][w-1] = 1
+				// downs[t][w] = 1
+				downs[t][w-1] = 1
 			}
 			Ph[t][w-1] = Ph[t][w] - Fadv[t][w-1]
 			arm[t][w-1] = false
@@ -594,8 +594,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 		if w < n.nbins-1 && arm[t][w+1] {
 			if oscope.Enable {
-				ups[t][w] = 1
-				// ups[t][w+1] = 1
+				// ups[t][w] = 1
+				ups[t][w+1] = 1
 			}
 			Ph[t][w+1] = Ph[t][w] + Fadv[t][w+1]
 			arm[t][w+1] = false
@@ -635,7 +635,7 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 			clear(n.a.S)
 			for w := 1; w < len(e)-1; w++ {
 				ups[t][w] = math.Log10(bitsafe(e[w] / e[w+1]))
-				downs[t][w] = math.Log10(bitsafe(e[w] / e[w-1]))
+				downs[t][w] = -ups[t][w]
 				rights[t][w] = math.Log10(bitsafe(e[w] / M[min(len(M)-1, t+1)][w]))
 
 				// if e[w-1] < e[w] {
@@ -672,7 +672,8 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		for t, e := range downs {
 			clear(n.a.S)
 			for w := range e {
-				n.a.S[w] = 1 - (hsvsaturation(downs[t][w], rights[t][w], ups[t][w]))
+				n.a.S[w] = map[float64]float64{
+					downs[t][w]: 0, rights[t][w]: 1, ups[t][w]: 0.5}[max(downs[t][w], rights[t][w], ups[t][w])]
 			}
 			copy(n.a.As[t], n.a.S)
 			oscope.Oscope(slices.Clone(n.a.S[:n.nbins]), oscope.Name(`ridges-mag`))
