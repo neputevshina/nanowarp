@@ -3,8 +3,6 @@ package nanowarp
 import (
 	"cmp"
 	"fmt"
-	"image"
-	"image/color"
 	"math"
 	"math/cmplx"
 	"os"
@@ -236,51 +234,6 @@ func norm(c complex128) complex128 {
 	return c / complex(mag(c), 0)
 }
 
-func floatMatrixToImage(data [][]float64) image.Image {
-	if len(data) == 0 || len(data[0]) == 0 {
-		return nil
-	}
-
-	height := len(data[0])
-	width := len(data)
-
-	// Find min and max
-	minVal := math.Inf(1)
-	maxVal := math.Inf(-1)
-	for _, row := range data {
-		for _, v := range row {
-			if v < minVal {
-				minVal = v
-			}
-			if v > maxVal {
-				maxVal = v
-			}
-		}
-	}
-	fmt.Println(minVal, maxVal)
-
-	scale := 1.
-	offset := 3.14
-	scale = 255.0 / (maxVal - minVal)
-	offset = -minVal * scale
-
-	img := image.NewGray(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			val := data[x][y]*scale + offset
-			if val < 0 {
-				val = 0
-			}
-			if val > 255 {
-				val = 255
-			}
-			img.SetGray(x, y, color.Gray{Y: uint8(val + 0.5)})
-		}
-	}
-
-	return img
-}
-
 func boolint(b bool) int {
 	if b {
 		return 1
@@ -334,20 +287,63 @@ func argmin[T cmp.Ordered](a []T) (i int) {
 	return
 }
 
-func fold[F int | float64](a, b, x F) F {
-	for {
-		x = abs(b-a-abs(x)) + a
-		if x < b {
-			break
+func contrast(a []float64) []float64 {
+	max := a[argmax(a)]
+	min := a[argmin(a)]
+	for j, v := range a {
+		a[j] = bitsafe(unmix(min, max, v))
+	}
+	return a
+}
+
+func maxmin2(a [][]float64) (float64, float64) {
+	ma := a[0][0]
+	mi := ma
+	for j := range a {
+		ma = max(ma, a[j][argmax(a[j])])
+		mi = min(mi, a[j][argmin(a[j])])
+	}
+	return ma, mi
+}
+func contrast2(a [][]float64) [][]float64 {
+	ma, mi := maxmin2(a)
+	for j := range a {
+		for i, v := range a[j] {
+			a[j][i] = bitsafe(unmix(mi, ma, v))
 		}
 	}
-	return x
+	return a
+}
+
+func wavefold(a, b, x float64) float64 {
+	L := b - a
+	p := 2 * L
+
+	y := math.Mod(x-a, p)
+	if y < 0 {
+		y += p
+	}
+
+	if y > L {
+		y = p - y
+	}
+
+	return a + y
 }
 
 func scale[T constraints.Float](dst []T, s T) {
-	for i := 0; i < len(dst); i++ {
+	for i := range dst {
 		dst[i] *= s
 	}
+}
+
+func apply2[T any](a [][]T, f func(v T) T) [][]T {
+	for j := range a {
+		for i := range a[j] {
+			a[j][i] = f(a[j][i])
+		}
+	}
+	return a
 }
 
 func dump(name string, data []float64, fs int) {
@@ -385,7 +381,7 @@ func even(x int) int {
 	return x + x%2
 }
 
-func softmax(a []float64) {
+func softmax(a []float64) []float64 {
 	expsum := 0.
 	for _, v := range a {
 		expsum += math.Exp2(v)
@@ -393,6 +389,17 @@ func softmax(a []float64) {
 	for i := range a {
 		a[i] = math.Exp2(a[i]) / expsum
 	}
+	return a
+}
+
+// atodb converts amplidude value to decibels full scale (dBFS).
+func atodb(a float64) float64 {
+	return 20 * math.Log10(a)
+}
+
+// dbtoa converts a value in decibels full scale (dBFS) to amplitude.
+func dbtoa(db float64) float64 {
+	return math.Pow(10, db/20)
 }
 
 func make2(nch, n int) [][]float64 {
@@ -412,4 +419,61 @@ func make3(k, j, i int) [][][]float64 {
 		}
 	}
 	return g
+}
+
+func softmax2(a [][]float64) {
+	expsum := 0.
+	for _, e := range a {
+		for _, v := range e {
+			expsum += math.Exp2(v)
+		}
+	}
+	for j := range a {
+		for i := range a[j] {
+			a[j][i] = math.Exp2(a[j][i]) / expsum
+		}
+	}
+}
+
+func histonorm2(a [][]float64) [][]float64 {
+	const threshold = 0.5
+
+	h := make([]float64, 256)
+	n := func(v float64) int {
+		return int(mix(0, float64(len(h)-1), clamp(0, 1, bitsafe(v))))
+	}
+	uc := func(i int) float64 {
+		return unmix(0, float64(len(h)-1), float64(i))
+	}
+
+	ma, mi := maxmin2(a)
+	ma, mi = bitsafe(ma), bitsafe(mi)
+	for _, e := range a {
+		for _, v := range e {
+			h[n(unmix(mi, ma, v))]++
+		}
+	}
+	p := argmax(h)
+	l, r := p, p
+	for ; l > 0 && h[l] > h[p]*threshold; l-- {
+	}
+	for ; r < len(h)-1 && h[r] > h[p]*threshold; r++ {
+	}
+
+	for j := range a {
+		for i, v := range a[j] {
+			a[j][i] = clamp(0, 1, bitsafe(unmix(uc(l), uc(r), unmix(mi, ma, v)))) //*h[n(v)]))
+		}
+	}
+
+	return a
+}
+
+func hsvsaturation(r, g, b float64) (s float64) {
+	M := max(r, g, b)
+	m := min(r, g, b)
+	if M == 0 {
+		return 1
+	}
+	return (M - m) / M
 }

@@ -41,8 +41,8 @@ type wbufs struct {
 	X, Y, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
 	C, Co                      [][]complex128 // Channels
 
-	Cs                    [][][]complex128
-	Phs, Fadvs, Tadvs, Ms [][]float64 `size:"lah"`
+	Cs                        [][][]complex128
+	Phs, Fadvs, Tadvs, Ms, As [][]float64 `size:"lah"`
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -576,6 +576,7 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		// }
 		if t < len(Ph)-1 && arm[t+1][w] {
 			if oscope.Enable {
+				// rights[t+1][w] = 1
 				rights[t][w] = 1
 			}
 			Ph[t+1][w] = Ph[t][w] + Tadv[t+1][w]
@@ -585,6 +586,7 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		if w >= 1 && arm[t][w-1] {
 			if oscope.Enable {
 				downs[t][w] = 1
+				// downs[t][w-1] = 1
 			}
 			Ph[t][w-1] = Ph[t][w] - Fadv[t][w-1]
 			arm[t][w-1] = false
@@ -593,6 +595,7 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		if w < n.nbins-1 && arm[t][w+1] {
 			if oscope.Enable {
 				ups[t][w] = 1
+				// ups[t][w+1] = 1
 			}
 			Ph[t][w+1] = Ph[t][w] + Fadv[t][w+1]
 			arm[t][w+1] = false
@@ -616,12 +619,24 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 			oscope.Oscope(slices.Clone(e), oscope.Name(`downs`))
 			clear(e)
 		}
+		// for t := range downs {
+		// 	for w := range downs[t] {
+		// 		n.a.S[w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w]+lefts[t][w] > 1)
+		// 	}
+		// 	oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridges`))
+		// }
+		// apply2(M, bitsafe)
+		// apply2(M, atodb)
+		// apply2(M, bitsafe)
+		for _, e := range M {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`mag`))
+		}
 		for t, e := range M {
 			clear(n.a.S)
 			for w := 1; w < len(e)-1; w++ {
-				ups[t][w] = e[w] - e[w+1]
-				downs[t][w] = e[w] - e[w-1]
-				rights[t][w] = e[w] - M[min(len(M)-1, t+1)][w]
+				ups[t][w] = math.Log10(bitsafe(e[w] / e[w+1]))
+				downs[t][w] = math.Log10(bitsafe(e[w] / e[w-1]))
+				rights[t][w] = math.Log10(bitsafe(e[w] / M[min(len(M)-1, t+1)][w]))
 
 				// if e[w-1] < e[w] {
 				// 	downs[t][w] = 1
@@ -642,33 +657,39 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 			}
 			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridge2`))
 		}
-		for _, e := range lefts {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`lefts`))
-		}
+		histonorm2(rights)
+		histonorm2(ups)
+		histonorm2(downs)
 		for _, e := range rights {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`rights`))
+			oscope.Oscope(slices.Clone(e), oscope.Name(`rights-mag`))
 		}
 		for _, e := range ups {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`ups`))
+			oscope.Oscope(slices.Clone(e), oscope.Name(`ups-mag`))
 		}
 		for _, e := range downs {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`downs`))
+			oscope.Oscope(slices.Clone(e), oscope.Name(`downs-mag`))
 		}
-		for t := range downs {
-			for w := range downs[t] {
-				n.a.S[w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w]+lefts[t][w] > 1)
+		for t, e := range downs {
+			clear(n.a.S)
+			for w := range e {
+				n.a.S[w] = 1 - (hsvsaturation(downs[t][w], rights[t][w], ups[t][w]))
 			}
-			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridges`))
+			copy(n.a.As[t], n.a.S)
+			oscope.Oscope(slices.Clone(n.a.S[:n.nbins]), oscope.Name(`ridges-mag`))
 		}
 	}
 
 }
 
-func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph []float64) {
+func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph, Mask []float64) {
 	a := &n.a
 	for w := range Ph {
 		// Add stereo phase differences back through complex multiplication.
-		a.Y[w] = cmplx.Rect(1, Ph[w])
+		m := 1.
+		if Mask != nil {
+			m = Mask[w]
+		}
+		a.Y[w] = cmplx.Rect(m, Ph[w])
 	}
 	for ch := range output {
 		cmplxs.MulTo(a.X, C[ch], a.Y)
@@ -694,7 +715,7 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) 
 	}
 	copy(a.P, a.M)
 
-	n.synthesize(output, a.C, a.Ph)
+	n.synthesize(output, a.C, a.Ph, nil)
 }
 
 // stitch reconstructs the phase between fs[0] and fs[n.lah-1] frames.
@@ -717,7 +738,7 @@ func (n *warper) stitch(g0, glast bool, fs [][][]float64, output [][][]float64, 
 	n.integrate(a.Fadvs, a.Tadvs, a.Ms, a.Phs, n.arm)
 
 	for i := range last + 1 {
-		n.synthesize(output[i], a.Cs[i], a.Phs[i])
+		n.synthesize(output[i], a.Cs[i], a.Phs[i], nil)
 	}
 }
 
