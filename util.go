@@ -2,15 +2,10 @@ package nanowarp
 
 import (
 	"cmp"
-	"fmt"
-	"image"
-	"image/color"
 	"math"
 	"math/cmplx"
-	"os"
 	"reflect"
 
-	"github.com/neputevshina/nanowarp/wav"
 	"golang.org/x/exp/constraints"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -18,16 +13,6 @@ import (
 var mag = cmplx.Abs
 
 type bang = struct{}
-
-// TODO Convert all values inside of algorithm to these units.
-// Remove aliases and convert everywhere, just for “strictness”.
-type (
-	ms = float64
-	hz = float64
-	sa = int
-)
-
-var println = fmt.Println
 
 func bitsafe(v float64) float64 {
 	if v != v || math.IsInf(v, 0) {
@@ -54,12 +39,6 @@ func sum[T constraints.Float](src []T) (s T) {
 	return
 }
 
-func sub[T constraints.Float](dst, src []T) {
-	for i := 0; i < min(len(dst), len(src)); i++ {
-		dst[i] -= src[i]
-	}
-}
-
 func mul[T constraints.Float](dst, src []T) {
 	for i := 0; i < min(len(dst), len(src)); i++ {
 		dst[i] *= src[i]
@@ -70,11 +49,7 @@ func mix[F constraints.Float](a, b, x F) F {
 	return a*(1-x) + b*x
 }
 
-func unmix[F constraints.Float](a, b, x F) F {
-	return (x - a) / (b - a)
-}
-
-func clamp[T constraints.Ordered](a, b, x T) T {
+func clamp[T cmp.Ordered](a, b, x T) T {
 	return max(a, min(b, x))
 }
 
@@ -149,26 +124,6 @@ func blackmanHarris(out []float64) {
 	}
 }
 
-func poisson(out []float64, decaydb float64) {
-	// 5 echoes
-	for i := range out {
-		N := float64(len(out) - 1)
-		x := float64(i) / N
-		out[i] = math.Exp(-abs(x) * 2 * decaydb / (8.69 * N))
-	}
-}
-
-func avciNacaroglu(out []float64, a float64) {
-	// 3 echoes
-	// Avci-Nacaroglu exponential window, an approximation to DPSS (like Kaiser) window without
-	// the need of a modified Bessel function (which is almost exclusive for Python and Matlab).
-	for i := range out {
-		N := float64(len(out))
-		x := float64(i) / N
-		out[i] = math.Exp(math.Pi * a * (math.Sqrt(1-math.Pow(2*x-1, 2)) - 1))
-	}
-}
-
 func niemitalo(out []float64) {
 	// 3 VERY FAINT echoes, but breaks tonals
 	// https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing
@@ -236,51 +191,6 @@ func norm(c complex128) complex128 {
 	return c / complex(mag(c), 0)
 }
 
-func floatMatrixToImage(data [][]float64) image.Image {
-	if len(data) == 0 || len(data[0]) == 0 {
-		return nil
-	}
-
-	height := len(data[0])
-	width := len(data)
-
-	// Find min and max
-	minVal := math.Inf(1)
-	maxVal := math.Inf(-1)
-	for _, row := range data {
-		for _, v := range row {
-			if v < minVal {
-				minVal = v
-			}
-			if v > maxVal {
-				maxVal = v
-			}
-		}
-	}
-	fmt.Println(minVal, maxVal)
-
-	scale := 1.
-	offset := 3.14
-	scale = 255.0 / (maxVal - minVal)
-	offset = -minVal * scale
-
-	img := image.NewGray(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			val := data[x][y]*scale + offset
-			if val < 0 {
-				val = 0
-			}
-			if val > 255 {
-				val = 255
-			}
-			img.SetGray(x, y, color.Gray{Y: uint8(val + 0.5)})
-		}
-	}
-
-	return img
-}
-
 func boolint(b bool) int {
 	if b {
 		return 1
@@ -312,73 +222,10 @@ func hztobin(hz float64, nfft, fs int) int {
 	return int(hz * float64(nfft) / float64(fs))
 }
 
-func argmax[T cmp.Ordered](a []T) (i int) {
-	m := a[0]
-	for j, v := range a {
-		m = max(m, v)
-		if m == v {
-			i = j
-		}
-	}
-	return
-}
-
-func argmin[T cmp.Ordered](a []T) (i int) {
-	m := a[0]
-	for j, v := range a {
-		m = min(m, v)
-		if m == v {
-			i = j
-		}
-	}
-	return
-}
-
-func fold[F int | float64](a, b, x F) F {
-	for {
-		x = abs(b-a-abs(x)) + a
-		if x < b {
-			break
-		}
-	}
-	return x
-}
-
 func scale[T constraints.Float](dst []T, s T) {
-	for i := 0; i < len(dst); i++ {
+	for i := range dst {
 		dst[i] *= s
 	}
-}
-
-func dump(name string, data []float64, fs int) {
-	file, err := os.Create(name)
-	defer file.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	wr := wav.NewWriter(file, uint32(len(data)), 1, uint32(fs), 32, true)
-	nbuf := 2048
-	buf := make([]wav.Sample, 0, nbuf)
-	for i := 0; i < len(data); i += nbuf {
-		buf = buf[:0]
-		for j := i; j < min(i+nbuf, len(data)); j++ {
-			buf = append(buf, wav.Sample{Values: [2]int{
-				int(math.Float32bits(float32(data[j])))}})
-		}
-		err := wr.WriteSamples(buf)
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
-func l1(x complex128) float64 {
-	return abs(real(x)) + abs(imag(x))
-}
-
-func linf(x complex128) float64 {
-	return max(abs(real(x)), abs(imag(x)))
 }
 
 func even(x int) int {
@@ -393,23 +240,4 @@ func softmax(a []float64) {
 	for i := range a {
 		a[i] = math.Exp2(a[i]) / expsum
 	}
-}
-
-func make2(nch, n int) [][]float64 {
-	g := make([][]float64, nch)
-	for ch := range g {
-		g[ch] = make([]float64, n)
-	}
-	return g
-}
-
-func make3(k, j, i int) [][][]float64 {
-	g := make([][][]float64, k)
-	for a := range k {
-		g[a] = make([][]float64, j)
-		for b := range j {
-			g[a][b] = make([]float64, i)
-		}
-	}
-	return g
 }

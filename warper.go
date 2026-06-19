@@ -179,9 +179,9 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 
 	if reset {
 		for w := range a.Ph {
-			a.Past[w] = cmplx.Phase(a.X[w])
+			a.Ph[w] = cmplx.Phase(a.X[w])
 		}
-		copy(a.P, a.M)
+		copy(a.Past, a.Ph)
 		copy(a.Lo, a.L)
 		copy(a.Ro, a.R)
 		goto skip
@@ -207,7 +207,8 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 		if m < 1e-6 {
 			p = complex(1, 0)
 		}
-		a.M[w] = m
+		// 4.5 dB/octave tilt
+		a.M[w] = m * (1 - math.Pow(float64(w/n.nbins), 1./2.82))
 
 		a.L[w] /= p
 		a.R[w] /= p
@@ -217,15 +218,6 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 
 	clear(n.arm[0])
 	for w := range a.X {
-		if reset && w > 1 && w < n.nbins-1 {
-			// Reset the phase only on points that are not local maxima both in time and frequency.
-			b := boolfloat
-			c := b(a.M[w] >= a.M[w-1]) + b(a.M[w] >= a.M[w+1]) + b(a.M[w] >= mag(a.Y[w]))
-			if c <= 2 {
-				continue
-			}
-		}
-		a.F[w] = 0
 		n.arm[0][w] = true
 		n.heap[w] = heaptriple{a.P[w], w, -1}
 	}
@@ -260,20 +252,16 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 		}
 	}
 
-	copy(a.P, a.M)
 	for w := range a.Ph {
 		// Add stereo phase differences back through multiplication.
-		ph := a.Ph[w]
-		if a.F[w] != 0 {
-			ph = a.F[w]
-		}
-		phasor := cmplx.Rect(1, ph)
+		phasor := cmplx.Rect(1, a.Ph[w])
 		a.Lo[w] = a.L[w] * phasor
 		a.Ro[w] = a.R[w] * phasor
 		a.Past[w] = princarg(a.Ph[w])
 	}
 	goto skip
 skip:
+	copy(a.P, a.M)
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {
