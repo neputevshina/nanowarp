@@ -207,8 +207,7 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 		if m < 1e-6 {
 			p = complex(1, 0)
 		}
-		// 4.5 dB/octave tilt
-		a.M[w] = m * (1 - math.Pow(float64(w/n.nbins), 1./2.82))
+		a.M[w] = m
 
 		a.L[w] /= p
 		a.R[w] /= p
