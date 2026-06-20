@@ -1,4 +1,9 @@
-# Nanowarp
+# Experimental Nanowarp
+You should not use this branch if you are not intending to develop Nanowarp.
+It is full of garbage useful only for experiments. 
+
+-------
+
 Studio-grade audio time stretching algorithm.
 
 Reference implementation is going to be in Go, and a possible C implementation will share

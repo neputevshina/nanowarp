@@ -521,7 +521,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 			p = complex(1, 0)
 		}
 		// 4.5 dB/octave tilt
-		M[w] = m * (1 - math.Pow(float64(w/n.nbins), 1./2.82))
+		M[w] = m //* (1 - math.Pow(float64(w/n.nbins), 1./2.82))
 		a.Y[w] = p
 	}
 	for ch := range present {
@@ -606,26 +606,22 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	if oscope.Enable {
 		for _, e := range lefts {
 			oscope.Oscope(slices.Clone(e), oscope.Name(`lefts`))
-			clear(e)
 		}
 		for _, e := range rights {
 			oscope.Oscope(slices.Clone(e), oscope.Name(`rights`))
-			clear(e)
 		}
 		for _, e := range ups {
 			oscope.Oscope(slices.Clone(e), oscope.Name(`ups`))
-			clear(e)
 		}
 		for _, e := range downs {
 			oscope.Oscope(slices.Clone(e), oscope.Name(`downs`))
-			clear(e)
 		}
 		// for t := range downs {
 		// 	for w := range downs[t] {
-		// 		n.a.S[w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w]+lefts[t][w] > 1)
+		// 		n.a.As[t][w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w] <= 1)
 		// 	}
-		// 	oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridges`))
 		// }
+
 		// apply2(M, bitsafe)
 		// apply2(M, atodb)
 		// apply2(M, bitsafe)
@@ -635,26 +631,26 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		for t, e := range M {
 			clear(n.a.S)
 			for w := 1; w < len(e)-1; w++ {
-				ups[t][w] = math.Log10(bitsafe(e[w] / e[w+1]))
-				downs[t][w] = -ups[t][w]
-				rights[t][w] = math.Log10(bitsafe(e[w] / M[min(len(M)-1, t+1)][w]))
+				// ups[t][w] = math.Log10(bitsafe(e[w] / e[w+1]))
+				// downs[t][w] = -ups[t][w]
+				// rights[t][w] = math.Log10(bitsafe(e[w] / M[min(len(M)-1, t+1)][w]))
 
-				// if e[w-1] < e[w] {
-				// 	downs[t][w] = 1
-				// }
-				// if e[w+1] < e[w] {
-				// 	ups[t][w] = 1
-				// }
-				// if M[min(len(M)-1, t+1)][w] < e[w] {
-				// 	rights[t][w] = 1
-				// }
+				if e[w-1] < e[w] {
+					downs[t][w] = 1
+				}
+				if e[w+1] < e[w] {
+					ups[t][w] = 1
+				}
+				if M[min(len(M)-1, t+1)][w] < e[w] {
+					rights[t][w] = 1
+				}
 			}
 			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`mags`))
 			clear(n.a.S)
-			b := boolfloat
 			for w := 1; w < len(e)-1; w++ {
-				c := b(M[t][w] >= M[t][w-1]) + b(M[t][w] >= M[t][w+1]) + b(M[t][w] >= M[min(len(M)-1, t+1)][w])
-				n.a.S[w] = c / 3
+				if downs[t][w] == 1 && ups[t][w] == 1 {
+					n.a.S[w] = 1
+				}
 			}
 			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridge2`))
 		}
@@ -662,25 +658,34 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		histonorm2(ups)
 		histonorm2(downs)
 		for _, e := range rights {
+			clear(e)
 			oscope.Oscope(slices.Clone(e), oscope.Name(`rights-mag`))
 		}
 		for _, e := range ups {
+			clear(e)
 			oscope.Oscope(slices.Clone(e), oscope.Name(`ups-mag`))
 		}
 		for _, e := range downs {
+			clear(e)
 			oscope.Oscope(slices.Clone(e), oscope.Name(`downs-mag`))
 		}
-		for t, e := range downs {
-			clear(n.a.S)
-			for w := range e {
-				n.a.S[w] = map[float64]float64{
-					downs[t][w]: 0, 1.2 * rights[t][w]: 1, ups[t][w]: 0.5}[max(downs[t][w], 1.2*rights[t][w], ups[t][w])]
-			}
-			copy(n.a.As[t], n.a.S)
-			oscope.Oscope(slices.Clone(n.a.S[:n.nbins]), oscope.Name(`ridges-mag`))
+		for t := range downs {
+			n.partition(n.a.As[t], M[t], 5)
+			oscope.Oscope(slices.Clone(n.a.As[t][:n.nbins]), oscope.Name(`ridges-mag`))
 		}
 	}
+}
 
+func (n *warper) partition(output []float64, input []float64, c int) {
+	if len(input) < c {
+		return
+	}
+	i := argmax(input)
+	output[i] = 1
+	if i > c+1 && i < len(input)-c-3 {
+		n.partition(output[:i-c], input[:i-c], c-1)
+		n.partition(output[i+c:], input[i+c:], c+1)
+	}
 }
 
 func (n *warper) synthesize(output [][]float64, C [][]complex128, Ph, Mask []float64) {
