@@ -590,45 +590,6 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 	}
 
-	// for len(n.heap) > 0 {
-	// 	h := heapPop(&n.heap)
-	// 	w, t := h.w, h.t
-	// 	// if t >= 1 && arm[t-1][w] {
-	// 	// 	if oscope.Enable {
-	// 	// 		lefts[t][w] = 1
-	// 	// 	}
-	// 	// 	Ph[t-1][w] = Ph[t][w] - Tadv[t-1][w]
-	// 	// 	arm[t-1][w] = false
-	// 	// 	heapPush(&n.heap, heaptriple{M[t-1][w], w, t - 1})
-	// 	// }
-	// 	if t < len(Ph)-1 && arm[t+1][w] {
-	// 		if oscope.Enable {
-	// 			// rights[t+1][w] = 1
-	// 			rights[t][w] = 1
-	// 		}
-	// 		Ph[t+1][w] = Ph[t][w] + Tadv[t+1][w]
-	// 		arm[t+1][w] = false
-	// 		heapPush(&n.heap, heaptriple{M[t+1][w], w, t + 1})
-	// 	}
-	// 	if w >= 1 && arm[t][w-1] {
-	// 		if oscope.Enable {
-	// 			downs[t][w] = 1
-	// 			// downs[t][w-1] = 1
-	// 		}
-	// 		Ph[t][w-1] = Ph[t][w] - Fadv[t][w-1]
-	// 		arm[t][w-1] = false
-	// 		heapPush(&n.heap, heaptriple{M[t][w-1], w - 1, t})
-	// 	}
-	// 	if w < n.nbins-1 && arm[t][w+1] {
-	// 		if oscope.Enable {
-	// 			ups[t][w] = 1
-	// 			// ups[t][w+1] = 1
-	// 		}
-	// 		Ph[t][w+1] = Ph[t][w] + Fadv[t][w+1]
-	// 		arm[t][w+1] = false
-	// 		heapPush(&n.heap, heaptriple{M[t][w+1], w + 1, t})
-	// 	}
-	// }
 	if oscope.Enable {
 		for _, e := range lefts {
 			oscope.Oscope(slices.Clone(e), oscope.Name(`lefts`))
