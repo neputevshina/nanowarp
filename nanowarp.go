@@ -143,7 +143,6 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	} else {
 		n.warper.process3old(lin, rin, lout, rout, coeffs, phasor)
 	}
-
 }
 
 func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {

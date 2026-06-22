@@ -26,11 +26,14 @@ type Etc = any
 
 type Name string
 
+type Normalize bool
+
 type watch struct {
 	outfile string
 	elem    any
 	data    []any
 	etc     []Etc
+	norm    bool
 }
 
 // It's okay to get goroutine ID for debugging purposes,
@@ -42,6 +45,15 @@ func getGID() uintptr {
 	b = b[:bytes.IndexByte(b, ' ')]
 	n, _ := strconv.ParseUint(string(b), 10, 64)
 	return uintptr(n)
+}
+
+func findetc[T any](etc []Etc) (int, T) {
+	i := slices.IndexFunc(etc, func(e Etc) bool { _, k := e.(T); return k })
+	if i >= 0 {
+		return i, etc[i].(T)
+	}
+	var z T
+	return i, z
 }
 
 func Oscope(a any, etc ...Etc) {
@@ -56,9 +68,9 @@ func Oscope(a any, etc ...Etc) {
 			panic(`oscope.Oscope: can't identify a function that is not traceable on the stack`)
 		}
 		fn := ""
-		i := slices.IndexFunc(etc, func(e Etc) bool { _, k := e.(Name); return k })
+		i, e := findetc[Name](etc)
 		if i >= 0 {
-			fn = string(etc[i].(Name))
+			fn = string(e)
 		} else {
 			fn = fmt.Sprintf("%s:%d(%d)", path.Base(file), line, wh[1])
 		}
@@ -69,6 +81,8 @@ func Oscope(a any, etc ...Etc) {
 			elem:    a,
 		}
 		w = watches[wh]
+		_, n := findetc[Normalize](etc)
+		w.norm = bool(n)
 	}
 	w.data = append(w.data, a)
 }
@@ -122,7 +136,7 @@ func dumpWaveform[T constraints.Integer | constraints.Float](err error, w *watch
 	offset := float64(-n) * scale
 
 	img := image.NewGray(image.Rect(0, 0, width, int(height)))
-	for x := 0; x < width; x++ {
+	for x := range width {
 		y := float64(data[x].(T))*scale + offset
 		img.SetGray(x, int(math.Floor(y)), color.Gray{Y: 255})
 	}
@@ -151,8 +165,8 @@ func dumpTexture[T constraints.Integer | constraints.Float](err error, w *watch,
 	offset := float64(-n) * scale
 
 	img := image.NewGray(image.Rect(0, 0, width, height))
-	for x := 0; x < width; x++ {
-		for y := 0; y < height; y++ {
+	for x := range width {
+		for y := range height {
 			v := float64(data[x].(S)[y])*scale + offset
 			img.SetGray(x, y, color.Gray{Y: uint8(max(0, min(255, v+0.5)))})
 		}

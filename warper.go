@@ -37,7 +37,7 @@ type wbufs struct {
 	Ph                         []float64 `size:"nbins"` // Current phase
 	Past, Future               []float64 // Phase accumulators
 	Fadv, Tadv                 []float64
-	W, Wr, Wd, Wt, Wdt         []float64      // Window functions
+	W, Wr, Wd, Wt, Walt        []float64      // Window functions
 	X, Y, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
 	C, Co                      [][]complex128 // Channels
 
@@ -56,7 +56,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap*300 + 1,
+		lah:   olap*300 - 1,
 	}
 	a := &n.a
 
@@ -76,7 +76,11 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Destination is the first argument by convention.
 	windowDx(s(a.W), s(a.Wd))
 	windowT(s(a.W), s(a.Wt))
-	windowT(s(a.Wd), s(a.Wdt))
+
+	// copy(a.Walt, a.W)
+	// fill(s(a.Walt), 1)
+	hann(s(a.Walt))
+	// niemitalo(s(a.Walt))
 
 	copy(s(a.Wr), s(a.W))
 	slices.Reverse(s(a.Wr))
@@ -409,7 +413,6 @@ func (n *warper) process5(lin, rin, lout, rout []float64, coeffs, phasor []float
 			break
 		}
 		l := min((len(lout)-j)/n.hop, n.lah)
-		println(l)
 		for i := range l {
 			j := j + i*n.hop
 			getgrain(ingrains[i], j)
@@ -496,7 +499,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 	n.enfft(a.X, a.W, Mid)
 	n.enfft(a.Xd, a.Wd, Mid)
 	n.enfft(a.Xt, a.Wt, Mid)
-	n.enfft(a.Y, a.Wdt, Mid)
+	n.enfft(a.Y, a.Walt, Mid)
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	for w := range a.X {
@@ -520,8 +523,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 		if m < 1e-6 {
 			p = complex(1, 0)
 		}
-		// 4.5 dB/octave tilt
-		M[w] = m //* (1 - math.Pow(float64(w/n.nbins), 1./2.82))
+		M[w] = mag(a.Y[w])
 		a.Y[w] = p
 	}
 	for ch := range present {
@@ -531,7 +533,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 	}
 }
 
-func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bool) {
+func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bool, knownFrames []bool) {
 	n.heap = n.heap[:0]
 	clear(n.heap)
 
@@ -555,25 +557,31 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 
 	oscope.Enable = true
 
-	var rights, ups, downs, lefts [][]float64
+	var direction, spread, power [][]float64
 	if oscope.Enable {
-		rights = make2(len(Fadv), n.nbins)
-		ups = make2(len(Fadv), n.nbins)
-		downs = make2(len(Fadv), n.nbins)
-		lefts = make2(len(Fadv), n.nbins)
+		direction = make2(len(Fadv), n.nbins)
+		spread = make2(len(Fadv), n.nbins)
+		power = make2(len(Fadv), n.nbins)
 	}
 
-	// Do PGHI with causal von Neumann neighborhood.
+	// Neighborhood.
 	hood := [][]float64{
-		{0, 1, 0},
-		{0, 0, 1},
-		{0, 1, 0}}
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 1, 1, 0, 0, 0},
+		{0, 0, 0, 0, 0, 1, 0, 0, 0},
+		{0, 0, 0, 0, 1, 1, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		for w := range hood {
 			for t, v := range hood[w] {
 				type f = float64
-				tn, wn := t-(len(hood)-1)/2, w-(len(hood[t])-1)/2
+				tn, wn := t-(len(hood[w])-1)/2, w-(len(hood)-1)/2
 				t, w := h.t+tn, h.w+wn
 				// Check bounds.
 				if clamp(0, len(arm)-1, t) != t || clamp(0, len(arm[t])-1, w) != w {
@@ -583,82 +591,25 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 				if !arm[t][w] || v == 0 {
 					continue
 				}
-				Ph[t][w] = Ph[h.t][h.w] + f(tn)*Tadv[t][w] + f(wn)*Fadv[t][w]
+				Ph[t][w] = Ph[h.t][h.w] + v*(f(tn)*Tadv[t][w]+f(wn)*Fadv[t][w])
 				arm[t][w] = false
+				spread[h.t][h.w] += 1
+				power[t][w], direction[t][w] = cmplx.Polar(complex(f(tn), f(wn)))
+				direction[t][w] = (direction[t][w] / math.Pi / 2) + 0.5
 				heapPush(&n.heap, heaptriple{M[t][w], w, t})
 			}
 		}
 	}
 
 	if oscope.Enable {
-		for _, e := range lefts {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`lefts`))
+		for _, e := range spread {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`spread`))
 		}
-		for _, e := range rights {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`rights`))
+		for _, e := range direction {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`direction`), oscope.Normalize(false))
 		}
-		for _, e := range ups {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`ups`))
-		}
-		for _, e := range downs {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`downs`))
-		}
-		// for t := range downs {
-		// 	for w := range downs[t] {
-		// 		n.a.As[t][w] = boolfloat(rights[t][w]+ups[t][w]+downs[t][w] <= 1)
-		// 	}
-		// }
-
-		// apply2(M, bitsafe)
-		// apply2(M, atodb)
-		// apply2(M, bitsafe)
-		for _, e := range M {
-			oscope.Oscope(slices.Clone(e), oscope.Name(`mag`))
-		}
-		for t, e := range M {
-			clear(n.a.S)
-			for w := 1; w < len(e)-1; w++ {
-				// ups[t][w] = math.Log10(bitsafe(e[w] / e[w+1]))
-				// downs[t][w] = -ups[t][w]
-				// rights[t][w] = math.Log10(bitsafe(e[w] / M[min(len(M)-1, t+1)][w]))
-
-				if e[w-1] < e[w] {
-					downs[t][w] = 1
-				}
-				if e[w+1] < e[w] {
-					ups[t][w] = 1
-				}
-				if M[min(len(M)-1, t+1)][w] < e[w] {
-					rights[t][w] = 1
-				}
-			}
-			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`mags`))
-			clear(n.a.S)
-			for w := 1; w < len(e)-1; w++ {
-				if downs[t][w] == 1 && ups[t][w] == 1 {
-					n.a.S[w] = 1
-				}
-			}
-			oscope.Oscope(slices.Clone(n.a.S), oscope.Name(`ridge2`))
-		}
-		histonorm2(rights)
-		histonorm2(ups)
-		histonorm2(downs)
-		for _, e := range rights {
-			clear(e)
-			oscope.Oscope(slices.Clone(e), oscope.Name(`rights-mag`))
-		}
-		for _, e := range ups {
-			clear(e)
-			oscope.Oscope(slices.Clone(e), oscope.Name(`ups-mag`))
-		}
-		for _, e := range downs {
-			clear(e)
-			oscope.Oscope(slices.Clone(e), oscope.Name(`downs-mag`))
-		}
-		for t := range downs {
-			n.partition(n.a.As[t], M[t], 5)
-			oscope.Oscope(slices.Clone(n.a.As[t][:n.nbins]), oscope.Name(`ridges-mag`))
+		for _, e := range power {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`power`))
 		}
 	}
 }
@@ -702,7 +653,7 @@ func (n *warper) advance(fs [][][]float64, output [][]float64, speedup float64) 
 
 	n.analyze(present, a.C, a.Fadv, a.Tadv, a.M, a.Mid, speedup)
 
-	n.integrate([][]float64{nil, a.Fadv}, [][]float64{nil, a.Tadv}, [][]float64{a.P, a.M}, [][]float64{a.Past, a.Ph}, n.arm)
+	n.integrate([][]float64{nil, a.Fadv}, [][]float64{nil, a.Tadv}, [][]float64{a.P, a.M}, [][]float64{a.Past, a.Ph}, n.arm, []bool{true, false})
 
 	for w := range a.Ph {
 		a.Past[w] = princarg(a.Ph[w])
@@ -729,7 +680,7 @@ func (n *warper) stitch(g0, glast bool, fs [][][]float64, output [][][]float64, 
 		// waveform.Dump(nil, fs[t+1][0])
 	}
 
-	n.integrate(a.Fadvs, a.Tadvs, a.Ms, a.Phs, n.arm)
+	n.integrate(a.Fadvs, a.Tadvs, a.Ms, a.Phs, n.arm, nil)
 
 	for i := range last + 1 {
 		n.synthesize(output[i], a.Cs[i], a.Phs[i], nil)
