@@ -346,6 +346,16 @@ func apply2[T any](a [][]T, f func(v T) T) [][]T {
 	return a
 }
 
+func fold2[T any](a [][]T, f func(a, v T) T) T {
+	var acc T
+	for j := range a {
+		for i := range a[j] {
+			acc = f(acc, a[j][i])
+		}
+	}
+	return acc
+}
+
 func dump(name string, data []float64, fs int) {
 	file, err := os.Create(name)
 	defer file.Close()
@@ -436,8 +446,10 @@ func softmax2(a [][]float64) {
 }
 
 func histonorm2(a [][]float64) [][]float64 {
-	const threshold = 0.5
+	return histonorm2ex(a, 0.5)
+}
 
+func histonorm2ex(a [][]float64, threshold float64) [][]float64 {
 	h := make([]float64, 256)
 	n := func(v float64) int {
 		return int(mix(0, float64(len(h)-1), clamp(0, 1, bitsafe(v))))

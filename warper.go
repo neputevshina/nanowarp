@@ -79,7 +79,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 	// copy(a.Walt, a.W)
 	// fill(s(a.Walt), 1)
-	hann(s(a.Walt))
+	hann(s(a.Walt)) // Hann is better for PGHI decisions.
 	// niemitalo(s(a.Walt))
 
 	copy(s(a.Wr), s(a.W))
@@ -565,13 +565,13 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	}
 
 	// Neighborhood.
-	hood := [][]float64{
+	hood := [][]float64{ // F↓ T→
 		{0, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 1, 1, 0, 0, 0},
+		{0, 0, 0, 0, 1, 0, 0, 0, 0},
 		{0, 0, 0, 0, 0, 1, 0, 0, 0},
-		{0, 0, 0, 0, 1, 1, 0, 0, 0},
+		{0, 0, 0, 0, 1, 0, 0, 0, 0},
 		{0, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -610,6 +610,12 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 		}
 		for _, e := range power {
 			oscope.Oscope(slices.Clone(e), oscope.Name(`power`))
+		}
+		apply2(M, atodb)
+		apply2(M, bitsafe)
+		histonorm2ex(M, 0.01)
+		for _, e := range M {
+			oscope.Oscope(slices.Clone(e), oscope.Name(`mag`))
 		}
 	}
 }
