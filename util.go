@@ -412,10 +412,10 @@ func dbtoa(db float64) float64 {
 	return math.Pow(10, db/20)
 }
 
-func make2(nch, n int) [][]float64 {
-	g := make([][]float64, nch)
+func make2[T any](nch, n int) [][]T {
+	g := make([][]T, nch)
 	for ch := range g {
-		g[ch] = make([]float64, n)
+		g[ch] = make([]T, n)
 	}
 	return g
 }

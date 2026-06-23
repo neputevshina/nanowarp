@@ -288,9 +288,9 @@ func (n *warper) process3(lin, rin, lout, rout []float64, coeffs, phasor []float
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	println := func(a ...any) {}
 
-	input := make2(2, len(lin))
-	grainbuf := make2(2, n.nfft)
-	ingrain := make2(2, n.nfft)
+	input := make2[float64](2, len(lin))
+	grainbuf := make2[float64](2, n.nfft)
+	ingrain := make2[float64](2, n.nfft)
 	copy(input[0], lin)
 	copy(input[1], rin)
 	lastone, firstone := 0, 0
@@ -379,8 +379,8 @@ func (n *warper) process5(lin, rin, lout, rout []float64, coeffs, phasor []float
 	fmt.Fprintln(os.Stderr, `(*warper).process4`)
 	// println := func(a ...any) {}
 
-	input := make2(2, len(lin))
-	grainbuf := make2(2, n.nfft)
+	input := make2[float64](2, len(lin))
+	grainbuf := make2[float64](2, n.nfft)
 	ingrains := make3(n.lah, 2, n.nfft)
 	outgrains := make3(n.lah, 2, n.nfft)
 	copy(input[0], lin)
@@ -559,9 +559,9 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 
 	var direction, spread, power [][]float64
 	if oscope.Enable {
-		direction = make2(len(Fadv), n.nbins)
-		spread = make2(len(Fadv), n.nbins)
-		power = make2(len(Fadv), n.nbins)
+		direction = make2[float64](len(Fadv), n.nbins)
+		spread = make2[float64](len(Fadv), n.nbins)
+		power = make2[float64](len(Fadv), n.nbins)
 	}
 
 	// Neighborhood.
