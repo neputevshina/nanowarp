@@ -28,6 +28,7 @@ type warper struct {
 	arm         [][]bool // PGHI done mask
 	norm, wgain float64  // Global normalization factor and grain-only normalization factor
 	heap        hp       // PGHI heap
+	admm        admm
 
 	a wbufs
 }
@@ -42,7 +43,8 @@ type wbufs struct {
 	C, Co                      [][]complex128 // Channels
 
 	Cs                        [][][]complex128
-	Phs, Fadvs, Tadvs, Ms, As [][]float64 `size:"lah"`
+	Xs                        [][]complex128 `size:"lah"`
+	Phs, Fadvs, Tadvs, Ms, As [][]float64    `size:"lah"`
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -61,6 +63,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	a := &n.a
 
 	makeslices(a, n.nbins, nfft, nch, n.lah)
+	n.a.Cs = make3[complex128](n.lah*3, 2, n.nbins)
 
 	n.arm = make([][]bool, n.lah)
 	for i := range n.arm {
@@ -93,6 +96,19 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, n.lah*n.nbins) // 2 for future and past.
+
+	n.admm = admm{
+		fft:  fourier.NewFFT(nfft),
+		nbuf: nbuf,
+		s:    make([]float64, nbuf),
+		// FIXME calculate an accurate amount
+		sbig: make([]float64, n.hop*n.lah*4),
+		norm: n.norm,
+		hop:  n.hop,
+		Wf:   n.a.W,
+		Wr:   n.a.Wr,
+	}
+	makeslices(n.admm.admmbufs, n.nbins, n.nfft, nch, n.lah*3)
 
 	return
 }
@@ -381,8 +397,8 @@ func (n *warper) process5(lin, rin, lout, rout []float64, coeffs, phasor []float
 
 	input := make2[float64](2, len(lin))
 	grainbuf := make2[float64](2, n.nfft)
-	ingrains := make3(n.lah, 2, n.nfft)
-	outgrains := make3(n.lah, 2, n.nfft)
+	ingrains := make3[float64](n.lah, 2, n.nfft)
+	outgrains := make3[float64](n.lah, 2, n.nfft)
 	copy(input[0], lin)
 	copy(input[1], rin)
 	speedups := make([]float64, n.lah)
@@ -499,7 +515,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 	n.enfft(a.X, a.W, Mid)
 	n.enfft(a.Xd, a.Wd, Mid)
 	n.enfft(a.Xt, a.Wt, Mid)
-	n.enfft(a.Y, a.Walt, Mid)
+	n.enfft(a.Y, a.Walt, Mid) // (1), see below
 
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
 	for w := range a.X {
@@ -523,7 +539,7 @@ func (n *warper) analyze(present [][]float64, C [][]complex128, Fadv, Tadv, M, M
 		if m < 1e-6 {
 			p = complex(1, 0)
 		}
-		M[w] = mag(a.Y[w])
+		M[w] = mag(a.Y[w]) // (1), see above
 		a.Y[w] = p
 	}
 	for ch := range present {

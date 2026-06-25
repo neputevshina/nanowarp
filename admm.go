@@ -9,13 +9,20 @@ import "gonum.org/v1/gonum/dsp/fourier"
 
 type admm struct {
 	fft     *fourier.FFT
+	nbuf    int
 	s, sbig []float64
 	norm    float64
 	hop     int
 	Wf, Wr  []float64
+
+	admmbufs
 }
 
-type stftTensor struct {
+type admmbufs struct { // DELETEME
+	Z, X, U, Y, W [][]complex128 `size:"lah"`
+}
+
+type stftTensor struct { // TODO(neputevshina): USE ME
 	data    []complex128
 	shape   [2]int
 	padding int
@@ -23,9 +30,9 @@ type stftTensor struct {
 }
 
 func (a *admm) stft(dst [][]complex128, sa []float64) [][]complex128 {
-	nfft := a.fft.Len()
+	nbuf := a.nbuf
 	for i := 0; i < len(sa); i += a.hop {
-		copy(a.s[max(0, nfft/2-i):], sa[max(0, i-nfft/2):min(len(sa), i+nfft/2)])
+		copy(a.s[max(0, nbuf/2-i):], sa[max(0, i-nbuf/2):min(len(sa), i+nbuf/2)])
 		mul(a.s, a.Wf)
 		a.fft.Coefficients(dst[i/a.hop], a.s)
 	}
@@ -33,13 +40,13 @@ func (a *admm) stft(dst [][]complex128, sa []float64) [][]complex128 {
 }
 
 func (a *admm) istft(dst []float64, fr [][]complex128) []float64 {
-	nfft := a.fft.Len()
+	nbuf := a.nbuf
 	for j := range fr {
 		i := j * a.hop
 		a.fft.Sequence(a.s, fr[j])
 		mul(a.s, a.Wr)
 		scale(a.s, 1/a.norm)
-		add(dst[max(0, i-nfft/2):min(len(dst), i+nfft/2)], a.s)
+		add(dst[max(0, i-nbuf/2):min(len(dst), i+nbuf/2)], a.s)
 	}
 	return dst
 }
@@ -48,20 +55,31 @@ func (a *admm) project(dst [][]complex128) [][]complex128 {
 	return a.stft(dst, a.istft(a.sbig, dst))
 }
 
-func (a *admm) admm(srcdst [][]complex128, M [][]float64, iterations int, ρ float64) [][]complex128 {
-	Z := make2[complex128](len(srcdst), len(srcdst[0]))
+func (a *admm) admm(srcdst [][]complex128, M [][]float64, known []bool, iterations int, ρ float64) [][]complex128 {
+	if a.U == nil { // TODO(neputevshina): create newAdmm and move to it in production nanowarp
+		a.Z = make2[complex128](len(srcdst), len(srcdst[0]))
+		a.X = make2[complex128](len(srcdst), len(srcdst[0]))
+
+		a.U = make2[complex128](len(srcdst), len(srcdst[0]))
+		a.Y = make2[complex128](len(srcdst), len(srcdst[0]))
+		a.W = make2[complex128](len(srcdst), len(srcdst[0]))
+	}
+
+	Z, X, U, Y, W := a.Z, a.X, a.U, a.Y, a.W
 	for n := range srcdst {
 		copy(Z[n], srcdst[n])
+		copy(X[n], srcdst[n])
+		clear(U[n])
 	}
-	U := make2[complex128](len(srcdst), len(srcdst[0]))
-	Y := make2[complex128](len(srcdst), len(srcdst[0]))
-	W := make2[complex128](len(srcdst), len(srcdst[0]))
-	X := srcdst
+
 	for range iterations {
 		for i := range Z {
 			for j := range Z[0] {
-				// Pc2
-				X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j])
+				if known[i] {
+					X[i][j] = srcdst[i][j] // Retain phase, |X| = M
+				} else {
+					X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j]) // Pc2
+				}
 				Y[i][j] = X[i][j] + U[i][j]
 				W[i][j] = Y[i][j]
 			}
@@ -75,5 +93,5 @@ func (a *admm) admm(srcdst [][]complex128, M [][]float64, iterations int, ρ flo
 			}
 		}
 	}
-	return srcdst
+	return X
 }

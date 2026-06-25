@@ -420,12 +420,12 @@ func make2[T any](nch, n int) [][]T {
 	return g
 }
 
-func make3(k, j, i int) [][][]float64 {
-	g := make([][][]float64, k)
+func make3[T any](k, j, i int) [][][]T {
+	g := make([][][]T, k)
 	for a := range k {
-		g[a] = make([][]float64, j)
+		g[a] = make([][]T, j)
 		for b := range j {
-			g[a][b] = make([]float64, i)
+			g[a][b] = make([]T, i)
 		}
 	}
 	return g
