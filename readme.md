@@ -58,18 +58,7 @@ unmodified.
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
-- Turns out, “phase gradient heap integration” probably doesn't need a heap. You _probably_ can work it out from local maxima (find all 
-  points which are greater than its two neighbors) with the simple round-robin list. Will SIGNIFICANTLY boost the performance if true.
-- There exists a [“beat-emphasis onset detection function”](
-  https://www.researchgate.net/profile/Matthew-Davies-5/publication/221016733_Towards_a_musical_beat_emphasis_function/links/54465fbd0cf2d62c304db658/Towards-a-musical-beat-emphasis-function.pdf).
-  - Or just make an informed guess of `-poolms` based on estimated uniform BPM. Much simpler and faster, probably as much effective.
-  - In the latter case, the novelty curve “max pool” (per time bin) detection (vs. dilation as now) is probably more preferable.
-  - Even simpler: use `-from` as a source of truth.
-  - Or keep a cumulative average, and select peaks only from above it.
-  - Or do live classification of the material and make the bin size smaller where no voice is found. Phase interruptions on instruments are much less noticeable.
-  - ~~Or use the large BPM-independent peak selection window (≥300 ms) and force the reset when enough correlation with the original is obtained. 
-    Very cheap, we always have both spectra for each grain, xcorr is one conjugate and multiplication away.
-    Might require doing it per-band and using some psychoacoustics to do it both regularly and unnoticeable.~~
+- Turns out, “phase gradient heap integration” probably doesn't need a heap. You _probably_ can just sort the “heap” and read the sorted array sequentially.
 - Some more onset detectors:
   - https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
   - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
@@ -80,51 +69,26 @@ unmodified.
   It actually can, but you need to see where points are coming from, not where they lead.
 - [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, ignoring overlap, 
   so it is impossible to obtain globally coherent phase with phase resets using this method. We need a some way to use the phase of up to overlap number of frames.
+- What **will** work is [phase retrieval](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8552369). I'm working on it in the exp2 branch. Wish me luck.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
-- We can probably reset the phases not for the whole frame, but only for a most prominent region. Either:
-  - define several “phase reset bands”. Just return the per-band sums of the novelty function; or
-  - ~~use the total sum (like now), but find a prominent bin range and reset the phase only in it.~~
-  - We can probably never reset the bass. Probably.
-  - It is enough to split the signal to four bands probably, crossovers are at 250-820-2500 Hz
-  - ~~And then drop the band if cross-correlation is low or if a band's response in a softmaxed vector is lower than 0.25.~~
-  - Bass activation triggers everything
-- There is pre- and post-echo of size hop×stretch for EVERY vertical motion in spectrum. 
-  - This is the property of PGHI (that's window side lobes), mini-pvdr does the same.
-  - Apparent only on extreme stretches
-  - And on high frequencies it's even echo in frequency, not only time.
-- **gonum has vectorized [complex](https://pkg.go.dev/gonum.org/v1/gonum@v0.17.0/cmplxs) and [float](https://pkg.go.dev/gonum.org/v1/gonum@v0.17.0/floats) operations. USE THIS.**
-
-
-### Testing strategy
-- Various impulse train signals
-- LFO FM Sine
-- Vocals under hard saturation
-- Drum loops
-- Full tracks: pop, electronica, acoustica, black metal
-- Braid remastered soundtrack, phase resets WILL break the sound.
-- “Frederic — oddloop” brings the algorithm to the knees: phasiness and misplaced phase resets are obvious.
-
-### Streaming implementation plan
-~~1. Switch time ramp and coefficient handling method from signal buffers to breakpoints.~~   Tried, it broke the algorithm.
-2. Define stretch signal producer and sound producer (goroutines).
-```
-for {
-  readnext(i) // blocking
-  stretch(i, o)
-  writenext(o)
-}
-```
-3. Define Push and Pull which communicate with producers.
-4. Use in cmd/nanowarp.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow.
-- Triples the sound on extreme (>4x) time stretches. The bane of all PVDR-based algorithms.
-- [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) Elastiqué doesn't do that.
+- Does not reconstruct the signal perfectly,
+  DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
+  to doubly applied windowing.
+  May be a mistake in Blackman-Harris window usage (doesn't occur with Hann IIRC)
+  or a bug in gonum/fourier (unlikely).
+- Triples the sound on extreme (>4x) time stretches. 
+  The bane of all PVDR-based algorithms because of extreme stretching of the magnitude spectrum.
+  General phase retrieval probably will give the same result.
+  Can be fixed by using larger windows for larger stretch coefficients.
+- [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) 
+  Elastiqué doesn't do that.
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
