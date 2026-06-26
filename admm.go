@@ -87,12 +87,13 @@ func (a *admm) admm(srcdst [][]complex128, M [][]float64, known []bool, iteratio
 			}
 		}
 		Yp = a.project(Yp)
+		// waveform.Dump(nil, a.sbig[:a.hop*8+2*a.nbuf])
 
 		for i := range Z {
 			for j := range Z[0] {
 				ρ := complex(ρ, 0)
 				Z[i][j] = (ρ*Y[i][j] + Yp[i][j]) / (1 + ρ)
-				U[i][j] = U[i][j] + X[i][j] - Z[i][j]
+				U[i][j] += X[i][j] - Z[i][j]
 			}
 		}
 	}

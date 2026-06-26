@@ -44,7 +44,7 @@ func (n *warper) processGla(lin, rin, lout, rout []float64, phasor []float64, st
 
 	known := make([]bool, lah*2)
 	fill(known[:lah], true)
-	known[len(known)-1] = true
+	known[lah*2-1] = true
 	// .  .  .  .  ?  ?  ?  .
 	// [________]  [_____]  _
 	// lah         lah-1    1
@@ -65,8 +65,8 @@ func (n *warper) processGla(lin, rin, lout, rout []float64, phasor []float64, st
 			n.analyze2(ingrains[:l][t], a.Cs[t], a.Xs[lah+t], a.Phs[t], a.Ms[lah+t], a.Fadvs[t+1], a.Tadvs[t+1], stretch)
 		}
 
-		n.integrate(a.Fadvs, a.Tadvs, a.Ms[lah-1:], a.Phs[:lah+1], n.arm, known[lah-1:])
-		n.admm.admm(a.Xs[:2*lah], a.Ms[:2*lah], known, 10, 0.1)
+		// n.integrate(a.Fadvs, a.Tadvs, a.Ms[lah-1:], a.Phs[:lah+1], n.arm, known[lah-1:])
+		n.admm.admm(a.Xs[:2*lah], a.Ms[:2*lah], known, 15, 0.1)
 
 		for t := range ingrains[:l] {
 			n.synthesize2(outgrain, a.Cs[t], a.Xs[lah+t])
