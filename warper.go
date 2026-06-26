@@ -30,13 +30,13 @@ type warper struct {
 }
 
 type wbufs struct {
-	S, Mid, M, P, F    []float64      // Scratch buffers
-	Ph                 []float64      `size:"nbins"` // Current phase
-	Past               []float64      // Phase accumulators
-	Fadv, Tadv         []float64      // Partial derivatives
-	W, Wr, Wd, Wt, Wdt []float64      // Window functions
-	X, Y, Xd, Xt       []complex128   // Complex spectra
-	C, Co              [][]complex128 // Channels
+	S, Mid, M, P  []float64      // Scratch buffers
+	Ph            []float64      `size:"nbins"` // Current phase
+	Past          []float64      // Phase accumulators
+	Fadv, Tadv    []float64      // Partial derivatives
+	W, Wr, Wd, Wt []float64      // Window functions
+	X, Y, Xd, Xt  []complex128   // Complex spectra
+	C             [][]complex128 // Channel differences
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -61,11 +61,11 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		return w[:nbuf]
 	}
 	blackmanHarris(s(a.W))
+	n.heap = make(hp, n.nbins)
 
 	// FIXME Destination is the first argument by convention.
 	windowDx(s(a.W), s(a.Wd))
 	windowT(s(a.W), s(a.Wt))
-	windowT(s(a.Wd), s(a.Wdt))
 
 	copy(s(a.Wr), s(a.W))
 	slices.Reverse(s(a.Wr))
@@ -153,41 +153,36 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 		enfft(a.C[ch], a.W, ingrain[ch])
 	}
 	enfft(a.X, a.W, a.Mid)
-	enfft(a.Xd, a.Wd, a.Mid)
-	enfft(a.Xt, a.Wt, a.Mid)
-
-	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
-	// TODO Works ONLY with 2x FFT oversampling.
-	olap := float64(n.nbuf / n.hop)
-	osampc := 2.
-
 	if reset {
+		// Bypass and refill the past on a phase reset.
 		for w := range a.Ph {
 			a.Ph[w] = cmplx.Phase(a.X[w])
 		}
 		copy(a.Past, a.Ph)
-		for ch := range len(ingrain) {
-			copy(a.Co[ch], a.C[ch])
-		}
 		goto skip
 	}
+	enfft(a.Xd, a.Wd, a.Mid)
+	enfft(a.Xt, a.Wt, a.Mid)
 
+	// Calculate partial derivatives of the phase.
+	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+	//
+	// TODO Probably it will be more numerically stable to limit the phase accuum to
+	// 0..1 and scale back to -π..π range at the poltocar conversion.
+	// fadv must return 0..1 accordingly, simply defer π multiplication until the end.
 	for w := range a.X {
-		// TODO Probably it will be more numerically stable to limit the phase accuum to
-		// 0..1 and scale back to -π..π range at the poltocar conversion.
-		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
 		a.Fadv[w] = princarg(fadv(a.X[:n.nbins], a.Xt, stretch, w))
-		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, osampc*olap, w)
+		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft/n.hop), w)
 	}
 
+	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
+	// NB: Phase difference in polar coordinates is complex division in cartesian.
+	//     Phase sum is conversely a multiply.
+	//     Hypot and multiplication are always cheaper than Atan2 and Sincos.
+	//
+	// See “Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
+	// real-time realization for a commercial music product.”
 	for w := range a.X {
-		// Encode stereo phase differences and stretch mid only, keep original magnitudes.
-		// NB: Phase difference in polar coordinates is complex division in cartesian.
-		//     Phase sum is conversely a multiply.
-		//     Hypot and multiplication are always cheaper than Atan2 and Sincos.
-		//
-		// See “Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
-		// real-time realization for a commercial music product.”
 		m := mag(a.X[w])
 		p := a.X[w] / complex(m, 0)
 		if m < 1e-6 {
@@ -199,15 +194,15 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 		}
 	}
 
-	n.heap = make(hp, n.nbins)
-
+	// Prepare heap (priority queue).
+	n.heap = n.heap[:n.nbins]
 	fill(n.arm, true)
 	for w := range a.X {
 		n.heap[w] = heaptriple{a.P[w], w, -1}
 	}
 	heapInit(&n.heap)
 
-	// Do PGHI.
+	// Perform phase gradient heap integration.
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		w := h.w
@@ -232,11 +227,12 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 		}
 	}
 
+	// Add stereo phase differences back through multiplication
+	// and update past.
 	for w := range a.Ph {
-		// Add stereo phase differences back through multiplication.
 		phasor := cmplx.Rect(1, a.Ph[w])
 		for ch := range ingrain {
-			a.Co[ch][w] = a.C[ch][w] * phasor
+			a.C[ch][w] *= phasor
 		}
 		a.Past[w] = princarg(a.Ph[w])
 	}
@@ -252,7 +248,7 @@ skip:
 		copy(out, a.S)
 	}
 	for ch := range ingrain {
-		defft(outgrain[ch], a.Co[ch])
+		defft(outgrain[ch], a.C[ch])
 	}
 }
 
