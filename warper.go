@@ -30,13 +30,13 @@ type warper struct {
 }
 
 type wbufs struct {
-	S, Mid, M, P, F            []float64      // Scratch buffers
-	Ph                         []float64      `size:"nbins"` // Current phase
-	Past                       []float64      // Phase accumulators
-	Fadv, Tadv                 []float64      // Partial derivatives
-	W, Wr, Wd, Wt, Wdt         []float64      // Window functions
-	X, Y, Xd, Xt, L, R, Lo, Ro []complex128   // Complex spectra
-	C, Co                      [][]complex128 // Channels
+	S, Mid, M, P, F    []float64      // Scratch buffers
+	Ph                 []float64      `size:"nbins"` // Current phase
+	Past               []float64      // Phase accumulators
+	Fadv, Tadv         []float64      // Partial derivatives
+	W, Wr, Wd, Wt, Wdt []float64      // Window functions
+	X, Y, Xd, Xt       []complex128   // Complex spectra
+	C, Co              [][]complex128 // Channels
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -62,7 +62,6 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	}
 
 	s := func(w []float64) []float64 {
-		// return w[nfft/2-nbuf/2 : nfft/2+nbuf/2]
 		return w[:nbuf]
 	}
 	blackmanHarris(s(a.W))
@@ -77,26 +76,23 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.wgain = windowGain(n.a.W)
 	n.norm = float64(nfft) * float64(n.olap) * n.osamp * n.wgain
 
-	// waveform.Dump(nil, a.W)
-	// waveform.Dump(nil, a.Wt)
-	// waveform.Dump(nil, a.Wd)
-
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, n.lah*n.nbins) // 2 for future and past.
 
 	return
 }
 
-func (n *warper) process3old(lin, rin, lout, rout []float64, coeffs, phasor []float64) {
+func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
-	get := func() []float64 { return make([]float64, n.nfft) }
-	lgrainbuf, rgrainbuf := get(), get()
-	lingrain, ringrain := get(), get()
-	lfuture, rfuture := get(), get()
+	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
+	grainbuf := get()
+	ingrain := get()
+
+	nch := len(in)
 
 	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
-		if j > len(lout)-n.nbuf {
+		if j > len(out[0])-n.nbuf {
 			break
 		}
 		fi := func(j int) int { return int(phasor[max(0, j)]) }
@@ -104,18 +100,13 @@ func (n *warper) process3old(lin, rin, lout, rout []float64, coeffs, phasor []fl
 		c := 1 / coeffs[max(0, j)]
 
 		cut := func(lingrain, lin []float64, i int) {
-			copy(lingrain[max(0, -(i-n.nbuf/2)):], lin[max(0, (i-n.nbuf/2)):clamp(0, len(lin), i+n.nbuf/2)])
+			copy(lingrain[max(0, n.nbuf/2-i):], lin[max(0, (i-n.nbuf/2)):clamp(0, len(lin), i+n.nbuf/2)])
 		}
-		cut(lingrain, lin, i)
-		cut(ringrain, rin, i)
-		if c == 1 {
-			cut(lfuture, lin, fi(j+n.hop))
-			cut(rfuture, rin, fi(j+n.hop))
-			add(lfuture, rfuture)
-			scale(lfuture, 0.5)
+		for ch := range nch {
+			cut(ingrain[ch], in[ch], i)
 		}
 
-		n.advanceOld(lingrain, ringrain, lgrainbuf, rgrainbuf, lfuture, abs(c), c == 1)
+		n.advance(ingrain, grainbuf, abs(c), c == 1)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -129,20 +120,21 @@ func (n *warper) process3old(lin, rin, lout, rout []float64, coeffs, phasor []fl
 				}
 				fill(grain[:n.nbuf/2-d-n.hop], 0)
 			}
-			z(lgrainbuf)
-			z(rgrainbuf)
+			for ch := range nch {
+				z(grainbuf[ch])
+			}
 		}
 
 		if n.root.opts.Onsets && c != 1 {
-			clear(lgrainbuf)
-			clear(rgrainbuf)
+			for ch := range nch {
+				clear(grainbuf[ch])
+			}
 		}
 
-		loutgrain := lout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-		routgrain := rout[max(0, j-n.nbuf/2):clamp(0, len(lout), j+n.nbuf/2)]
-
-		add(loutgrain, lgrainbuf[clamp(0, n.nbuf, -j):])
-		add(routgrain, rgrainbuf[clamp(0, n.nbuf, -j):])
+		for ch := range nch {
+			g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
+			add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
+		}
 	}
 }
 
@@ -150,7 +142,7 @@ func (n *warper) process3old(lin, rin, lout, rout []float64, coeffs, phasor []fl
 // phase gradient heap integration.
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []float64, stretch float64, reset bool) {
+func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -159,13 +151,11 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 		n.fft.Coefficients(x, a.S)
 	}
 
-	for i := range lingrain {
-		a.Mid[i] = lingrain[i] + ringrain[i]
+	clear(a.Mid)
+	for ch := range ingrain {
+		add(a.Mid, ingrain[ch])
+		enfft(a.C[ch], a.W, ingrain[ch])
 	}
-
-	enfft(a.L, a.W, lingrain)
-	enfft(a.R, a.W, ringrain)
-
 	enfft(a.X, a.W, a.Mid)
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
@@ -182,8 +172,9 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 			a.Ph[w] = cmplx.Phase(a.X[w])
 		}
 		copy(a.Past, a.Ph)
-		copy(a.Lo, a.L)
-		copy(a.Ro, a.R)
+		for ch := range len(ingrain) {
+			copy(a.Co[ch], a.C[ch])
+		}
 		goto skip
 	}
 
@@ -208,9 +199,9 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 			p = complex(1, 0)
 		}
 		a.M[w] = m
-
-		a.L[w] /= p
-		a.R[w] /= p
+		for ch := range len(ingrain) {
+			a.C[ch][w] /= p
+		}
 	}
 
 	n.heap = make(hp, n.nbins)
@@ -254,8 +245,9 @@ func (n *warper) advanceOld(lingrain, ringrain, loutgrain, routgrain, future []f
 	for w := range a.Ph {
 		// Add stereo phase differences back through multiplication.
 		phasor := cmplx.Rect(1, a.Ph[w])
-		a.Lo[w] = a.L[w] * phasor
-		a.Ro[w] = a.R[w] * phasor
+		for ch := range ingrain {
+			a.Co[ch][w] = a.C[ch][w] * phasor
+		}
 		a.Past[w] = princarg(a.Ph[w])
 	}
 	goto skip
@@ -269,8 +261,9 @@ skip:
 		mul(a.S, a.Wr)
 		copy(out, a.S)
 	}
-	defft(loutgrain, a.Lo)
-	defft(routgrain, a.Ro)
+	for ch := range ingrain {
+		defft(outgrain[ch], a.Co[ch])
+	}
 }
 
 func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {

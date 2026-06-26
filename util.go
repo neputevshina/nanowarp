@@ -241,3 +241,22 @@ func softmax(a []float64) {
 		a[i] = math.Exp2(a[i]) / expsum
 	}
 }
+
+func make2[T any](j, i int) (v [][]T) {
+	v = make([][]T, j)
+	for j := range j {
+		v[j] = make([]T, i)
+	}
+	return
+}
+
+func make3[T any](k, j, i int) (v [][][]T) {
+	v = make([][][]T, j)
+	for k := range k {
+		v[k] = make([][]T, i)
+		for j := range j {
+			v[k][j] = make([]T, i)
+		}
+	}
+	return
+}

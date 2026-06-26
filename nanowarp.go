@@ -137,7 +137,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
 
-	n.warper.process3old(lin, rin, lout, rout, coeffs, phasor)
+	n.warper.process3([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
 
 }
 
