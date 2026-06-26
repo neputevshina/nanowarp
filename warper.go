@@ -22,9 +22,9 @@ type warper struct {
 	root *Nanowarp
 
 	fft         *fourier.FFT
-	arm         [][]bool // PGHI done mask
-	norm, wgain float64  // Global normalization factor and grain-only normalization factor
-	heap        hp       // PGHI heap
+	arm         []bool  // PGHI done mask
+	norm, wgain float64 // Global normalization factor and grain-only normalization factor
+	heap        hp      // PGHI heap
 
 	a wbufs
 }
@@ -55,11 +55,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	a := &n.a
 
 	makeslices(a, n.nbins, nfft, nch, n.lah)
-
-	n.arm = make([][]bool, n.lah)
-	for i := range n.arm {
-		n.arm[i] = make([]bool, n.nbins)
-	}
+	n.arm = make([]bool, n.nbins)
 
 	s := func(w []float64) []float64 {
 		return w[:nbuf]
@@ -164,8 +160,6 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 	// TODO Works ONLY with 2x FFT oversampling.
 	olap := float64(n.nbuf / n.hop)
 	osampc := 2.
-	tadv := gettadv(a.X[:n.nbins], a.Xd, osampc*olap)
-	fadv := getfadv(a.X[:n.nbins], a.Xt, stretch)
 
 	if reset {
 		for w := range a.Ph {
@@ -182,7 +176,8 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 		// TODO Probably it will be more numerically stable to limit the phase accuum to
 		// 0..1 and scale back to -π..π range at the poltocar conversion.
 		// fadv must return 0..1 accordingly, simply defer π multiplication till the end.
-		a.Fadv[w] = princarg(fadv(w))
+		a.Fadv[w] = princarg(fadv(a.X[:n.nbins], a.Xt, stretch, w))
+		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, osampc*olap, w)
 	}
 
 	for w := range a.X {
@@ -206,12 +201,10 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 
 	n.heap = make(hp, n.nbins)
 
-	clear(n.arm[0])
+	fill(n.arm, true)
 	for w := range a.X {
-		n.arm[0][w] = true
 		n.heap[w] = heaptriple{a.P[w], w, -1}
 	}
-
 	heapInit(&n.heap)
 
 	// Do PGHI.
@@ -220,23 +213,20 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 		w := h.w
 		switch h.t {
 		case -1:
-			if n.arm[0][w] {
-				adv := tadv(w)
-				a.Ph[w] = a.Past[w] + adv
-				n.arm[0][w] = false
+			if n.arm[w] {
+				a.Ph[w] = a.Past[w] + a.Tadv[w]
+				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
 		case 0:
-			if w > 1 && n.arm[0][w-1] {
-				adv := -a.Fadv[w-1]
-				a.Ph[w-1] = a.Ph[w] + adv
-				n.arm[0][w-1] = false
+			if w >= 1 && n.arm[w-1] {
+				a.Ph[w-1] = a.Ph[w] - a.Fadv[w-1]
+				n.arm[w-1] = false
 				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
 			}
-			if w < n.nbins-1 && n.arm[0][w+1] {
-				adv := a.Fadv[w+1]
-				a.Ph[w+1] = a.Ph[w] + adv
-				n.arm[0][w+1] = false
+			if w < n.nbins-1 && n.arm[w+1] {
+				a.Ph[w+1] = a.Ph[w] + a.Fadv[w+1]
+				n.arm[w+1] = false
 				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
 			}
 		}
@@ -266,22 +256,18 @@ skip:
 	}
 }
 
-func getfadv(x, xt []complex128, stretch float64) func(w int) float64 {
-	return func(j int) float64 {
-		if mag(x[j]) == 0 {
-			return 0
-		}
-		// NOTE Try len(x)-1 instead. Sounds worse on my $4 speakers.
-		// FIXME Works ONLY with nbuf=4096, nfft=8192 (oversampling 2).
-		return -real(xt[j]/x[j])/float64(len(x))*math.Pi*stretch - math.Pi/2
+func fadv(x, xt []complex128, stretch float64, w int) float64 {
+	if mag(x[w]) == 0 {
+		return 0
 	}
+	// NOTE Try len(x)-1 instead. Sounds worse on my $4 speakers.
+	// FIXME Works ONLY with nbuf=4096, nfft=8192 (oversampling 2).
+	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/2
 }
 
-func gettadv(x, xd []complex128, olap float64) func(w int) float64 {
-	return func(j int) float64 {
-		if mag(x[j]) < 1e-6 {
-			return 0
-		}
-		return (math.Pi*float64(j) + imag(xd[j]/x[j])) / (olap / 2)
+func tadv(x, xd []complex128, olap float64, w int) float64 {
+	if mag(x[w]) < 1e-6 {
+		return 0
 	}
+	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / (olap / 2)
 }
