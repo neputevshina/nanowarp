@@ -58,7 +58,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap*300 - 1,
+		lah:   olap*10 - 1,
 	}
 	a := &n.a
 
@@ -100,7 +100,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.admm = admm{
 		fft:  fourier.NewFFT(nfft),
 		nbuf: nbuf,
-		s:    make([]float64, nbuf),
+		s:    make([]float64, nfft),
 		// FIXME calculate an accurate amount
 		sbig: make([]float64, n.hop*n.lah*4),
 		norm: n.norm,
@@ -108,7 +108,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		Wf:   n.a.W,
 		Wr:   n.a.Wr,
 	}
-	makeslices(n.admm.admmbufs, n.nbins, n.nfft, nch, n.lah*3)
+	// makeslices(&n.admm.admmbufs, n.nbins, n.nfft, nch, n.lah*3)
 
 	return
 }
@@ -560,18 +560,18 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 	// They are ground truths for the current step of integration, so they are
 	// added to the heap and not armed for phase reconstruction.
 	for t := range Ph {
-		if t > 0 && t < n.lah {
-			fill(arm[t], true)
-		} else {
+		if knownFrames[t] {
 			fill(arm[t], false)
 			for w := range n.nbins {
 				n.heap = append(n.heap, heaptriple{M[t][w], w, t})
 			}
+		} else {
+			fill(arm[t], true)
 		}
 	}
 	heapInit(&n.heap)
 
-	oscope.Enable = true
+	// oscope.Enable = true
 
 	var direction, spread, power [][]float64
 	if oscope.Enable {
@@ -582,15 +582,9 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 
 	// Neighborhood.
 	hood := [][]float64{ // F↓ T→
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 1, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 1, 0, 0, 0},
-		{0, 0, 0, 0, 1, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 1, 0},
+		{1, 0, 1},
+		{0, 1, 0},
 	}
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
@@ -609,9 +603,11 @@ func (n *warper) integrate(Fadv, Tadv, M [][]float64, Ph [][]float64, arm [][]bo
 				}
 				Ph[t][w] = Ph[h.t][h.w] + v*(f(tn)*Tadv[t][w]+f(wn)*Fadv[t][w])
 				arm[t][w] = false
-				spread[h.t][h.w] += 1
-				power[t][w], direction[t][w] = cmplx.Polar(complex(f(tn), f(wn)))
-				direction[t][w] = (direction[t][w] / math.Pi / 2) + 0.5
+				if oscope.Enable {
+					spread[h.t][h.w] += 1
+					power[t][w], direction[t][w] = cmplx.Polar(complex(f(tn), f(wn)))
+					direction[t][w] = (direction[t][w] / math.Pi / 2) + 0.5
+				}
 				heapPush(&n.heap, heaptriple{M[t][w], w, t})
 			}
 		}

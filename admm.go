@@ -1,6 +1,8 @@
 package nanowarp
 
-import "gonum.org/v1/gonum/dsp/fourier"
+import (
+	"gonum.org/v1/gonum/dsp/fourier"
+)
 
 // Masuyama, Yoshiki, Kohei Yatabe, and Yasuhiro Oikawa.
 // "Griffin–Lim like phase recovery via alternating direction method of multipliers."
@@ -19,7 +21,7 @@ type admm struct {
 }
 
 type admmbufs struct { // DELETEME
-	Z, X, U, Y, W [][]complex128 `size:"lah"`
+	Z, X, U, Y, Yp [][]complex128 `size:"lah"`
 }
 
 type stftTensor struct { // TODO(neputevshina): USE ME
@@ -31,10 +33,11 @@ type stftTensor struct { // TODO(neputevshina): USE ME
 
 func (a *admm) stft(dst [][]complex128, sa []float64) [][]complex128 {
 	nbuf := a.nbuf
-	for i := 0; i < len(sa); i += a.hop {
-		copy(a.s[max(0, nbuf/2-i):], sa[max(0, i-nbuf/2):min(len(sa), i+nbuf/2)])
+	for j := range dst {
+		i := j * a.hop
+		copy(a.s, sa[i:i+nbuf])
 		mul(a.s, a.Wf)
-		a.fft.Coefficients(dst[i/a.hop], a.s)
+		a.fft.Coefficients(dst[j], a.s)
 	}
 	return dst
 }
@@ -46,52 +49,51 @@ func (a *admm) istft(dst []float64, fr [][]complex128) []float64 {
 		a.fft.Sequence(a.s, fr[j])
 		mul(a.s, a.Wr)
 		scale(a.s, 1/a.norm)
-		add(dst[max(0, i-nbuf/2):min(len(dst), i+nbuf/2)], a.s)
+		add(dst[i:i+nbuf], a.s)
 	}
 	return dst
 }
 
 func (a *admm) project(dst [][]complex128) [][]complex128 {
-	return a.stft(dst, a.istft(a.sbig, dst))
+	clear(a.sbig)
+	return a.stft(dst, a.istft(a.sbig[:a.hop*8+2*a.nbuf], dst))
 }
 
-func (a *admm) admm(srcdst [][]complex128, M [][]float64, known []bool, iterations int, ρ float64) [][]complex128 {
+// Based on ADMMGLA.m from original paper's repo.
+func (a *admm) admm(srcdst [][]complex128, M [][]float64, known []bool, iterations int, ρ float64) {
 	if a.U == nil { // TODO(neputevshina): create newAdmm and move to it in production nanowarp
 		a.Z = make2[complex128](len(srcdst), len(srcdst[0]))
-		a.X = make2[complex128](len(srcdst), len(srcdst[0]))
+		// a.X = make2[complex128](len(srcdst), len(srcdst[0]))
 
 		a.U = make2[complex128](len(srcdst), len(srcdst[0]))
 		a.Y = make2[complex128](len(srcdst), len(srcdst[0]))
-		a.W = make2[complex128](len(srcdst), len(srcdst[0]))
+		a.Yp = make2[complex128](len(srcdst), len(srcdst[0]))
 	}
 
-	Z, X, U, Y, W := a.Z, a.X, a.U, a.Y, a.W
+	Z, X, U, Y, Yp := a.Z, srcdst, a.U, a.Y, a.Yp
 	for n := range srcdst {
 		copy(Z[n], srcdst[n])
-		copy(X[n], srcdst[n])
+		// copy(X[n], srcdst[n])
 		clear(U[n])
 	}
-
 	for range iterations {
 		for i := range Z {
 			for j := range Z[0] {
-				if known[i] {
-					X[i][j] = srcdst[i][j] // Retain phase, |X| = M
-				} else {
+				if !known[i] { // Retain the phase if known, |X| = M
 					X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j]) // Pc2
 				}
 				Y[i][j] = X[i][j] + U[i][j]
-				W[i][j] = Y[i][j]
+				Yp[i][j] = Y[i][j]
 			}
 		}
-		W = a.project(W)
+		Yp = a.project(Yp)
+
 		for i := range Z {
 			for j := range Z[0] {
 				ρ := complex(ρ, 0)
-				Z[i][j] = (ρ*Y[i][j] + W[i][j]) / (1 + ρ)
+				Z[i][j] = (ρ*Y[i][j] + Yp[i][j]) / (1 + ρ)
 				U[i][j] = U[i][j] + X[i][j] - Z[i][j]
 			}
 		}
 	}
-	return X
 }

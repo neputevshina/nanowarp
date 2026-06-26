@@ -346,6 +346,21 @@ func apply2[T any](a [][]T, f func(v T) T) [][]T {
 	return a
 }
 
+func apply[T any](a []T, f func(v T) T) []T {
+	for j := range a {
+		a[j] = f(a[j])
+	}
+	return a
+}
+
+func subst[T, U any](a []T, f func(v T) U) []U {
+	b := make([]U, len(a))
+	for j := range a {
+		b[j] = f(a[j])
+	}
+	return b
+}
+
 func fold2[T any](a [][]T, f func(a, v T) T) T {
 	var acc T
 	for j := range a {
