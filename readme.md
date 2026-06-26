@@ -77,7 +77,7 @@ unmodified.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
-- Slow.
+- Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
 - Does not reconstruct the signal perfectly,
   DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
   to doubly applied windowing.

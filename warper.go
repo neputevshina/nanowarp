@@ -95,11 +95,9 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 		i := fi(j)
 		c := 1 / coeffs[max(0, j)]
 
-		cut := func(lingrain, lin []float64, i int) {
-			copy(lingrain[max(0, n.nbuf/2-i):], lin[max(0, (i-n.nbuf/2)):clamp(0, len(lin), i+n.nbuf/2)])
-		}
 		for ch := range nch {
-			cut(ingrain[ch], in[ch], i)
+			copy(ingrain[ch][max(0, n.nbuf/2-i):],
+				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
 		}
 
 		n.advance(ingrain, grainbuf, abs(c), c == 1)
@@ -134,10 +132,7 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 	}
 }
 
-// advance adds to the phase of the output by one frame using
-// phase gradient heap integration.
-// See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
-// (https://arxiv.org/pdf/2202.07382)
+// advance constructs the next frame of the output.
 func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset bool) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
@@ -158,14 +153,14 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 		for w := range a.Ph {
 			a.Ph[w] = cmplx.Phase(a.X[w])
 		}
-		copy(a.Past, a.Ph)
 		goto skip
 	}
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 
 	// Calculate partial derivatives of the phase.
-	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.
+	//
+	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms
 	//
 	// TODO Probably it will be more numerically stable to limit the phase accuum to
 	// 0..1 and scale back to -π..π range at the poltocar conversion.
@@ -180,8 +175,8 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 	//     Phase sum is conversely a multiply.
 	//     Hypot and multiplication are always cheaper than Atan2 and Sincos.
 	//
-	// See “Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
-	// real-time realization for a commercial music product.”
+	// See Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
+	// real-time realization for a commercial music product
 	for w := range a.X {
 		m := mag(a.X[w])
 		p := a.X[w] / complex(m, 0)
@@ -203,13 +198,16 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 	heapInit(&n.heap)
 
 	// Perform phase gradient heap integration.
+	//
+	// See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
+	// (https://arxiv.org/pdf/2202.07382)
 	for len(n.heap) > 0 {
 		h := heapPop(&n.heap)
 		w := h.w
 		switch h.t {
 		case -1:
 			if n.arm[w] {
-				a.Ph[w] = a.Past[w] + a.Tadv[w]
+				a.Ph[w] = princarg(a.Past[w]) + a.Tadv[w]
 				n.arm[w] = false
 				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
 			}
@@ -228,17 +226,18 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 	}
 
 	// Add stereo phase differences back through multiplication
-	// and update past.
+	// and update past phases.
 	for w := range a.Ph {
 		phasor := cmplx.Rect(1, a.Ph[w])
 		for ch := range ingrain {
 			a.C[ch][w] *= phasor
 		}
-		a.Past[w] = princarg(a.Ph[w])
 	}
 	goto skip
 skip:
 	copy(a.P, a.M)
+	copy(a.Past, a.Ph)
+
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {
@@ -252,6 +251,8 @@ skip:
 	}
 }
 
+// fadv calculates the partial derivative of the phase with respect
+// to frequency using time-frequency reassignment.
 func fadv(x, xt []complex128, stretch float64, w int) float64 {
 	if mag(x[w]) == 0 {
 		return 0
@@ -261,6 +262,8 @@ func fadv(x, xt []complex128, stretch float64, w int) float64 {
 	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/2
 }
 
+// tadv calculates the partial derivative of the phase with respect
+// to time using time-frequency reassignment.
 func tadv(x, xd []complex128, olap float64, w int) float64 {
 	if mag(x[w]) < 1e-6 {
 		return 0
