@@ -13,7 +13,7 @@ func (n *warper) processGla(lin, rin, lout, rout []float64, phasor []float64, st
 	fmt.Fprintln(os.Stderr, `(*warper).processGla`)
 	// println := func(a ...any) {}
 
-	lah := 4 * n.olap
+	lah := 2 * n.olap
 
 	input := make2[float64](2, len(lin))
 	grainbuf := make2[float64](2, n.nfft)
@@ -62,10 +62,10 @@ func (n *warper) processGla(lin, rin, lout, rout []float64, phasor []float64, st
 		}
 
 		for t := range ingrains[:l] {
-			n.analyze2(ingrains[:l][t], a.Cs[t], a.Xs[lah+t], a.Ms[lah+t], a.Phs[t], a.Fadvs[t+1], a.Tadvs[t+1], stretch)
+			n.analyze2(ingrains[:l][t], a.Cs[t], a.Xs[lah+t], a.Phs[t], a.Ms[lah+t], a.Fadvs[t+1], a.Tadvs[t+1], stretch)
 		}
 
-		// n.integrate(a.Fadvs, a.Tadvs, a.Ms[lah-1:], a.Phs[:lah+1], n.arm, known[lah-1:])
+		n.integrate(a.Fadvs, a.Tadvs, a.Ms[lah-1:], a.Phs[:lah+1], n.arm, known[lah-1:])
 		n.admm.admm(a.Xs[:2*lah], a.Ms[:2*lah], known, 10, 0.1)
 
 		for t := range ingrains[:l] {
@@ -77,6 +77,7 @@ func (n *warper) processGla(lin, rin, lout, rout []float64, phasor []float64, st
 			copy(a.Ms[t], a.Ms[lah+t])
 		}
 		// waveform.Dump(nil, a.sbig[:a.hop*8+2*a.nbuf])
+
 		// println()
 		// println()
 		// println()
@@ -103,8 +104,8 @@ func (n *warper) analyze2(present [][]float64, C [][]complex128, X []complex128,
 	n.enfft(a.Xt, a.Wt, a.Mid)
 
 	for w := range a.X {
-		Fadv[w] = princarg(getfadv(a.X, a.Xt, 2./n.osamp/speedup)(w))
-		Tadv[w] = gettadv(a.X, a.Xd, float64(n.olap)*n.osamp)(w)
+		Fadv[w] = princarg(getfadv(X, a.Xt, 2./n.osamp/speedup)(w))
+		Tadv[w] = gettadv(X, a.Xd, float64(n.olap)*n.osamp)(w)
 
 	}
 
