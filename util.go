@@ -26,20 +26,20 @@ func princarg(phase float64) float64 {
 	return phase - math.Round(phase/pi2)*pi2
 }
 
-func add[T constraints.Float](dst, src []T) {
+func add[T constraints.Float | constraints.Complex](dst, src []T) {
 	for i := 0; i < min(len(dst), len(src)); i++ {
 		dst[i] += src[i]
 	}
 }
 
-func sum[T constraints.Float](src []T) (s T) {
+func sum[T constraints.Float | constraints.Complex](src []T) (s T) {
 	for i := range src {
 		s += src[i]
 	}
 	return
 }
 
-func mul[T constraints.Float](dst, src []T) {
+func mul[T constraints.Float | constraints.Complex](dst, src []T) {
 	for i := 0; i < min(len(dst), len(src)); i++ {
 		dst[i] *= src[i]
 	}
@@ -222,7 +222,7 @@ func hztobin(hz float64, nfft, fs int) int {
 	return int(hz * float64(nfft) / float64(fs))
 }
 
-func scale[T constraints.Float](dst []T, s T) {
+func scale[T constraints.Float | constraints.Complex](dst []T, s T) {
 	for i := range dst {
 		dst[i] *= s
 	}

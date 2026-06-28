@@ -100,7 +100,8 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
 		}
 
-		n.advance(ingrain, grainbuf, abs(c), c == 1)
+		ph, df, _ := n.advance(ingrain, abs(c), c == 1)
+		n.synthesize(grainbuf, ph, df)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -133,7 +134,7 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset bool) {
+func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph []complex128, c [][]complex128, m []float64) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -152,6 +153,7 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 		// Bypass and refill the past on a phase reset.
 		for w := range a.Ph {
 			a.Ph[w] = cmplx.Phase(a.X[w])
+			a.Y[w] = complex(1, 0)
 		}
 		goto skip
 	}
@@ -228,16 +230,17 @@ func (n *warper) advance(ingrain, outgrain [][]float64, stretch float64, reset b
 	// Add stereo phase differences back through multiplication
 	// and update past phases.
 	for w := range a.Ph {
-		phasor := cmplx.Rect(1, a.Ph[w])
-		for ch := range ingrain {
-			a.C[ch][w] *= phasor
-		}
+		a.Y[w] = cmplx.Rect(1, a.Ph[w])
 	}
-	goto skip
 skip:
 	copy(a.P, a.M)
 	copy(a.Past, a.Ph)
 
+	return a.Y, a.C, a.M
+}
+
+func (n *warper) synthesize(outgrain [][]float64, ph []complex128, c [][]complex128) {
+	a := &n.a
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
 		for j := range a.S {
@@ -246,8 +249,9 @@ skip:
 		mul(a.S, a.Wr)
 		copy(out, a.S)
 	}
-	for ch := range ingrain {
-		defft(outgrain[ch], a.C[ch])
+	for ch := range outgrain {
+		mul(c[ch], ph)
+		defft(outgrain[ch], c[ch])
 	}
 }
 

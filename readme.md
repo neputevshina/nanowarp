@@ -54,6 +54,9 @@ Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for the inp
 sample indexes. If the derivative of the signal is 1, samples are passed through to the output 
 unmodified.
 
+The algorithm does not depend on input signal level (there are no level-dependent thresholds) 
+and does not use any type of psychoacoustics methods (e.g. masking) except of onset detection.
+
 ## Demos
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
