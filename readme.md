@@ -52,7 +52,10 @@ stretch size, and points between regions are linearly interpolated.
 
 Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for the input 
 sample indexes. If the derivative of the signal is 1, samples are passed through to the output 
-unmodified.
+*essentially* unmodified.
+
+If `-q=1`, 4 frames before the phase reset are reconstructed with Griffin-Lim-like phase retrieval 
+algorithm[5] to eliminate clicks on phase resets.
 
 The algorithm does not depend on input signal level (there are no level-dependent thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except of onset detection.
@@ -72,7 +75,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
   It actually can, but you need to see where points are coming from, not where they lead.
 - [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, ignoring overlap, 
   so it is impossible to obtain globally coherent phase with phase resets using this method. We need a some way to use the phase of up to overlap number of frames.
-- What **will** work is [phase retrieval](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8552369). I'm working on it in the exp2 branch. Wish me luck.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 
@@ -100,3 +102,4 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
 3. [Duxbury, C., Bello, J. P., Davies, M., & Sandler, M. (2003, September). Complex domain onset detection for musical signals. In Proc. Digital Audio Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.](https://www.dafx.de/paper-archive/2003/pdfs/dafx81.pdf)
 4. [Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a real-time realization for a commercial music product.](https://thesis.unipd.it/bitstream/20.500.12608/16470/1/tesi.pdf)
+5. [Masuyama, Y., Yatabe, K., & Oikawa, Y. (2018). Griffin–Lim like phase recovery via alternating direction method of multipliers. IEEE Signal Processing Letters, 26(1), 184-188.](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8552369)
