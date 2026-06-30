@@ -25,6 +25,7 @@ type warper struct {
 	arm         []bool  // PGHI done mask
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 	heap        hp      // PGHI heap
+	admm        admm
 
 	a wbufs
 }
@@ -37,6 +38,11 @@ type wbufs struct {
 	W, Wr, Wd, Wt []float64      // Window functions
 	X, Y, Xd, Xt  []complex128   // Complex spectra
 	C             [][]complex128 // Channel differences
+
+	// GLA frames.
+	Ycanvas [][]complex128   `size:"lah"` // Reconstructed normal
+	Ccanvas [][][]complex128 `size:"lah"` // Original stereo differences
+	Mcanvas [][]float64      `size:"lah"` // Original magnitudes
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -50,7 +56,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		olap:  olap,
 		osamp: float64(osamp),
 		root:  nanowarp,
-		lah:   olap + 1,
+		lah:   3 * olap,
 	}
 	a := &n.a
 
@@ -61,6 +67,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 		return w[:nbuf]
 	}
 	blackmanHarris(s(a.W))
+	// hann(s(a.W))
 	n.heap = make(hp, n.nbins)
 
 	// FIXME Destination is the first argument by convention.
@@ -73,7 +80,18 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.norm = float64(nfft) * float64(n.olap) * n.osamp * n.wgain
 
 	n.fft = fourier.NewFFT(nfft)
-	n.heap = make(hp, n.lah*n.nbins) // 2 for future and past.
+	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
+
+	n.admm = admm{
+		fft:  n.fft,
+		nbuf: nbuf,
+		s:    make([]float64, nfft),
+		sbig: make([]float64, nfft+n.hop*n.lah),
+		norm: n.norm,
+		hop:  n.hop,
+		Wf:   a.W,
+		Wr:   a.Wr,
+	}
 
 	return
 }
@@ -85,50 +103,70 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 	ingrain := get()
 
 	nch := len(in)
+	a := &n.a
 
-	lastone := 0
+	knownmask := make([]bool, 3*n.olap)
+	fill(knownmask, true)
+	fill(knownmask[n.olap:2*n.olap], false)
+
 	for j := -n.nbuf; ; j += n.hop {
-		if j > len(out[0])-n.nbuf {
+		if j >= len(out[0]) {
 			break
 		}
 		fi := func(j int) int { return int(phasor[max(0, j)]) }
-		i := fi(j)
-		c := 1 / coeffs[max(0, j)]
 
-		for ch := range nch {
-			copy(ingrain[ch][max(0, n.nbuf/2-i):],
-				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
-		}
+		if coeffs[clamp(0, len(coeffs)-1, j+n.nbuf*2)] == 1 {
+			v := j
+			for ; j < v+n.nbuf*3; j += n.hop {
+				u := (j - v) / n.hop
 
-		ph, df, _ := n.advance(ingrain, abs(c), c == 1)
-		n.synthesize(grainbuf, ph, df)
+				i := fi(j)
+				c := 1 / coeffs[max(0, j)]
 
-		// Cut pre-echo in transient regions.
-		d := j - lastone
-		if c == 1 {
-			lastone = j
-		} else if d < n.nbuf/2 {
-			z := func(grain []float64) {
-				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
-				for i := range rr {
-					rr[i] *= float64(i) / float64(len(rr))
+				for ch := range nch {
+					copy(ingrain[ch][max(0, n.nbuf/2-i):],
+						in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
 				}
-				fill(grain[:n.nbuf/2-d-n.hop], 0)
+				Y, C, M := n.advance(ingrain, abs(c), c == 1)
+				copy(a.Ycanvas[u], Y)
+				copy(a.Mcanvas[u], M)
+				for ch := range ingrain {
+					copy(a.Ccanvas[u][ch], C[ch])
+				}
 			}
-			for ch := range nch {
-				z(grainbuf[ch])
-			}
-		}
 
-		if n.root.opts.Onsets && c != 1 {
-			for ch := range nch {
-				clear(grainbuf[ch])
-			}
-		}
+			n.admm.gla(a.Ycanvas, a.Mcanvas, knownmask, 50)
 
-		for ch := range nch {
-			g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
-			add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
+			j = v
+			for ; j < v+n.nbuf*3; j += n.hop {
+				u := (j - v) / n.hop
+
+				for w := range a.Ycanvas[u] {
+					a.Ycanvas[u][w] = norm(a.Ycanvas[u][w])
+				}
+				n.synthesize(grainbuf, a.Ycanvas[u], a.Ccanvas[u])
+				for ch := range nch {
+					g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
+					add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
+				}
+			}
+			j -= n.hop
+		} else {
+			i := fi(j)
+			c := 1 / coeffs[max(0, j)]
+
+			for ch := range nch {
+				copy(ingrain[ch][max(0, n.nbuf/2-i):],
+					in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
+			}
+
+			ph, df, _ := n.advance(ingrain, abs(c), c == 1)
+			n.synthesize(grainbuf, ph, df)
+
+			for ch := range nch {
+				g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
+				add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
+			}
 		}
 	}
 }
@@ -168,6 +206,11 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph [
 			// (in (*warper).synthesize) multiplied back.
 			// Required for GLA, which in other case would intoduce insignificant
 			// null test fail (like one introduced in commit c7d6ddbb).
+			//
+			// ChatGPT says it is possible to compensate error through remainder.
+			// I don't believe him.
+			// Go already implements lower-error Smith's algorithm for complex division:
+			// https://go.googlesource.com/go/+/refs/heads/master/src/runtime/complex.go
 			//
 			// Transients are still more or less left intact.
 			a.C[ch][w] /= a.Y[w]
@@ -280,4 +323,59 @@ func tadv(x, xd []complex128, olap float64, w int) float64 {
 		return 0
 	}
 	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / (olap / 2)
+}
+
+func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []float64) {
+	fmt.Fprintln(os.Stderr, `(*warper).process3`)
+	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
+	grainbuf := get()
+	ingrain := get()
+
+	nch := len(in)
+
+	lastone := 0
+	for j := -n.nbuf; ; j += n.hop {
+		if j > len(out[0])-n.nbuf {
+			break
+		}
+		fi := func(j int) int { return int(phasor[max(0, j)]) }
+		i := fi(j)
+		c := 1 / coeffs[max(0, j)]
+
+		for ch := range nch {
+			copy(ingrain[ch][max(0, n.nbuf/2-i):],
+				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
+		}
+
+		ph, df, _ := n.advance(ingrain, abs(c), c == 1)
+		n.synthesize(grainbuf, ph, df)
+
+		// Cut pre-echo in transient regions.
+		d := j - lastone
+		if c == 1 {
+			lastone = j
+		} else if d < n.nbuf/2 {
+			z := func(grain []float64) {
+				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+				for i := range rr {
+					rr[i] *= float64(i) / float64(len(rr))
+				}
+				fill(grain[:n.nbuf/2-d-n.hop], 0)
+			}
+			for ch := range nch {
+				z(grainbuf[ch])
+			}
+		}
+
+		if n.root.opts.Onsets && c != 1 {
+			for ch := range nch {
+				clear(grainbuf[ch])
+			}
+		}
+
+		for ch := range nch {
+			g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
+			add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
+		}
+	}
 }

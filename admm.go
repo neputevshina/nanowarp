@@ -59,21 +59,48 @@ func (a *admm) project(dst [][]complex128) [][]complex128 {
 	return a.stft(dst, a.istft(a.sbig[:a.hop*8+2*a.nbuf], dst))
 }
 
+// gla implements basic Griffin-Lim phase reconstruction algorithm.
+func (a *admm) gla(X [][]complex128, M [][]float64, known []bool, iterations int) {
+	if a.U == nil { // TODO(neputevshina): create newGla and move to it in production nanowarp
+		a.Z = make2[complex128](len(X), len(X[0]))
+	}
+
+	Z := a.Z
+	for n := range X {
+		copy(Z[n], X[n])
+	}
+	for range iterations {
+		for i := range Z {
+			for j := range Z[0] {
+				X[i][j] = complex(M[i][j], 0) * norm(X[i][j])
+			}
+		}
+		X = a.project(X)
+
+		for i := range Z {
+			for j := range Z[0] {
+				if known[i] {
+					X[i][j] = Z[i][j]
+				}
+			}
+		}
+	}
+	// waveform.Dump(nil, a.sbig[:a.hop*8+2*a.nbuf])
+}
+
 // Based on ADMMGLA.m from original paper's repo.
-func (a *admm) admm(srcdst [][]complex128, M [][]float64, known []bool, iterations int, ρ float64) {
-	// if a.U == nil { // TODO(neputevshina): create newAdmm and move to it in production nanowarp
-	// 	a.Z = make2[complex128](len(srcdst), len(srcdst[0]))
-	// 	// a.X = make2[complex128](len(srcdst), len(srcdst[0]))
+func (a *admm) admm(X [][]complex128, M [][]float64, known []bool, iterations int, ρ float64) {
+	if a.U == nil { // TODO(neputevshina): create newAdmm and move to it in production nanowarp
+		a.Z = make2[complex128](len(X), len(X[0]))
+		a.U = make2[complex128](len(X), len(X[0]))
+		a.Y = make2[complex128](len(X), len(X[0]))
+		a.Yp = make2[complex128](len(X), len(X[0]))
+	}
 
-	// 	a.U = make2[complex128](len(srcdst), len(srcdst[0]))
-	// 	a.Y = make2[complex128](len(srcdst), len(srcdst[0]))
-	// 	a.Yp = make2[complex128](len(srcdst), len(srcdst[0]))
-	// }
-
-	Z, X, U, Y, Yp := a.Z, srcdst, a.U, a.Y, a.Yp
-	for n := range srcdst {
-		copy(Z[n], srcdst[n])
-		// copy(X[n], srcdst[n])
+	Z, U, Y, Yp := a.Z, a.U, a.Y, a.Yp
+	for n := range X {
+		copy(Z[n], X[n])
+		// copy(X[n],X[n])
 		clear(U[n])
 	}
 	for range iterations {
@@ -81,6 +108,8 @@ func (a *admm) admm(srcdst [][]complex128, M [][]float64, known []bool, iteratio
 			for j := range Z[0] {
 				if !known[i] { // Retain the phase if known, |X| = M
 					X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j]) // Pc2
+				} else {
+					Z[i][j] = X[i][j]
 				}
 				Y[i][j] = X[i][j] + U[i][j]
 				Yp[i][j] = Y[i][j]
