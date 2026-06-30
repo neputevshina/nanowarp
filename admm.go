@@ -21,7 +21,7 @@ type admm struct {
 }
 
 type admmbufs struct { // DELETEME
-	Z, X, U, Y, Yp [][]complex128 `size:"lah"`
+	Z, X, U, Y, Yp, O [][]complex128 `size:"lah"`
 }
 
 type stftTensor struct { // TODO(neputevshina): USE ME
@@ -92,25 +92,23 @@ func (a *admm) gla(X [][]complex128, M [][]float64, known []bool, iterations int
 func (a *admm) admm(X [][]complex128, M [][]float64, known []bool, iterations int, ρ float64) {
 	if a.U == nil { // TODO(neputevshina): create newAdmm and move to it in production nanowarp
 		a.Z = make2[complex128](len(X), len(X[0]))
+		a.O = make2[complex128](len(X), len(X[0]))
 		a.U = make2[complex128](len(X), len(X[0]))
 		a.Y = make2[complex128](len(X), len(X[0]))
 		a.Yp = make2[complex128](len(X), len(X[0]))
 	}
 
-	Z, U, Y, Yp := a.Z, a.U, a.Y, a.Yp
+	Z, U, Y, Yp, O := a.Z, a.U, a.Y, a.Yp, a.O
 	for n := range X {
 		copy(Z[n], X[n])
+		copy(O[n], X[n])
 		// copy(X[n],X[n])
 		clear(U[n])
 	}
 	for range iterations {
 		for i := range Z {
 			for j := range Z[0] {
-				if !known[i] { // Retain the phase if known, |X| = M
-					X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j]) // Pc2
-				} else {
-					Z[i][j] = X[i][j]
-				}
+				X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j]) // Pc2
 				Y[i][j] = X[i][j] + U[i][j]
 				Yp[i][j] = Y[i][j]
 			}
@@ -123,6 +121,9 @@ func (a *admm) admm(X [][]complex128, M [][]float64, known []bool, iterations in
 				ρ := complex(ρ, 0)
 				Z[i][j] = (ρ*Y[i][j] + Yp[i][j]) / (1 + ρ)
 				U[i][j] += X[i][j] - Z[i][j]
+				if known[i] {
+					X[i][j] = O[i][j]
+				}
 			}
 		}
 	}

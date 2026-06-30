@@ -96,7 +96,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []float64) {
+func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []float64, gla bool) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
 	grainbuf := get()
@@ -135,7 +135,9 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 				}
 			}
 
-			n.admm.gla(a.Ycanvas, a.Mcanvas, knownmask, 50)
+			if gla {
+				n.admm.admm(a.Ycanvas, a.Mcanvas, knownmask, 20, 0.1)
+			}
 
 			j = v
 			for ; j < v+n.nbuf*3; j += n.hop {

@@ -44,8 +44,11 @@ type Options struct {
 	//  -1: Don't perform transient separation, output raw PVDR without phase resets.
 	//      4x overlap. Fastest and currently the smoothest with OK transient preservation
 	//	and excellent tonal quality.
-	//  0:  Extract transients and reset the phase on them. 4x overlap. Slow.
-	//  1:  Same as 0, but with 8x overlap. Slowest with diminishing returns.
+	//  0:  Extract transients and reset the phase on them.
+	// 	Clicky artifacts on incorrectly detected transients. Slow.
+	//  1:  Reconstructs the phase before the reset using phase retieval
+	//	to eliminate clicks. May add reverberation artifacts before transients.
+	// 	Slowest.
 	Quality int
 
 	// Time for which signal will be bypassed at any detected transient.
@@ -60,6 +63,7 @@ type Options struct {
 
 	// Measure the pooling size in output time, not in input time.
 	// I.e. scale the pooling size with the stretch coefficient.
+	// Effective only for stretches, not shrinkages.
 	ScalePool bool
 }
 
@@ -85,9 +89,6 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 		opts.PickingMs = 250
 	}
 	olap := 4
-	if opts.Quality == 1 {
-		olap *= 2
-	}
 
 	n.warper = warperNew(4096*w, 2, olap, 2, n)
 	n.detector = DetectorNew(1024, samplerate, opts.TransientMs, opts.PickingMs)
@@ -137,7 +138,9 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
 
-	n.warper.process3old([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
+	// process := n.process3old
+
+	n.process3([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor, n.opts.Quality == 1)
 }
 
 func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
