@@ -86,10 +86,11 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
   to doubly applied windowing.
   May be a mistake in Blackman-Harris window usage (doesn't occur with Hann IIRC)
   or a bug in gonum/fourier (unlikely).
-- Triples the sound on extreme (>4x) time stretches. 
+- Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms because of extreme stretching of the magnitude spectrum.
   General phase retrieval probably will give the same result.
   Can be fixed by using larger windows for larger stretch coefficients.
+- Triple echo in frequency on high-frequency content. Can be seen on 2x stretched log sweep.
 - [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) 
   Elastiqué doesn't do that.
 

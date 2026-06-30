@@ -149,14 +149,40 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph [
 		enfft(a.C[ch], a.W, ingrain[ch])
 	}
 	enfft(a.X, a.W, a.Mid)
+
+	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
+	// NB: Phase difference in polar coordinates is complex division in cartesian.
+	//     Phase sum is conversely a multiply.
+	//     Hypot and multiplication are always cheaper than Atan2 and Sincos.
+	//
+	// See Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
+	// real-time realization for a commercial music product
+	for w := range a.X {
+		a.M[w] = mag(a.X[w])
+		a.Y[w] = safediv(a.X[w], complex(a.M[w], 0))
+		for ch := range len(ingrain) {
+			// BREAKING: significant null test fail with commit 9e8e1747 due to numerical
+			// instablility of a/b*b.
+			//
+			// Previously, a.C was bypassed on resets, now it is divided and then
+			// (in (*warper).synthesize) multiplied back.
+			// Required for GLA, which in other case would intoduce insignificant
+			// null test fail (like one introduced in commit c7d6ddbb).
+			//
+			// Transients are still more or less left intact.
+			a.C[ch][w] /= a.Y[w]
+		}
+	}
+
+	// Bypass and refill the past on a phase reset.
 	if reset {
-		// Bypass and refill the past on a phase reset.
-		for w := range a.Ph {
+		for w := range a.Y {
 			a.Ph[w] = cmplx.Phase(a.X[w])
-			a.Y[w] = complex(1, 0)
 		}
 		goto skip
 	}
+
+	// Calculate derivative windows.
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 
@@ -170,25 +196,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph [
 	for w := range a.X {
 		a.Fadv[w] = princarg(fadv(a.X[:n.nbins], a.Xt, stretch, w))
 		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft/n.hop), w)
-	}
-
-	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
-	// NB: Phase difference in polar coordinates is complex division in cartesian.
-	//     Phase sum is conversely a multiply.
-	//     Hypot and multiplication are always cheaper than Atan2 and Sincos.
-	//
-	// See Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
-	// real-time realization for a commercial music product
-	for w := range a.X {
-		m := mag(a.X[w])
-		p := a.X[w] / complex(m, 0)
-		if m < 1e-6 {
-			p = complex(1, 0)
-		}
-		a.M[w] = m
-		for ch := range len(ingrain) {
-			a.C[ch][w] /= p
-		}
 	}
 
 	// Prepare heap (priority queue).

@@ -260,3 +260,10 @@ func make3[T any](k, j, i int) (v [][][]T) {
 	}
 	return
 }
+
+func safediv[T constraints.Float | constraints.Complex](a, b T) T {
+	if b == 0 {
+		return 0
+	}
+	return a / b
+}
