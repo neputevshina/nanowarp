@@ -267,3 +267,13 @@ func safediv[T constraints.Float | constraints.Complex](a, b T) T {
 	}
 	return a / b
 }
+
+// atodb converts amplidude value to decibels full scale (dBFS).
+func atodb(a float64) float64 {
+	return 20 * math.Log10(a)
+}
+
+// dbtoa converts a value in decibels full scale (dBFS) to amplitude.
+func dbtoa(db float64) float64 {
+	return math.Pow(10, db/20)
+}

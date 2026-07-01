@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/neputevshina/nanowarp/oscope"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
@@ -40,9 +41,9 @@ type wbufs struct {
 	C             [][]complex128 // Channel differences
 
 	// GLA frames.
-	Ycanvas [][]complex128   `size:"lah"` // Reconstructed normal
-	Ccanvas [][][]complex128 `size:"lah"` // Original stereo differences
-	Mcanvas [][]float64      `size:"lah"` // Original magnitudes
+	Ycanvas, Ocanvas [][]complex128   `size:"lah"` // Reconstructed normal
+	Ccanvas          [][][]complex128 `size:"lah"` // Original stereo differences
+	Mcanvas          [][]float64      `size:"lah"` // Original magnitudes
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -129,6 +130,7 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 				}
 				Y, C, M := n.advance(ingrain, abs(c), c == 1)
 				copy(a.Ycanvas[u], Y)
+				copy(a.Ocanvas[u], Y)
 				copy(a.Mcanvas[u], M)
 				for ch := range ingrain {
 					copy(a.Ccanvas[u][ch], C[ch])
@@ -136,16 +138,21 @@ func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []floa
 			}
 
 			if gla {
-				n.admm.admm(a.Ycanvas, a.Mcanvas, knownmask, 20, 0.1)
+				n.admm.admm(a.Ycanvas, a.Mcanvas, knownmask, 20, 0.5)
 			}
 
 			j = v
-			for ; j < v+n.nbuf*3; j += n.hop {
+			for ; j < v+n.nbuf*2; j += n.hop {
 				u := (j - v) / n.hop
 
 				for w := range a.Ycanvas[u] {
-					a.Ycanvas[u][w] = norm(a.Ycanvas[u][w])
+					if u < n.olap {
+						a.Ycanvas[u][w] = a.Ocanvas[u][w]
+					} else {
+						a.Ycanvas[u][w] = norm(a.Ycanvas[u][w])
+					}
 				}
+
 				n.synthesize(grainbuf, a.Ycanvas[u], a.Ccanvas[u])
 				for ch := range nch {
 					g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
@@ -301,10 +308,16 @@ func (n *warper) synthesize(outgrain [][]float64, ph []complex128, c [][]complex
 		mul(a.S, a.Wr)
 		copy(out, a.S)
 	}
+
 	for ch := range outgrain {
 		mul(c[ch], ph)
 		defft(outgrain[ch], c[ch])
 	}
+	for w := range ph {
+		n.a.S[w] = bitsafe(atodb(cmplx.Abs(c[0][w])))
+	}
+	oscope.Enable = true
+	oscope.Oscope(slices.Clone(n.a.S[:n.nbins]), oscope.Name(`phasogram`))
 }
 
 // fadv calculates the partial derivative of the phase with respect

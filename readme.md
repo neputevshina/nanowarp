@@ -54,14 +54,14 @@ Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for the inp
 sample indexes. If the derivative of the signal is 1, samples are passed through to the output 
 *essentially* unmodified.
 
-The algorithm does not depend on input signal level (there are no level-dependent thresholds) 
+The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except of onset detection.
 
 ## Demos
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
-- Turns out, “phase gradient heap integration” probably doesn't need a heap. You _probably_ can just sort the “heap” and read the sorted array sequentially.
+- There may be ways to optimize the “phase gradient heap integration” to not need a heap.
 - Some more onset detectors:
   - https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
   - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
@@ -70,8 +70,16 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
 - ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ 
   ~~It can't, but it's still a cool concept to keep in mind.~~
   It actually can, but you need to see where points are coming from, not where they lead.
-- [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, ignoring overlap, 
-  so it is impossible to obtain globally coherent phase with phase resets using this method. We need a some way to use the phase of up to overlap number of frames.
+- [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, 
+  ignoring overlap, so it is impossible to obtain globally coherent phase with phase resets using this method. 
+  We need some way to use the phase of up to overlap number of frames.
+- From the cellular automaton/WFC viewpoint, increasing the neighborhood of PGHI is ineffective. 
+  Anything other than current von Neumann (including Moore) give worse results both in causal and non-causal modes.
+  May be useful for more elegant theoretical definition of PGHI.
+- Short-time (3×olap frames) phase reconstruction (Griffin-Lim and friends) is ineffective for eliminating clicks.
+  I don't know how, but it makes worse. Skill issue maybe.
+- Actually, it's a miracle PGHI with phase resets works as it is. 
+  Magnitude spectrum is crazy and even if I don't do phase resets it still introduces clicks.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 

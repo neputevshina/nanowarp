@@ -24,7 +24,7 @@ type admmbufs struct { // DELETEME
 	Z, X, U, Y, Yp, O [][]complex128 `size:"lah"`
 }
 
-type stftTensor struct { // TODO(neputevshina): USE ME
+type stftTensor struct { // TODO(neputevshina): USE ME (cache obliviousness)
 	data    []complex128
 	shape   [2]int
 	padding int
@@ -44,6 +44,7 @@ func (a *admm) stft(dst [][]complex128, sa []float64) [][]complex128 {
 
 func (a *admm) istft(dst []float64, fr [][]complex128) []float64 {
 	nbuf := a.nbuf
+	clear(dst)
 	for j := range fr {
 		i := j * a.hop
 		a.fft.Sequence(a.s, fr[j])
@@ -55,7 +56,6 @@ func (a *admm) istft(dst []float64, fr [][]complex128) []float64 {
 }
 
 func (a *admm) project(dst [][]complex128) [][]complex128 {
-	clear(a.sbig)
 	return a.stft(dst, a.istft(a.sbig[:a.hop*8+2*a.nbuf], dst))
 }
 
@@ -84,8 +84,8 @@ func (a *admm) gla(X [][]complex128, M [][]float64, known []bool, iterations int
 				}
 			}
 		}
+		// waveform.Dump(nil, a.sbig[:a.hop*8+2*a.nbuf])
 	}
-	// waveform.Dump(nil, a.sbig[:a.hop*8+2*a.nbuf])
 }
 
 // Based on ADMMGLA.m from original paper's repo.
@@ -102,29 +102,33 @@ func (a *admm) admm(X [][]complex128, M [][]float64, known []bool, iterations in
 	for n := range X {
 		copy(Z[n], X[n])
 		copy(O[n], X[n])
-		// copy(X[n],X[n])
 		clear(U[n])
 	}
 	for range iterations {
 		for i := range Z {
 			for j := range Z[0] {
-				X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j]) // Pc2
+				if known[i] {
+					X[i][j] = complex(M[i][j], 0) * norm(O[i][j])
+				} else {
+					X[i][j] = complex(M[i][j], 0) * norm(Z[i][j]-U[i][j]) // Pc2
+				}
 				Y[i][j] = X[i][j] + U[i][j]
 				Yp[i][j] = Y[i][j]
 			}
 		}
 		Yp = a.project(Yp)
-		// waveform.Dump(nil, a.sbig[:a.hop*8+2*a.nbuf])
-
 		for i := range Z {
 			for j := range Z[0] {
 				ρ := complex(ρ, 0)
 				Z[i][j] = (ρ*Y[i][j] + Yp[i][j]) / (1 + ρ)
 				U[i][j] += X[i][j] - Z[i][j]
 				if known[i] {
-					X[i][j] = O[i][j]
+					X[i][j] = complex(M[i][j], 0) * norm(O[i][j])
 				}
 			}
 		}
+		// a.istft(a.sbig[:a.hop*8+2*a.nbuf], X)
+		// oscope.Enable = true
+		// oscope.Oscope(slices.Clone(a.sbig[:a.hop*8+2*a.nbuf]), oscope.Name(`gla`))
 	}
 }
