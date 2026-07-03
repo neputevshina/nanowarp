@@ -74,7 +74,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 	for i := 0; i < len(lin); i += n.hop {
 		c := n.advance(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
 
-		fill(t, sum(c[:]))
+		fill(t, c[1])
 		mul(t, n.a.Wr)
 		add(ons[i:min(len(lin), i+n.nbuf)], t)
 	}
@@ -220,30 +220,30 @@ func (n *detector) advance(lingrain, ringrain []float64) (activations [4]float64
 	copy(a.PPR, a.PR)
 
 	// Crossover frequencies
-	l := hztobin(250, n.nfft, n.fs)
-	m := hztobin(820, n.nfft, n.fs)
-	h := hztobin(2500, n.nfft, n.fs)
+	// l := hztobin(250, n.nfft, n.fs)
+	// m := hztobin(820, n.nfft, n.fs)
+	// h := hztobin(2500, n.nfft, n.fs)
 
-	activations[0] = sum(a.N[:l])
-	activations[1] = sum(a.N[l:m])
-	activations[2] = sum(a.N[m:h])
-	activations[3] = sum(a.N[h:])
+	// activations[0] = sum(a.N[:l])
+	// activations[1] = sum(a.N[l:m])
+	// activations[2] = sum(a.N[m:h])
+	// activations[3] = sum(a.N[h:])
 
 	s := sum(a.N)
 
-	softmax(activations[:])
-	for i, v := range activations {
-		activations[i] = bitsafe(v)
-		if v < 0.25 {
-			activations[i] = 0
-		}
-	}
+	// softmax(activations[:])
+	// for i, v := range activations {
+	// 	activations[i] = bitsafe(v)
+	// 	if v < 0.25 {
+	// 		activations[i] = 0
+	// 	}
+	// }
 
-	activations[0] = float64(
-		boolint(activations[0] > 0) |
-			boolint(activations[1] > 0)<<1 |
-			boolint(activations[2] > 0)<<2 |
-			boolint(activations[3] > 0)<<3)
+	// activations[0] = float64(
+	// 	boolint(activations[0] > 0) |
+	// 		boolint(activations[1] > 0)<<1 |
+	// 		boolint(activations[2] > 0)<<2 |
+	// 		boolint(activations[3] > 0)<<3)
 	activations[1] = s
 
 	return
