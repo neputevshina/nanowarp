@@ -29,7 +29,8 @@ type detector struct {
 	a dbufs
 }
 type dbufs struct {
-	S, Wf, Wr, N           []float64
+	S, Wf, Wr              []float64
+	N, A, B, X, Y          []float64 `size:"nbins"`
 	L, R, PL, PPL, PR, PPR []complex128
 }
 
@@ -72,9 +73,9 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 
 	t := make([]float64, n.nfft)
 	for i := 0; i < len(lin); i += n.hop {
-		c := n.advance(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
+		c := n.superflux(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
 
-		fill(t, c[1])
+		fill(t, c)
 		mul(t, n.a.Wr)
 		add(ons[i:min(len(lin), i+n.nbuf)], t)
 	}
@@ -123,10 +124,8 @@ func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 
 		c := n.advance(gs[0], gs[1])
 
-		fill(fr, c[0])
+		fill(fr, c)
 		fill(fr[n.hop:], 0)
-
-		fill(fl, c[1])
 
 		// fill(fr, sum(c[:]))
 
@@ -183,7 +182,7 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 	// This function is expected to exit when io.EOF is encountered.
 }
 
-func (n *detector) advance(lingrain, ringrain []float64) (activations [4]float64) {
+func (n *detector) advance(lingrain, ringrain []float64) (s float64) {
 	a := &n.a
 
 	enfft := func(x []complex128, w, grain []float64) {
@@ -205,7 +204,6 @@ func (n *detector) advance(lingrain, ringrain []float64) (activations [4]float64
 		//
 		// https://www.audiolabs-erlangen.de/resources/MIR/FMP/C6/C6S1_NoveltyComplex.html
 		cnov := func(x, px, ppx complex128) float64 {
-			// m := mag(x - px*norm(px/(ppx+1e-10)))
 			m := cmplx.Abs(x - px*norm(px*cmplx.Conj(ppx)))
 			return m * boolfloat(cmplx.Abs(x) > cmplx.Abs(px))
 		}
@@ -214,37 +212,63 @@ func (n *detector) advance(lingrain, ringrain []float64) (activations [4]float64
 			cnov(a.R[w], a.PR[w], a.PPR[w])))
 	}
 
+	s = sum(a.N)
+
 	copy(a.PL, a.L)
 	copy(a.PR, a.R)
 	copy(a.PPL, a.PL)
 	copy(a.PPR, a.PR)
 
-	// Crossover frequencies
-	// l := hztobin(250, n.nfft, n.fs)
-	// m := hztobin(820, n.nfft, n.fs)
-	// h := hztobin(2500, n.nfft, n.fs)
+	return
+}
 
-	// activations[0] = sum(a.N[:l])
-	// activations[1] = sum(a.N[l:m])
-	// activations[2] = sum(a.N[m:h])
-	// activations[3] = sum(a.N[h:])
+func (n *detector) superflux(lingrain, ringrain []float64) (s float64) {
+	a := &n.a
 
-	s := sum(a.N)
+	enfft := func(x []complex128, w, grain []float64) {
+		clear(a.S)
+		copy(a.S, grain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
+	}
 
-	// softmax(activations[:])
-	// for i, v := range activations {
-	// 	activations[i] = bitsafe(v)
-	// 	if v < 0.25 {
-	// 		activations[i] = 0
-	// 	}
-	// }
+	enfft(a.L, a.Wf, lingrain)
+	enfft(a.R, a.Wf, ringrain)
 
-	// activations[0] = float64(
-	// 	boolint(activations[0] > 0) |
-	// 		boolint(activations[1] > 0)<<1 |
-	// 		boolint(activations[2] > 0)<<2 |
-	// 		boolint(activations[3] > 0)<<3)
-	activations[1] = s
+	// Superflux novelty measure calculation.
+	//
+	// See Böck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression
+	// for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects
+	// (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.
+	//
+	// https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
+	for w := range a.L {
+		a.X[w] = cmplx.Abs(a.L[w]) + cmplx.Abs(a.R[w])
+		a.Y[w] = cmplx.Abs(a.PL[w]) + cmplx.Abs(a.PR[w])
+	}
 
+	_ = binfilt(a.X, a.A)
+	f := binfilt(a.Y, a.B)
+
+	for n := range f {
+		a.N[n] = max(0, a.A[n]-a.B[n])
+	}
+
+	s = sum(a.N)
+
+	copy(a.PL, a.L)
+	copy(a.PR, a.R)
+
+	return
+}
+
+func binfilt(mag, logram []float64) (n int) {
+	const scale = 24
+	n = int(math.Log2(float64(len(mag)))) * scale
+	for i := range n {
+		fi := func(i int) float64 { return float64(i) / scale }
+		logram[i] = slices.Max(mag[int(math.Pow(2, fi(i))):int(math.Ceil(math.Pow(2, fi(i+1))))])
+		logram[i] *= float64(i)
+	}
 	return
 }

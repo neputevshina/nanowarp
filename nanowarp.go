@@ -41,11 +41,13 @@ type Options struct {
 	Onsets bool
 
 	// Set algorithm quality.
-	//  -1: Don't perform transient separation, output raw PVDR without phase resets.
-	//      4x overlap. Fastest and currently the smoothest with OK transient preservation
-	//	and excellent tonal quality.
-	//  0:  Extract transients and reset the phase on them.
-	// 	Clicky artifacts on incorrectly detected transients. Slow.
+	//  -2: Don't perform transient separation, output raw PVDR without phase resets.
+	//	4x overlap.
+	//  -1: Extract transients and don't stretch signal at them. Slow.
+	//	Will accumulate numerical error for longer tracks.
+	//  0:  Same as -1, but resets the phase when not stretching.
+	//	Replaces sweepy artifacts with clicky artifacts and tonal interruptions.
+	//	Better numerical stability because of resets.
 	Quality int
 
 	// Time for which signal will be bypassed at any detected transient.
@@ -102,7 +104,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 
 	coeffs := make([]float64, len(lout))
 	phasor := make([]float64, len(lout))
-	if n.opts.Quality == -1 {
+	if n.opts.Quality == -2 {
 		for j := range coeffs {
 			coeffs[j] = 1 / stretch
 		}
@@ -112,6 +114,8 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			poolstretch = stretch
 		}
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
+		// copy(lout, ons)
+		// return
 		n.getCoeffSignal(coeffs, sam, stretch)
 	}
 

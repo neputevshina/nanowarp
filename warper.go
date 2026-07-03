@@ -104,7 +104,7 @@ func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []f
 			}
 		}
 
-		normal, diff, _ := n.advance(crop, abs(c), c == 1)
+		normal, diff, _ := n.advance(crop, abs(c), n.root.opts.Quality >= 0 && c == 1)
 		n.synthesize(grain, normal, diff)
 
 		d := j - lastone

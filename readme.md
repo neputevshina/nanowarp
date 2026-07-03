@@ -55,7 +55,7 @@ sample indexes. If the derivative of the signal is 1, samples are passed through
 *essentially* unmodified.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
-and does not use any type of psychoacoustics methods (e.g. masking) except of onset detection.
+and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
 
 ## Demos
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
@@ -79,7 +79,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
 - Short-time (3×olap frames) phase reconstruction (Griffin-Lim and friends) is ineffective for eliminating clicks.
   I don't know how, but it makes worse. Skill issue maybe.
 - Actually, it's a miracle PGHI with phase resets works as it is. 
-  Magnitude spectrum is crazy and even if I don't do phase resets it still introduce clicks.
+  Magnitude spectrum is crazy and even if I don't do phase resets it still introduce clicks on large stretches.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 
@@ -88,7 +88,8 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
-- Interruptions because of incorrect onset detections and magnitude spectrum warping.
+- Interruptions because of phase reset at incorrect onset detections.
+  May be fixed by simply not resetting at onsets, but it significantly impairs output quality.
 - Does not reconstruct the signal perfectly,
   DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
   to doubly applied windowing.
