@@ -10,8 +10,6 @@ import (
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
-var mag = cmplx.Abs
-
 type bang = struct{}
 
 func bitsafe(v float64) float64 {
@@ -184,11 +182,11 @@ func nextpow2(i int) int {
 }
 
 func norm(c complex128) complex128 {
-	m := mag(c)
+	m := cmplx.Abs(c)
 	if m == 0 {
 		return 0
 	}
-	return c / complex(mag(c), 0)
+	return c / complex(cmplx.Abs(c), 0)
 }
 
 func boolint(b bool) int {

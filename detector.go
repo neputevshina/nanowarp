@@ -92,6 +92,8 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 		}
 	}
 
+	onsons = append(onsons, [2]float64{float64(len(ons)), 0})
+
 	return
 }
 
@@ -204,8 +206,8 @@ func (n *detector) advance(lingrain, ringrain []float64) (activations [4]float64
 		// https://www.audiolabs-erlangen.de/resources/MIR/FMP/C6/C6S1_NoveltyComplex.html
 		cnov := func(x, px, ppx complex128) float64 {
 			// m := mag(x - px*norm(px/(ppx+1e-10)))
-			m := mag(x - px*norm(px*cmplx.Conj(ppx)))
-			return m * boolfloat(mag(x) > mag(px))
+			m := cmplx.Abs(x - px*norm(px*cmplx.Conj(ppx)))
+			return m * boolfloat(cmplx.Abs(x) > cmplx.Abs(px))
 		}
 		a.N[w] = bitsafe(max(
 			cnov(a.L[w], a.PL[w], a.PPL[w]),

@@ -111,7 +111,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		}
 	} else {
 		poolstretch := 1.
-		if n.opts.ScalePool {
+		if n.opts.ScalePool || stretch < 1 {
 			poolstretch = stretch
 		}
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
@@ -123,28 +123,31 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	}
 
 	n.process3old([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
-	for i := range lout {
-		lout[i] = bitsafe(lout[i])
-		rout[i] = bitsafe(rout[i])
-	}
 }
 
 func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).getCoeffs")
+	fmt.Fprintln(os.Stderr, "(*Nanowarp).getCoeffSignal")
 
 	tsa := n.opts.TransientMs * n.fs / 1000
 
+	// Coefficients in returned signal are dt (scan speed, inverse of stretch,
+	// which current coefficient describes)
+
+	// Trim transients that are too near to each other
 	for k := 0; k < len(onsets)-1; k++ {
-		i := onsets[k][0]
-		j := onsets[k+1][0]
-		if j-i < float64(max(n.warper.nbuf, tsa))/s {
+		i := onsets[k]
+		j := onsets[k+1]
+		if j[0]-i[0] < float64(max(n.warper.nbuf, tsa))/s {
+			// Leave only louder one
+			if i[1] > j[1] {
+				onsets[k] = i
+			}
 			copy(onsets[k:], onsets[k+1:])
 			onsets = onsets[:len(onsets)-1]
 			k--
 		}
 	}
 	fill(coeffs[:int(onsets[0][0]*s)], 1/s)
-	fill(coeffs[int(onsets[len(onsets)-1][0]*s):], 1/s)
 	for k := 0; k < len(onsets)-1; k++ {
 		i := int(onsets[k][0] * s)
 		j := int(onsets[k+1][0] * s)
@@ -154,9 +157,11 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 		} else {
 			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
 			t, x := float64(j-i), float64(tsa)
-			// Coefficients in signal are dt (scan speed, inverse of stretch,
-			// which current coefficient describes).
-			fill(coeffs[i+tsa/2:j-tsa/2], (t/s-x)/(t-x))
+			r := tsa / 2
+			if k == len(onsets) {
+				r = 0
+			}
+			fill(coeffs[i+tsa/2:j-r], (t/s-x)/(t-x))
 		}
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 	"slices"
 
-	"github.com/neputevshina/nanowarp/oscope"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
@@ -89,10 +88,7 @@ func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []f
 	nch := len(in)
 
 	lastone := 0
-	for j := -n.nbuf; ; j += n.hop {
-		if j > len(out[0])-n.nbuf {
-			break
-		}
+	for j := 0; j < len(out[0]); j += n.hop {
 		fi := func(j int) int { return int(phasor[max(0, j)]) }
 		i := fi(j)
 		c := 1 / coeffs[max(0, j)]
@@ -102,8 +98,8 @@ func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []f
 				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
 		}
 
-		ph, df, _ := n.advance(ingrain, abs(c), c == 1)
-		n.synthesize(grainbuf, ph, df)
+		normal, diff, _ := n.advance(ingrain, abs(c), c == 1)
+		n.synthesize(grainbuf, normal, diff)
 
 		// Cut pre-echo in transient regions.
 		d := j - lastone
@@ -136,7 +132,7 @@ func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []f
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph []complex128, c [][]complex128, m []float64) {
+func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -169,7 +165,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph [
 	// See Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
 	// real-time realization for a commercial music product
 	for w := range a.X {
-		a.M[w] = mag(a.X[w])
+		a.M[w] = cmplx.Abs(a.X[w])
 		a.Y[w] = safediv(a.X[w], complex(a.M[w], 0))
 		for ch := range len(ingrain) {
 			a.C[ch][w] /= a.Y[w]
@@ -240,7 +236,7 @@ skip:
 	return a.Y, a.C, a.M
 }
 
-func (n *warper) synthesize(outgrain [][]float64, ph []complex128, c [][]complex128) {
+func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]complex128) {
 	a := &n.a
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
@@ -252,31 +248,25 @@ func (n *warper) synthesize(outgrain [][]float64, ph []complex128, c [][]complex
 	}
 
 	for ch := range outgrain {
-		mul(c[ch], ph)
-		defft(outgrain[ch], c[ch])
+		mul(diff[ch], normal)
+		defft(outgrain[ch], diff[ch])
 	}
-	for w := range ph {
-		n.a.S[w] = bitsafe(atodb(cmplx.Abs(c[0][w])))
-	}
-	oscope.Enable = true
-	oscope.Oscope(slices.Clone(n.a.S[:n.nbins]), oscope.Name(`phasogram`))
 }
 
 // fadv calculates the partial derivative of the phase with respect
 // to frequency using time-frequency reassignment.
 func fadv(x, xt []complex128, stretch float64, w int) float64 {
-	if mag(x[w]) == 0 {
+	if cmplx.Abs(x[w]) == 0 {
 		return 0
 	}
 	// NOTE Try len(x)-1 instead. Sounds worse on my $4 speakers.
-	// FIXME Works ONLY with nbuf=4096, nfft=8192 (oversampling 2).
 	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/2
 }
 
 // tadv calculates the partial derivative of the phase with respect
 // to time using time-frequency reassignment.
 func tadv(x, xd []complex128, olap float64, w int) float64 {
-	if mag(x[w]) < 1e-6 {
+	if cmplx.Abs(x[w]) < 1e-6 {
 		return 0
 	}
 	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / (olap / 2)
