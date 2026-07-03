@@ -152,6 +152,15 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph [
 	}
 	enfft(a.X, a.W, a.Mid)
 
+	// Bypass and refill the past on a phase reset.
+	if reset {
+		for w := range a.Y {
+			a.Ph[w] = cmplx.Phase(a.X[w])
+			a.Y[w] = 1
+		}
+		goto skip
+	}
+
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.
 	//     Phase sum is conversely a multiply.
@@ -163,30 +172,8 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (ph [
 		a.M[w] = mag(a.X[w])
 		a.Y[w] = safediv(a.X[w], complex(a.M[w], 0))
 		for ch := range len(ingrain) {
-			// BREAKING: significant null test fail with commit 9e8e1747 due to numerical
-			// instablility of a/b*b.
-			//
-			// Previously, a.C was bypassed on resets, now it is divided and then
-			// (in (*warper).synthesize) multiplied back.
-			// Required for GLA, which in other case would intoduce insignificant
-			// null test fail (like one introduced in commit c7d6ddbb).
-			//
-			// ChatGPT says it is possible to compensate error through remainder.
-			// I don't believe him.
-			// Go already implements lower-error Smith's algorithm for complex division:
-			// https://go.googlesource.com/go/+/refs/heads/master/src/runtime/complex.go
-			//
-			// Transients are still more or less left intact.
 			a.C[ch][w] /= a.Y[w]
 		}
-	}
-
-	// Bypass and refill the past on a phase reset.
-	if reset {
-		for w := range a.Y {
-			a.Ph[w] = cmplx.Phase(a.X[w])
-		}
-		goto skip
 	}
 
 	// Calculate derivative windows.
