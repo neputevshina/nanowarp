@@ -73,7 +73,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 
 	t := make([]float64, n.nfft)
 	for i := 0; i < len(lin); i += n.hop {
-		c := n.superflux(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
+		c := n.cdodf(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
 
 		fill(t, c)
 		mul(t, n.a.Wr)
@@ -122,7 +122,7 @@ func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 			return err
 		}
 
-		c := n.advance(gs[0], gs[1])
+		c := n.cdodf(gs[0], gs[1])
 
 		fill(fr, c)
 		fill(fr[n.hop:], 0)
@@ -182,7 +182,7 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 	// This function is expected to exit when io.EOF is encountered.
 }
 
-func (n *detector) advance(lingrain, ringrain []float64) (s float64) {
+func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 	a := &n.a
 
 	enfft := func(x []complex128, w, grain []float64) {
