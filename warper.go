@@ -82,10 +82,11 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
-	grainbuf := get()
-	ingrain := get()
-
 	nch := len(in)
+
+	lead := get()
+	grain := get()
+	crop := make([][]float64, nch)
 
 	lastone := 0
 	for j := 0; j < len(out[0]); j += n.hop {
@@ -94,39 +95,38 @@ func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []f
 		c := 1 / coeffs[j]
 
 		for ch := range nch {
-			copy(ingrain[ch][max(0, n.nbuf/2-i):],
-				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
+			cr := in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)]
+			if i < n.nbuf/2 {
+				copy(lead[ch][max(0, n.nbuf/2-i):], cr)
+				crop[ch] = lead[ch]
+			} else {
+				crop[ch] = cr
+			}
 		}
 
-		normal, diff, _ := n.advance(ingrain, abs(c), c == 1)
-		n.synthesize(grainbuf, normal, diff)
+		normal, diff, _ := n.advance(crop, abs(c), c == 1)
+		n.synthesize(grain, normal, diff)
 
-		// Cut pre-echo in transient regions.
 		d := j - lastone
 		if c == 1 {
 			lastone = j
-		} else if d < n.nbuf/2 {
-			z := func(grain []float64) {
-				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+		}
+		for ch := range nch {
+			// Cut pre-echo in transient regions.
+			if c != 1 && d < n.nbuf/2 {
+				rr := grain[ch][max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
 				for i := range rr {
 					rr[i] *= float64(i) / float64(len(rr))
 				}
-				fill(grain[:n.nbuf/2-d-n.hop], 0)
+				fill(grain[ch][:n.nbuf/2-d-n.hop], 0)
 			}
-			for ch := range nch {
-				z(grainbuf[ch])
-			}
-		}
 
-		if n.root.opts.Onsets && c != 1 {
-			for ch := range nch {
-				clear(grainbuf[ch])
+			if n.root.opts.Onsets && c != 1 {
+				clear(grain[ch])
 			}
-		}
 
-		for ch := range nch {
 			g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
-			add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
+			add(g, grain[ch][clamp(0, n.nbuf, -j):])
 		}
 	}
 }
