@@ -109,77 +109,20 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		for j := range coeffs {
 			coeffs[j] = 1 / stretch
 		}
-	} else if n.opts.Quality == -2 {
-		// For process4
-		type f = float64
-		s := stretch
-		h, lah := n.warper.hop, n.warper.lah-2
-		one, str := h*n.olap, h*lah
-		n, m := f(one), f(str)
-		for j := 0; j < len(coeffs)-one-str; j += one + str {
-			fill(coeffs[j:j+one], 1)
-			fill(coeffs[j+one:j+one+str], n*(1/s-1)/m+1/s)
-		}
-
 	} else {
 		poolstretch := 1.
 		if n.opts.ScalePool {
 			poolstretch = stretch
 		}
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
-
-		// copy(lout, ons)
-		// copy(rout, ons1)
-		// return
-
 		n.getCoeffSignal(coeffs, sam, stretch)
-		// copy(lout, coeffs)
-		// return
 	}
-	// step := even(int(float64(30 * n.fs / 1000)))
-	// f := mediatorNew[float64, bang](step, step, 1)
-	// ons2 := make([]float64, len(lin))
-	// for i := range ons {
-	// 	// Center-windowed dilation
-	// 	ons2[max(0, i-step/2)], _ = f.Filt(ons[i], bang{})
-	// }
-
-	// for j := range ons {
-	// 	ons1[j] = ons[j] / ons1[j]
-	// }
-
-	// copy(lout, ons1)
-	// return
 
 	for j := range phasor[1:] {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
-	// bf := boxfiltNew(30 * n.fs / 1000)
-	// hs := bf.Size() / 2
-	// for i := -hs; i < len(phasor)-hs; i++ {
-	// 	if i < 0 {
-	// 		bf.Insert(phasor[i+hs])
-	// 		continue
-	// 	}
-	// 	phasor[i] = bf.Filt(phasor[i+hs])
-	// }
-	// for i := -hs; i < len(phasor)-hs; i++ {
-	// 	if i < 0 {
-	// 		bf.Insert(phasor[i+hs])
-	// 		continue
-	// 	}
-	// 	phasor[i] = bf.Filt(phasor[i+hs])
-	// }
-	// clear(coeffs)
-	// for j := range phasor[1:] {
-	// 	coeffs[j+1] = phasor[j+1] - phasor[j]
-	// }
-	// copy(lout, coeffs)
-	// return
 
-	// process := n.process3old
-
-	n.process3([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor, n.opts.Quality == 1)
+	n.process3old([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
 	for i := range lout {
 		lout[i] = bitsafe(lout[i])
 		rout[i] = bitsafe(rout[i])

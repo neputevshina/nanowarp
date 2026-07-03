@@ -26,7 +26,6 @@ type warper struct {
 	arm         []bool  // PGHI done mask
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 	heap        hp      // PGHI heap
-	admm        admm
 
 	a wbufs
 }
@@ -39,11 +38,6 @@ type wbufs struct {
 	W, Wr, Wd, Wt []float64      // Window functions
 	X, Y, Xd, Xt  []complex128   // Complex spectra
 	C             [][]complex128 // Channel differences
-
-	// GLA frames.
-	Ycanvas, Ocanvas [][]complex128   `size:"lah"` // Reconstructed normal
-	Ccanvas          [][][]complex128 `size:"lah"` // Original stereo differences
-	Mcanvas          [][]float64      `size:"lah"` // Original magnitudes
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -83,99 +77,60 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
 
-	n.admm = admm{
-		fft:  n.fft,
-		nbuf: nbuf,
-		s:    make([]float64, nfft),
-		sbig: make([]float64, nfft+n.hop*n.lah),
-		norm: n.norm,
-		hop:  n.hop,
-		Wf:   a.W,
-		Wr:   a.Wr,
-	}
-
 	return
 }
 
-func (n *warper) process3(in [][]float64, out [][]float64, coeffs, phasor []float64, gla bool) {
+func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
 	grainbuf := get()
 	ingrain := get()
 
 	nch := len(in)
-	a := &n.a
 
-	knownmask := make([]bool, 3*n.olap)
-	fill(knownmask, true)
-	fill(knownmask[n.olap:2*n.olap], false)
-
+	lastone := 0
 	for j := -n.nbuf; ; j += n.hop {
-		if j >= len(out[0]) {
+		if j > len(out[0])-n.nbuf {
 			break
 		}
 		fi := func(j int) int { return int(phasor[max(0, j)]) }
+		i := fi(j)
+		c := 1 / coeffs[max(0, j)]
 
-		if coeffs[clamp(0, len(coeffs)-1, j+n.nbuf*2)] == 1 {
-			v := j
-			for ; j < v+n.nbuf*3; j += n.hop {
-				u := (j - v) / n.hop
+		for ch := range nch {
+			copy(ingrain[ch][max(0, n.nbuf/2-i):],
+				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
+		}
 
-				i := fi(j)
-				c := 1 / coeffs[max(0, j)]
+		ph, df, _ := n.advance(ingrain, abs(c), c == 1)
+		n.synthesize(grainbuf, ph, df)
 
-				for ch := range nch {
-					copy(ingrain[ch][max(0, n.nbuf/2-i):],
-						in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
+		// Cut pre-echo in transient regions.
+		d := j - lastone
+		if c == 1 {
+			lastone = j
+		} else if d < n.nbuf/2 {
+			z := func(grain []float64) {
+				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+				for i := range rr {
+					rr[i] *= float64(i) / float64(len(rr))
 				}
-				Y, C, M := n.advance(ingrain, abs(c), c == 1)
-				copy(a.Ycanvas[u], Y)
-				copy(a.Ocanvas[u], Y)
-				copy(a.Mcanvas[u], M)
-				for ch := range ingrain {
-					copy(a.Ccanvas[u][ch], C[ch])
-				}
+				fill(grain[:n.nbuf/2-d-n.hop], 0)
 			}
-
-			if gla {
-				n.admm.admm(a.Ycanvas, a.Mcanvas, knownmask, 20, 0.5)
-			}
-
-			j = v
-			for ; j < v+n.nbuf*2; j += n.hop {
-				u := (j - v) / n.hop
-
-				for w := range a.Ycanvas[u] {
-					if u < n.olap {
-						a.Ycanvas[u][w] = a.Ocanvas[u][w]
-					} else {
-						a.Ycanvas[u][w] = norm(a.Ycanvas[u][w])
-					}
-				}
-
-				n.synthesize(grainbuf, a.Ycanvas[u], a.Ccanvas[u])
-				for ch := range nch {
-					g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
-					add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
-				}
-			}
-			j -= n.hop
-		} else {
-			i := fi(j)
-			c := 1 / coeffs[max(0, j)]
-
 			for ch := range nch {
-				copy(ingrain[ch][max(0, n.nbuf/2-i):],
-					in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
+				z(grainbuf[ch])
 			}
+		}
 
-			ph, df, _ := n.advance(ingrain, abs(c), c == 1)
-			n.synthesize(grainbuf, ph, df)
-
+		if n.root.opts.Onsets && c != 1 {
 			for ch := range nch {
-				g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
-				add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
+				clear(grainbuf[ch])
 			}
+		}
+
+		for ch := range nch {
+			g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
+			add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
 		}
 	}
 }
@@ -338,59 +293,4 @@ func tadv(x, xd []complex128, olap float64, w int) float64 {
 		return 0
 	}
 	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / (olap / 2)
-}
-
-func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []float64) {
-	fmt.Fprintln(os.Stderr, `(*warper).process3`)
-	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
-	grainbuf := get()
-	ingrain := get()
-
-	nch := len(in)
-
-	lastone := 0
-	for j := -n.nbuf; ; j += n.hop {
-		if j > len(out[0])-n.nbuf {
-			break
-		}
-		fi := func(j int) int { return int(phasor[max(0, j)]) }
-		i := fi(j)
-		c := 1 / coeffs[max(0, j)]
-
-		for ch := range nch {
-			copy(ingrain[ch][max(0, n.nbuf/2-i):],
-				in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)])
-		}
-
-		ph, df, _ := n.advance(ingrain, abs(c), c == 1)
-		n.synthesize(grainbuf, ph, df)
-
-		// Cut pre-echo in transient regions.
-		d := j - lastone
-		if c == 1 {
-			lastone = j
-		} else if d < n.nbuf/2 {
-			z := func(grain []float64) {
-				rr := grain[max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
-				for i := range rr {
-					rr[i] *= float64(i) / float64(len(rr))
-				}
-				fill(grain[:n.nbuf/2-d-n.hop], 0)
-			}
-			for ch := range nch {
-				z(grainbuf[ch])
-			}
-		}
-
-		if n.root.opts.Onsets && c != 1 {
-			for ch := range nch {
-				clear(grainbuf[ch])
-			}
-		}
-
-		for ch := range nch {
-			g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
-			add(g, grainbuf[ch][clamp(0, n.nbuf, -j):])
-		}
-	}
 }
