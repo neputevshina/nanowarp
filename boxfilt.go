@@ -32,3 +32,5 @@ func (f *boxfilt) Filt(v float64) float64 {
 	avg, _ := f.Take()
 	return avg
 }
+
+func (f *boxfilt) Size() int { return f.n }

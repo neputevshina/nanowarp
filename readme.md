@@ -7,7 +7,7 @@ this repo with a Go version.
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export. © 2013–2025 youpy.
 
-Current state: algorithm done, working on streaming. No user-facing API exists yet.
+Current state: perfecting the algorithm. No user-facing API exists yet.
 
 ## Installation and usage
 
@@ -79,7 +79,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
 - Short-time (3×olap frames) phase reconstruction (Griffin-Lim and friends) is ineffective for eliminating clicks.
   I don't know how, but it makes worse. Skill issue maybe.
 - Actually, it's a miracle PGHI with phase resets works as it is. 
-  Magnitude spectrum is crazy and even if I don't do phase resets it still introduces clicks.
+  Magnitude spectrum is crazy and even if I don't do phase resets it still introduce clicks.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 
@@ -88,6 +88,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except of on
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
+- Interruptions because of incorrect onset detections and magnitude spectrum warping.
 - Does not reconstruct the signal perfectly,
   DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
   to doubly applied windowing.

@@ -90,6 +90,7 @@ func (a *admm) gla(X [][]complex128, M [][]float64, known []bool, iterations int
 
 // Based on ADMMGLA.m from original paper's repo.
 func (a *admm) admm(X [][]complex128, M [][]float64, known []bool, iterations int, ρ float64) {
+	// TODO Maybe it works bad because of 2x oversampling of fft?
 	if a.U == nil { // TODO(neputevshina): create newAdmm and move to it in production nanowarp
 		a.Z = make2[complex128](len(X), len(X[0]))
 		a.O = make2[complex128](len(X), len(X[0]))

@@ -133,14 +133,57 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		// return
 
 		n.getCoeffSignal(coeffs, sam, stretch)
+		// copy(lout, coeffs)
+		// return
 	}
+	// step := even(int(float64(30 * n.fs / 1000)))
+	// f := mediatorNew[float64, bang](step, step, 1)
+	// ons2 := make([]float64, len(lin))
+	// for i := range ons {
+	// 	// Center-windowed dilation
+	// 	ons2[max(0, i-step/2)], _ = f.Filt(ons[i], bang{})
+	// }
+
+	// for j := range ons {
+	// 	ons1[j] = ons[j] / ons1[j]
+	// }
+
+	// copy(lout, ons1)
+	// return
+
 	for j := range phasor[1:] {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
+	// bf := boxfiltNew(30 * n.fs / 1000)
+	// hs := bf.Size() / 2
+	// for i := -hs; i < len(phasor)-hs; i++ {
+	// 	if i < 0 {
+	// 		bf.Insert(phasor[i+hs])
+	// 		continue
+	// 	}
+	// 	phasor[i] = bf.Filt(phasor[i+hs])
+	// }
+	// for i := -hs; i < len(phasor)-hs; i++ {
+	// 	if i < 0 {
+	// 		bf.Insert(phasor[i+hs])
+	// 		continue
+	// 	}
+	// 	phasor[i] = bf.Filt(phasor[i+hs])
+	// }
+	// clear(coeffs)
+	// for j := range phasor[1:] {
+	// 	coeffs[j+1] = phasor[j+1] - phasor[j]
+	// }
+	// copy(lout, coeffs)
+	// return
 
 	// process := n.process3old
 
 	n.process3([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor, n.opts.Quality == 1)
+	for i := range lout {
+		lout[i] = bitsafe(lout[i])
+		rout[i] = bitsafe(rout[i])
+	}
 }
 
 func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
@@ -172,7 +215,6 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 			// which current coefficient describes).
 			fill(coeffs[i+tsa/2:j-tsa/2], (t/s-x)/(t-x))
 		}
-
 	}
 }
 
