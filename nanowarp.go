@@ -46,9 +46,6 @@ type Options struct {
 	//	and excellent tonal quality.
 	//  0:  Extract transients and reset the phase on them.
 	// 	Clicky artifacts on incorrectly detected transients. Slow.
-	//  1:  Reconstructs the phase before the reset using phase retieval
-	//	to eliminate clicks. May add reverberation artifacts before transients.
-	// 	Slowest.
 	Quality int
 
 	// Time for which signal will be bypassed at any detected transient.

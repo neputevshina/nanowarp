@@ -89,9 +89,9 @@ func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []f
 
 	lastone := 0
 	for j := 0; j < len(out[0]); j += n.hop {
-		fi := func(j int) int { return int(phasor[max(0, j)]) }
+		fi := func(j int) int { return int(phasor[j]) }
 		i := fi(j)
-		c := 1 / coeffs[max(0, j)]
+		c := 1 / coeffs[j]
 
 		for ch := range nch {
 			copy(ingrain[ch][max(0, n.nbuf/2-i):],
