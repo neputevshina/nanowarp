@@ -21,18 +21,22 @@ type warper struct {
 
 	root *Nanowarp
 
-	fft         *fourier.FFT
-	arm         []bool  // PGHI done mask
+	fft *fourier.FFT
+
+	arm    []bool   // PGHI done mask
+	arrows [][2]int // PGHI integration directions
+	heap   hp       // PGHI heap
+
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
-	heap        hp      // PGHI heap
 
 	a wbufs
 }
 
 type wbufs struct {
-	S, Mid, M, P  []float64      // Scratch buffers
+	S, Mid        []float64      // Scratch buffers
+	M, P          []float64      `size:"nbins"` // Current and previous magnitude
 	Ph            []float64      `size:"nbins"` // Current phase
-	Past          []float64      // Phase accumulators
+	Past          []float64      // Phase accumulator
 	Fadv, Tadv    []float64      // Partial derivatives
 	W, Wr, Wd, Wt []float64      // Window functions
 	X, Y, Xd, Xt  []complex128   // Complex spectra
@@ -75,6 +79,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
+	n.arrows = make([][2]int, 0, 2*n.nbins)
 
 	return
 }
@@ -188,40 +193,10 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft/n.hop), w)
 	}
 
-	// Prepare heap (priority queue).
-	n.heap = n.heap[:n.nbins]
-	fill(n.arm, true)
-	for w := range a.X {
-		n.heap[w] = heaptriple{a.P[w], w, -1}
-	}
-	heapInit(&n.heap)
-
-	// Perform phase gradient heap integration.
-	//
-	// See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
-	// (https://arxiv.org/pdf/2202.07382)
-	for len(n.heap) > 0 {
-		h := heapPop(&n.heap)
-		w := h.w
-		switch h.t {
-		case -1:
-			if n.arm[w] {
-				a.Ph[w] = princarg(a.Past[w]) + a.Tadv[w]
-				n.arm[w] = false
-				heapPush(&n.heap, heaptriple{a.M[w], w, 0})
-			}
-		case 0:
-			if w >= 1 && n.arm[w-1] {
-				a.Ph[w-1] = a.Ph[w] - a.Fadv[w-1]
-				n.arm[w-1] = false
-				heapPush(&n.heap, heaptriple{a.M[w-1], w - 1, 0})
-			}
-			if w < n.nbins-1 && n.arm[w+1] {
-				a.Ph[w+1] = a.Ph[w] + a.Fadv[w+1]
-				n.arm[w+1] = false
-				heapPush(&n.heap, heaptriple{a.M[w+1], w + 1, 0})
-			}
-		}
+	// Perform PGHI in two steps.
+	{
+		arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows)
+		n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 	}
 
 	// Add stereo phase differences back through multiplication
@@ -250,6 +225,61 @@ func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]
 	for ch := range outgrain {
 		mul(diff[ch], normal)
 		defft(outgrain[ch], diff[ch])
+	}
+}
+
+// pghiarrows calculates integration directions from a pair of magnitude
+// buffers using priority queue.
+//
+// See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
+// (https://arxiv.org/pdf/2202.07382)
+func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int) [][2]int {
+	n.heap = n.heap[:n.nbins]
+	fill(n.arm, true)
+	for w := range P {
+		n.heap[w] = heaptriple{P[w], w, -1}
+	}
+	heapInit(&n.heap)
+	arrows = arrows[:0]
+
+	for len(n.heap) > 0 {
+		h := heapPop(&n.heap)
+		w := h.w
+		switch h.t {
+		case -1:
+			if arm[w] {
+				arrows = append(arrows, [2]int{w, 'p'})
+				arm[w] = false
+				heapPush(&n.heap, heaptriple{M[w], w, 0})
+			}
+		case 0:
+			if w >= 1 && arm[w-1] {
+				arrows = append(arrows, [2]int{w, 'd'})
+				arm[w-1] = false
+				heapPush(&n.heap, heaptriple{M[w-1], w - 1, 0})
+			}
+			if w < n.nbins-1 && arm[w+1] {
+				arrows = append(arrows, [2]int{w, 'u'})
+				arm[w+1] = false
+				heapPush(&n.heap, heaptriple{M[w+1], w + 1, 0})
+			}
+		}
+	}
+	return arrows
+}
+
+// pghiintegrate integrates the partial derivatives of phase using directions
+// obtained from pghiarrows.
+func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) {
+	for _, e := range arrows {
+		switch e[1] {
+		case 'p':
+			Ph[e[0]] = princarg(Past[e[0]]) + Tadv[e[0]]
+		case 'd':
+			Ph[e[0]-1] = Ph[e[0]] - Fadv[e[0]-1]
+		case 'u':
+			Ph[e[0]+1] = Ph[e[0]] + Fadv[e[0]+1]
+		}
 	}
 }
 

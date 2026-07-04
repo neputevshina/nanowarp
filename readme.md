@@ -61,7 +61,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
-- There may be ways to optimize the “phase gradient heap integration” to not need a heap.
+- There could be ways to optimize the “phase gradient heap integration” to not need a heap.
 - Some more onset detectors:
   - https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
   - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
@@ -73,11 +73,11 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, 
   ignoring overlap, so it is impossible to obtain globally coherent phase with phase resets using this method. 
   We need some way to use the phase of up to overlap number of frames.
-- From the cellular automaton/WFC viewpoint, increasing the neighborhood of PGHI is ineffective. 
-  Anything other than current von Neumann (including Moore) give worse results both in causal and non-causal modes.
-  May be useful for more elegant theoretical definition of PGHI.
+- From the cellular automaton/WFC view, increasing the neighborhood of PGHI is ineffective. 
+  Anything other than current von Neumann (including Moore) neighborhood gives worse results both in causal and non-causal modes.
+  Can be useful for more elegant theoretical definition of PGHI.
 - Short-time (3×olap frames) phase reconstruction (Griffin-Lim and friends) is ineffective for eliminating clicks.
-  I don't know how, but it makes worse. Skill issue maybe.
+  I don't know how, but it only makes worse. Skill issue maybe.
 - Actually, it's a miracle PGHI with phase resets works as it is. 
   Magnitude spectrum is crazy and even if I don't do phase resets it still introduce clicks on large stretches.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
@@ -93,7 +93,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Does not reconstruct the signal perfectly,
   DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
   to doubly applied windowing.
-  May be a mistake in Blackman-Harris window usage (doesn't occur with Hann IIRC)
+  Wrong Blackman-Harris window usage (doesn't occur with Hann IIRC)
   or a bug in gonum/fourier (unlikely).
 - Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms because of extreme stretching of the magnitude spectrum.
