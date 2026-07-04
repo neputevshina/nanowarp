@@ -114,8 +114,6 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			poolstretch = stretch
 		}
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
-		// copy(lout, ons)
-		// return
 		n.getCoeffSignal(coeffs, sam, stretch)
 	}
 

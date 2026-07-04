@@ -153,6 +153,12 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	}
 	enfft(a.X, a.W, a.Mid)
 
+	// Calculate current magnitude and arrows from it.
+	for w := range a.X {
+		a.M[w] = cmplx.Abs(a.X[w])
+	}
+	arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows)
+
 	// Bypass and refill the past on a phase reset.
 	if reset {
 		for w := range a.Y {
@@ -170,7 +176,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	// See Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a
 	// real-time realization for a commercial music product
 	for w := range a.X {
-		a.M[w] = cmplx.Abs(a.X[w])
 		a.Y[w] = safediv(a.X[w], complex(a.M[w], 0))
 		for ch := range len(ingrain) {
 			a.C[ch][w] /= a.Y[w]
@@ -193,19 +198,16 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft/n.hop), w)
 	}
 
-	// Perform PGHI in two steps.
-	{
-		arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows)
-		n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
-	}
+	// Reconstruct the phase.
+	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
-	// Add stereo phase differences back through multiplication
-	// and update past phases.
+	// Add stereo phase differences back through multiplication.
 	for w := range a.Ph {
 		a.Y[w] = cmplx.Rect(1, a.Ph[w])
 	}
-skip:
+
 	copy(a.P, a.M)
+skip:
 	copy(a.Past, a.Ph)
 
 	return a.Y, a.C, a.M
@@ -268,7 +270,7 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int) [][2]in
 	return arrows
 }
 
-// pghiintegrate integrates the partial derivatives of phase using directions
+// pghiintegrate integrates partial derivatives of phase using directions
 // obtained from pghiarrows.
 func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) {
 	for _, e := range arrows {
