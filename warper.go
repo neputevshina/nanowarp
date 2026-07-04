@@ -206,8 +206,8 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 		a.Y[w] = cmplx.Rect(1, a.Ph[w])
 	}
 
-	copy(a.P, a.M)
 skip:
+	copy(a.P, a.M)
 	copy(a.Past, a.Ph)
 
 	return a.Y, a.C, a.M
