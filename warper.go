@@ -3,6 +3,7 @@ package nanowarp
 import (
 	"fmt"
 	"math"
+	"math/bits"
 	"math/cmplx"
 	"os"
 	"slices"
@@ -25,9 +26,12 @@ type warper struct {
 
 	fft *fourier.FFT
 
-	arm    []bool   // PGHI done mask
-	arrows [][2]int // PGHI integration directions
-	heap   hp       // PGHI heap
+	// PGHI-related
+	arm    []bool    // Done mask
+	heap   hp        // Heap
+	arrows [][2]int  // Integration directions
+	trace  []float64 // Ridge accumulator
+	ridges []uint    // Extracted ridges
 
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
@@ -70,9 +74,8 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	// hann(s(a.W))
 	n.heap = make(hp, n.nbins)
 
-	// FIXME Destination is the first argument by convention.
-	windowDx(s(a.W), s(a.Wd))
-	windowT(s(a.W), s(a.Wt))
+	windowDx(s(a.Wd), s(a.W))
+	windowT(s(a.Wt), s(a.W))
 
 	copy(s(a.Wr), s(a.W))
 	slices.Reverse(s(a.Wr))
@@ -81,7 +84,9 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
-	n.arrows = make([][2]int, 0, 2*n.nbins)
+	n.arrows = make([][2]int, 0, n.nbins)
+	n.ridges = make([]uint, n.nbins)
+	n.trace = make([]float64, n.nbins)
 
 	return
 }
@@ -156,7 +161,29 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	enfft(a.X, a.W, a.Mid)
 
 	cmplxs.Abs(a.M, a.X)
-	arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows)
+	arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows, n.ridges)
+
+	// Calculate time of life for each ridge.
+	//
+	// Note that trajectories are calculated with a 1-frame lag.
+	// Still good for our purposes.
+	trace := n.trace
+	for w, v := range n.ridges {
+		p := boolfloat(bits.OnesCount(v&0b111000) >= 2)
+		trace[w] = trace[w]*p + p
+	}
+	l := -1
+	for i := range trace {
+		if l > 0 && trace[i] == 0 {
+			fill(trace[l:i], slices.Max(trace[l:i]))
+		}
+		if trace[i] != 0 {
+			l = i
+		}
+	}
+	if l > 0 {
+		fill(trace[l:], slices.Max(trace[l:]))
+	}
 
 	// Bypass on a phase reset.
 	if reset {
@@ -181,10 +208,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 		cmplxs.Div(a.C[ch], a.Y)
 	}
 
-	// Calculate derivative windows.
-	enfft(a.Xd, a.Wd, a.Mid)
-	enfft(a.Xt, a.Wt, a.Mid)
-
 	// Calculate partial derivatives of the phase.
 	//
 	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms
@@ -192,12 +215,13 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	// TODO Probably it will be more numerically stable to limit the phase accuum to
 	// 0..1 and scale back to -π..π range at the poltocar conversion.
 	// fadv must return 0..1 accordingly, simply defer π multiplication until the end.
+	enfft(a.Xd, a.Wd, a.Mid)
+	enfft(a.Xt, a.Wt, a.Mid)
 	for w := range a.X {
 		a.Fadv[w] = princarg(fadv(a.X[:n.nbins], a.Xt, stretch, w))
 		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft/n.hop), w)
 	}
 
-	// Reconstruct the phase.
 	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
 	// Add stereo phase differences back through multiplication.
@@ -230,13 +254,17 @@ func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]
 // pghiarrows calculates integration directions from a pair of magnitude
 // buffers using priority queue.
 //
+// Order of elements in arrows is significant and determined by priority.
+//
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int) [][2]int {
+func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges []uint) [][2]int {
 	n.heap = n.heap[:n.nbins]
 	fill(n.arm, true)
 	for w := range P {
 		n.heap[w] = heaptriple{P[w], w, -1}
+		// Ridges are encoded as 3-bit mask: 1 right, 2 down, 4 up
+		ridges[w] <<= 3
 	}
 	heapInit(&n.heap)
 	arrows = arrows[:0]
@@ -248,17 +276,20 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int) [][2]in
 		case -1:
 			if arm[w] {
 				arrows = append(arrows, [2]int{w, 'p'})
+				ridges[w] |= 1
 				arm[w] = false
 				heapPush(&n.heap, heaptriple{M[w], w, 0})
 			}
 		case 0:
 			if w >= 1 && arm[w-1] {
 				arrows = append(arrows, [2]int{w, 'd'})
+				ridges[w-1] |= 2
 				arm[w-1] = false
 				heapPush(&n.heap, heaptriple{M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && arm[w+1] {
 				arrows = append(arrows, [2]int{w, 'u'})
+				ridges[w+1] |= 4
 				arm[w+1] = false
 				heapPush(&n.heap, heaptriple{M[w+1], w + 1, 0})
 			}

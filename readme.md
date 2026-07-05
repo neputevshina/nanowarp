@@ -96,6 +96,8 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms because of extreme stretching of the magnitude spectrum.
   Mitigated by factorization of stretch coefficient and repeated stretching (hint from Elastiqué SDK docs).
+  From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`. 
+  If `e-1` is negative, shrink by `|e-1|` times instead.
 - Triple echo in frequency on high-frequency content. Can be seen on 2x stretched log sweep.
 - [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) 
   Elastiqué doesn't do that.

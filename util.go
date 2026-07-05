@@ -106,7 +106,6 @@ func makeslices(a any, nbins, nfft, nch, lah int) {
 }
 
 func hann(out []float64) {
-	// 3 echoes of transients after stretch
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
 		out[i] = 0.5 * (1 - math.Cos(2*math.Pi*x))
@@ -115,7 +114,6 @@ func hann(out []float64) {
 
 // TODO Does not achieve perfect reconstruction.
 func blackmanHarris(out []float64) {
-	// 3 echoes
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
 		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
@@ -156,14 +154,17 @@ func windowGain(w []float64) (a float64) {
 	return
 }
 
-func windowT(w, out []float64) {
+// windowT calculates the time ramp multiplied window
+// function for time-frequency reassignment.
+func windowT(out, w []float64) {
 	n := float64(len(w))
 	for i := range w {
 		out[i] = w[i] * mix(-n/2, n/2+1, float64(i)/n)
 	}
 }
 
-func windowDx(w, out []float64) {
+// windowDx calculates the derivative of w using DFT.
+func windowDx(out, w []float64) {
 	f := fourier.NewFFT(len(w))
 	s := f.Coefficients(nil, w)
 	for i := range s {
@@ -266,7 +267,7 @@ func safediv[T constraints.Float | constraints.Complex](a, b T) T {
 	return a / b
 }
 
-// atodb converts amplidude value to decibels full scale (dBFS).
+// atodb converts an amplidude value to decibels full scale (dBFS).
 func atodb(a float64) float64 {
 	return 20 * math.Log10(a)
 }
