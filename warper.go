@@ -101,10 +101,11 @@ func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []floa
 	crop := make([][]float64, nch)
 
 	lastone := 0
-	for j := 0; j < len(out[0]); j += n.hop {
-		fi := func(j int) int { return int(phasor[j]) }
+	for j := -n.nbuf / 2; j < len(out[0])-1+n.nbuf/2; j += n.hop {
+		bounds := func(i int) int { return clamp(0, len(out[0])-1, i) }
+		fi := func(j int) int { return int(phasor[bounds(j)]) }
 		i := fi(j)
-		c := 1 / coeffs[j]
+		c := 1 / coeffs[bounds(j)]
 
 		for ch := range nch {
 			cr := in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)]
@@ -137,7 +138,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []floa
 				clear(grain[ch])
 			}
 
-			g := out[ch][max(0, j-n.nbuf/2):clamp(0, len(out[0]), j+n.nbuf/2)]
+			g := out[ch][max(0, j-n.nbuf/2):bounds(j+n.nbuf/2)]
 			add(g, grain[ch][clamp(0, n.nbuf, -j):])
 		}
 	}

@@ -146,6 +146,7 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 			fill(coeffs[i+tsa/2:j-r], (t/s-x)/(t-x))
 		}
 	}
+	fill(coeffs[len(coeffs)-tsa/2:], 1/s)
 }
 
 /*
