@@ -255,8 +255,6 @@ func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]
 // pghiarrows calculates integration directions from a pair of magnitude
 // buffers using priority queue.
 //
-// Order of elements in arrows is significant and determined by priority.
-//
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
 func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges []uint) [][2]int {
@@ -277,7 +275,7 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges 
 		case -1:
 			if arm[w] {
 				arrows = append(arrows, [2]int{w, 'p'})
-				ridges[w] |= 1
+				ridges[w] |= 1 << 3
 				arm[w] = false
 				heapPush(&n.heap, heaptriple{M[w], w, 0})
 			}
