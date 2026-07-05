@@ -78,8 +78,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
   Can be useful for more elegant theoretical definition of PGHI.
 - Short-time (3×olap frames) phase reconstruction (Griffin-Lim and friends) is ineffective for eliminating clicks.
   I don't know how, but it only makes worse. Skill issue maybe.
-- Actually, it's a miracle PGHI with phase resets works as it is. 
-  Magnitude spectrum is crazy and even if I don't do phase resets it still introduce clicks on large stretches.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 

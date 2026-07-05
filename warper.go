@@ -7,7 +7,9 @@ import (
 	"os"
 	"slices"
 
+	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/dsp/fourier"
+	"gonum.org/v1/gonum/floats"
 )
 
 type warper struct {
@@ -84,7 +86,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process3old(in [][]float64, out [][]float64, coeffs, phasor []float64) {
+func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []float64) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
 	nch := len(in)
@@ -153,18 +155,15 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	}
 	enfft(a.X, a.W, a.Mid)
 
-	// Calculate current magnitude and arrows from it.
-	for w := range a.X {
-		a.M[w] = cmplx.Abs(a.X[w])
-	}
+	cmplxs.Abs(a.M, a.X)
 	arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows)
 
-	// Bypass and refill the past on a phase reset.
+	// Bypass on a phase reset.
 	if reset {
 		for w := range a.Y {
 			a.Ph[w] = cmplx.Phase(a.X[w])
-			a.Y[w] = 1
 		}
+		fill(a.Y, 1)
 		goto skip
 	}
 
@@ -177,9 +176,9 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	// real-time realization for a commercial music product
 	for w := range a.X {
 		a.Y[w] = safediv(a.X[w], complex(a.M[w], 0))
-		for ch := range len(ingrain) {
-			a.C[ch][w] /= a.Y[w]
-		}
+	}
+	for ch := range len(ingrain) {
+		cmplxs.Div(a.C[ch], a.Y)
 	}
 
 	// Calculate derivative windows.
@@ -217,9 +216,7 @@ func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]
 	a := &n.a
 	defft := func(out []float64, x []complex128) {
 		n.fft.Sequence(a.S, x)
-		for j := range a.S {
-			a.S[j] /= n.norm
-		}
+		floats.Scale(1/n.norm, a.S)
 		mul(a.S, a.Wr)
 		copy(out, a.S)
 	}

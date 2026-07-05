@@ -1,22 +1,5 @@
 package nanowarp
 
-// TODO
-// - Pitch
-//	- Good resampler is required
-// - Streaming
-// ~ Time and pitch envelopes
-// 	- The internal machinery is already there, just glue pieces together and add UI
-// - Optimizations
-//	+ Calculate mag(a.X) once
-//	+ Replace container.Heap with rankfilt
-//	+ Parallelize
-//		- Parallelize in streaming
-//	- Use/port a vectorized FFT library (e.g. SLEEF/PFFFT)
-//	- Use only float32 (impossible with gonum)
-//	- SIMD?
-//		- Go 1.26 intrinsics with GOEXPERIMENT=simd
-//
-
 import (
 	"fmt"
 	"math"
@@ -121,7 +104,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 		phasor[j+1] = phasor[j] + coeffs[j+1]
 	}
 
-	n.process3old([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
+	n.process6([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
 }
 
 func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
