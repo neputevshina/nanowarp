@@ -41,21 +41,21 @@ Nanowarp is a phase gradient heap integration (PGHI) phase vocoder (aka PVDR)[1]
 of phase are obtained through time-frequency reassignment[2]. This way accurate phase-time 
 advance can be obtained using only one windowed grain instead of two for simplicity.
 
-Like in original implementation of PVDR, FFT is oversampled by factor of 2 with zero-padding. 
-Stereo coherence is obtained through stretching mono and adding complex phase difference of 
-respective side channels after stretching back[4].
-
 A phase ramp for the entire output signal is generated. Onsets are detected using rectified 
 complex-domain novelty function[3]. If onset is detected, phase ramp will have a derivative of 
 1 in a region around detected onset. Starting points of these sample regions are scaled by the 
 stretch size, and points between regions are linearly interpolated.
 
-Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for the input 
+Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for input 
 sample indexes. Steady portions of the signal are detected inside the same PGHI process 
-by counting the directions from where phase must be integrated.
+by counting the directions from where the phase must be integrated.
 If the derivative of the signal is 1, non-steady portions of the spectrum 
 are bypassed to the output, and steady are integrated further. 
 Bins above 6000 Hz are always considered non-steady by default.
+
+Like in original implementation of PVDR, FFT is oversampled by factor of 2 with zero-padding. 
+Stereo coherence is obtained through stretching mono and adding complex phase difference of 
+respective side channels after stretching back[4].
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
