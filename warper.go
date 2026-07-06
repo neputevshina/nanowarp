@@ -170,42 +170,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	cmplxs.Abs(a.M, a.X)
 	arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows, n.ridges)
 
-	// Calculate time of life for each ridge.
-	//
-	// Note that trajectories are calculated with a 1 frame lag.
-	// Still good for our purposes.
-	trace := n.trace
-	for w, v := range n.ridges {
-		p := boolfloat(bits.OnesCount(v&0b111000) >= 2)
-		trace[w] = trace[w]*p + p
-	}
-
-	// Propagate vertically.
-	l := -1
-	for i := range trace {
-		if l < 0 && trace[i] != 0 {
-			l = i
-		}
-		if l >= 0 && trace[i] == 0 {
-			v := slices.Max(trace[l:i])
-			// Reset the track on a PGHI-detected transient.
-			if i-l >= hp.HighRidgeHeight {
-				v = 0
-			}
-			fill(trace[l:i], v)
-		}
-		if trace[i] == 0 {
-			l = -1
-		}
-	}
-	if l > 0 {
-		fill(trace[l:], slices.Max(trace[l:]))
-	}
-	// Dilate ridges.
-	for w := range trace[2:] {
-		n.ftrace[w+1] = max(trace[w], trace[w+1], trace[w+2])
-	}
-
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.
 	//     Phase sum is conversely a multiply.
@@ -236,11 +200,15 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 
 	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
+	// Note that trajectories are calculated with a one frame lag.
+	// Still good for our purposes.
+	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight)
+
 	// Bypass short ridges on phase reset.
 	c := float64(hp.LongRidgeLength) * stretch
 	upto := hztobin(hp.ResetUpToHz, n.nfft, n.root.fs)
 	for w := range a.Y {
-		if !reset || !allreset && n.ftrace[w] > c && w < upto {
+		if !reset || !allreset && trace[w] > c && w < upto {
 			// Receive normals from the current phase, if not resetting.
 			a.Y[w] = cmplx.Rect(1, a.Ph[w])
 			continue
@@ -256,6 +224,39 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	copy(a.Past, a.Ph)
 
 	return a.Y, a.C, a.M
+}
+
+func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeight int) []float64 {
+	for w, v := range ridges {
+		p := boolfloat(bits.OnesCount(v&0b111000) >= 2)
+		trace[w] = trace[w]*p + p
+	}
+	// Propagate vertically.
+	l := -1
+	for i := range trace {
+		if l < 0 && trace[i] != 0 {
+			l = i
+		}
+		if l >= 0 && trace[i] == 0 {
+			v := slices.Max(trace[l:i])
+			// Reset the track on a PGHI-detected transient.
+			if i-l >= HighRidgeHeight {
+				v = 0
+			}
+			fill(trace[l:i], v)
+		}
+		if trace[i] == 0 {
+			l = -1
+		}
+	}
+	if l > 0 {
+		fill(trace[l:], slices.Max(trace[l:]))
+	}
+	// Dilate ridges.
+	for w := range trace[2:] {
+		out[w+1] = max(trace[w], trace[w+1], trace[w+2])
+	}
+	return out
 }
 
 func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]complex128) {
