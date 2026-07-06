@@ -150,6 +150,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []floa
 // advance constructs the next frame of the output.
 func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
+	hp := n.root.opts.Hyperparam
 	nch := len(ingrain)
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
@@ -180,7 +181,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	}
 
 	// Propagate vertically.
-	const HighRidgeHeight = 5
 	l := -1
 	for i := range trace {
 		if l < 0 && trace[i] != 0 {
@@ -189,7 +189,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 		if l >= 0 && trace[i] == 0 {
 			v := slices.Max(trace[l:i])
 			// Reset the track on a PGHI-detected transient.
-			if i-l >= HighRidgeHeight {
+			if i-l >= hp.HighRidgeHeight {
 				v = 0
 			}
 			fill(trace[l:i], v)
@@ -237,11 +237,11 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
 	// Bypass short ridges on phase reset.
-	const LongRidgeLength = 8
 	const ResetUpToHz = 2000
+	c := float64(hp.LongRidgeLength) * stretch
+	upto := hztobin(hp.ResetUpToHz, n.nfft, n.root.fs)
 	for w := range a.Y {
-		c := LongRidgeLength * stretch
-		if !reset || !allreset && n.ftrace[w] > c && w < ResetUpToHz {
+		if !reset || !allreset && n.ftrace[w] > c && w < upto {
 			// Receive normals from the current phase, if not resetting.
 			a.Y[w] = cmplx.Rect(1, a.Ph[w])
 			continue

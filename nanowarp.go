@@ -35,20 +35,44 @@ type Options struct {
 	// Time for which signal will be bypassed at any detected transient.
 	//
 	// If zero will be set to 30.
-	TransientMs int
+	TransientMs int `default:"30"`
 
 	// The size of the transient picking filter in milliseconds.
 	//
 	// If zero will be set to 250.
-	PickingMs int
+	PickingMs int `default:"250"`
 
 	// Measure the pooling size in output time, not in input time.
 	// I.e. scale the pooling size with the stretch coefficient.
 	// Effective only for stretches, not shrinkages.
 	ScalePool bool
+
+	Hyperparam Hyperparam
+}
+
+type Hyperparam struct {
+	// Minimum amount of frequency bins a trajectory must travel in
+	// one frame to be destroyed.
+	//
+	// Lower values — more vibrato will be detected as transients.
+	// On 1 only steady sinusoidal trajectories will be considered tonal.
+	HighRidgeHeight int `default:"5"`
+
+	// Minimum amount of time bins a trajectory must travel in total
+	// to be considered tonal.
+	//
+	// Lower values — more tonal preservation and less transient clarity.
+	// Higher values — more transient preservation and more interrupts.
+	LongRidgeLength int `default:"8"`
+
+	// The frequency in hertz above which every bin at the transient
+	// frame will be reset.
+	ResetUpToHz float64 `default:"6000"`
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
+	structinit(&opts)
+	structinit(&opts.Hyperparam)
 	n = new(samplerate, &opts)
 	n.opts = opts
 

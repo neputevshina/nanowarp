@@ -2,9 +2,11 @@ package nanowarp
 
 import (
 	"cmp"
+	"fmt"
 	"math"
 	"math/cmplx"
 	"reflect"
+	"strconv"
 
 	"golang.org/x/exp/constraints"
 	"gonum.org/v1/gonum/dsp/fourier"
@@ -102,6 +104,39 @@ func makeslices(a any, nbins, nfft, nch, lah int) {
 				}
 			}
 		}
+	}
+}
+
+func structinit(a any) {
+	rn := reflect.ValueOf(a).Elem()
+	ts := reflect.TypeOf(a).Elem()
+	for i := 0; i < rn.NumField(); i++ {
+		f := rn.Field(i)
+		if !f.IsZero() {
+			continue
+		}
+		tf := ts.Field(i)
+		v := tf.Tag.Get("default")
+		if v == `` {
+			continue
+		}
+		switch tf.Type {
+		case reflect.TypeFor[int]():
+			vv, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				panic(fmt.Sprint(`incorrect default value on field `, tf.Name, ` in type `, ts.Name()))
+			}
+			f.Set(reflect.ValueOf(int(vv)))
+		case reflect.TypeFor[float64]():
+			vv, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				panic(fmt.Sprint(`incorrect default value on field `, tf.Name, `in type `, ts.Name()))
+			}
+			f.Set(reflect.ValueOf(vv))
+		case reflect.TypeFor[string]():
+			f.Set(reflect.ValueOf(v))
+		}
+
 	}
 }
 
