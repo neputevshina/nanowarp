@@ -150,7 +150,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []floa
 // advance constructs the next frame of the output.
 func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
-	hp := n.root.opts.Hyperparam
+	hp := n.root.opts.Hyperparams
 	nch := len(ingrain)
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)

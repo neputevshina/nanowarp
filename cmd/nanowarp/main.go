@@ -158,11 +158,13 @@ func main() {
 	}
 
 	opts := nanowarp.Options{
-		Onsets:      *onsets,
-		Quality:     *q,
-		TransientMs: *onsetms,
-		PickingMs:   *poolms,
-		ScalePool:   *outpool,
+		Onsets:  *onsets,
+		Quality: *q,
+		Hyperparams: nanowarp.Hyperparams{
+			TransientMs: *onsetms,
+			PickingMs:   *poolms,
+			ScalePool:   *outpool,
+		},
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 

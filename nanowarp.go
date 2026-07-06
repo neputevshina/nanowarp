@@ -32,14 +32,14 @@ type Options struct {
 	//	No artifacts, but noticeable slight loss in clarity.
 	Quality int
 
+	Hyperparams
+}
+
+type Hyperparams struct {
 	// Time for which signal will be bypassed at any detected transient.
-	//
-	// If zero will be set to 30.
 	TransientMs int `default:"30"`
 
 	// The size of the transient picking filter in milliseconds.
-	//
-	// If zero will be set to 250.
 	PickingMs int `default:"250"`
 
 	// Measure the pooling size in output time, not in input time.
@@ -47,10 +47,6 @@ type Options struct {
 	// Effective only for stretches, not shrinkages.
 	ScalePool bool
 
-	Hyperparam Hyperparam
-}
-
-type Hyperparam struct {
 	// Minimum amount of frequency bins a trajectory must travel in
 	// one frame to be destroyed.
 	//
@@ -72,7 +68,7 @@ type Hyperparam struct {
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
 	structinit(&opts)
-	structinit(&opts.Hyperparam)
+	structinit(&opts.Hyperparams)
 	n = new(samplerate, &opts)
 	n.opts = opts
 
