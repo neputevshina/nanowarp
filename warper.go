@@ -31,6 +31,7 @@ type warper struct {
 	heap   hp        // Heap
 	arrows [][2]int  // Integration directions
 	trace  []float64 // Ridge accumulator
+	ftrace []float64 // Filtered trace
 	ridges []uint    // Extracted ridges
 
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
@@ -46,7 +47,7 @@ type wbufs struct {
 	Fadv, Tadv    []float64      // Partial derivatives
 	W, Wr, Wd, Wt []float64      // Window functions
 	X, Y, Xd, Xt  []complex128   // Complex spectra
-	C             [][]complex128 // Channel differences
+	C, Co         [][]complex128 // Channel differences, original channels
 }
 
 func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -87,6 +88,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.arrows = make([][2]int, 0, n.nbins)
 	n.ridges = make([]uint, n.nbins)
 	n.trace = make([]float64, n.nbins)
+	n.ftrace = make([]float64, n.nbins)
 
 	return
 }
@@ -117,7 +119,8 @@ func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []floa
 			}
 		}
 
-		normal, diff, _ := n.advance(crop, abs(c), n.root.opts.Quality >= 0 && c == 1)
+		q := n.root.opts.Quality
+		normal, diff, _ := n.advance(crop, abs(c), q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
 
 		d := j - lastone
@@ -145,8 +148,9 @@ func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []floa
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (normal []complex128, diff [][]complex128, mag []float64) {
+func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
+	nch := len(ingrain)
 	enfft := func(x []complex128, w, grain []float64) {
 		clear(a.S)
 		copy(a.S, grain)
@@ -158,6 +162,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	for ch := range ingrain {
 		add(a.Mid, ingrain[ch])
 		enfft(a.C[ch], a.W, ingrain[ch])
+		copy(a.Co[ch], a.C[ch])
 	}
 	enfft(a.X, a.W, a.Mid)
 
@@ -166,33 +171,39 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 
 	// Calculate time of life for each ridge.
 	//
-	// Note that trajectories are calculated with a 1-frame lag.
+	// Note that trajectories are calculated with a 1 frame lag.
 	// Still good for our purposes.
 	trace := n.trace
 	for w, v := range n.ridges {
 		p := boolfloat(bits.OnesCount(v&0b111000) >= 2)
 		trace[w] = trace[w]*p + p
 	}
+
+	// Propagate vertically.
+	const HighRidgeHeight = 5
 	l := -1
 	for i := range trace {
-		if l > 0 && trace[i] == 0 {
-			fill(trace[l:i], slices.Max(trace[l:i]))
-		}
-		if trace[i] != 0 {
+		if l < 0 && trace[i] != 0 {
 			l = i
+		}
+		if l >= 0 && trace[i] == 0 {
+			v := slices.Max(trace[l:i])
+			// Reset the track on a PGHI-detected transient.
+			if i-l >= HighRidgeHeight {
+				v = 0
+			}
+			fill(trace[l:i], v)
+		}
+		if trace[i] == 0 {
+			l = -1
 		}
 	}
 	if l > 0 {
 		fill(trace[l:], slices.Max(trace[l:]))
 	}
-
-	// Bypass on a phase reset.
-	if reset {
-		for w := range a.Y {
-			a.Ph[w] = cmplx.Phase(a.X[w])
-		}
-		fill(a.Y, 1)
-		goto skip
+	// Dilate ridges.
+	for w := range trace[2:] {
+		n.ftrace[w+1] = max(trace[w], trace[w+1], trace[w+2])
 	}
 
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
@@ -204,9 +215,9 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 	// real-time realization for a commercial music product
 	for w := range a.X {
 		a.Y[w] = safediv(a.X[w], complex(a.M[w], 0))
-	}
-	for ch := range len(ingrain) {
-		cmplxs.Div(a.C[ch], a.Y)
+		for ch := range nch {
+			a.C[ch][w] = safediv(a.C[ch][w], a.Y[w])
+		}
 	}
 
 	// Calculate partial derivatives of the phase.
@@ -225,12 +236,23 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset bool) (norm
 
 	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
-	// Add stereo phase differences back through multiplication.
-	for w := range a.Ph {
-		a.Y[w] = cmplx.Rect(1, a.Ph[w])
+	// Bypass short ridges on phase reset.
+	const LongRidgeLength = 8
+	const ResetUpToHz = 2000
+	for w := range a.Y {
+		c := LongRidgeLength * stretch
+		if !reset || !allreset && n.ftrace[w] > c && w < ResetUpToHz {
+			// Receive normals from the current phase, if not resetting.
+			a.Y[w] = cmplx.Rect(1, a.Ph[w])
+			continue
+		}
+		a.Ph[w] = cmplx.Phase(a.X[w])
+		a.Y[w] = 1
+		for ch := range nch {
+			a.C[ch][w] = a.Co[ch][w]
+		}
 	}
 
-skip:
 	copy(a.P, a.M)
 	copy(a.Past, a.Ph)
 
@@ -247,6 +269,7 @@ func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]
 	}
 
 	for ch := range outgrain {
+		// Add stereo phase differences back through multiplication.
 		mul(diff[ch], normal)
 		defft(outgrain[ch], diff[ch])
 	}
@@ -282,13 +305,13 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges 
 		case 0:
 			if w >= 1 && arm[w-1] {
 				arrows = append(arrows, [2]int{w, 'd'})
-				ridges[w-1] |= 2
+				ridges[w] |= 2
 				arm[w-1] = false
 				heapPush(&n.heap, heaptriple{M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && arm[w+1] {
 				arrows = append(arrows, [2]int{w, 'u'})
-				ridges[w+1] |= 4
+				ridges[w] |= 4
 				arm[w+1] = false
 				heapPush(&n.heap, heaptriple{M[w+1], w + 1, 0})
 			}

@@ -7,7 +7,7 @@ this repo with a Go version.
 Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export. © 2013–2025 youpy.
 
-Current state: perfecting the algorithm. No user-facing API exists yet.
+Current state: algorithm done. No streaming, pitching and user-facing API exists yet.
 
 ## Installation and usage
 
@@ -51,8 +51,11 @@ complex-domain novelty function[3]. If onset is detected, phase ramp will have a
 stretch size, and points between regions are linearly interpolated.
 
 Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for the input 
-sample indexes. If the derivative of the signal is 1, samples are passed through to the output 
-*essentially* unmodified.
+sample indexes. Steady portions of the signal are detected inside the same PGHI process 
+by counting the directions from where phase must be integrated.
+If the derivative of the signal is 1, non-steady portions of the spectrum 
+are bypassed to the output, and steady are integrated further. 
+Bins above 2000 Hz are always considered non-steady.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
@@ -86,8 +89,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
-- Interruptions because of phase reset at incorrect onset detections.
-  May be fixed by simply not resetting at onsets, but it significantly impairs output quality.
 - Does not reconstruct the signal perfectly,
   DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
   to doubly applied windowing.
@@ -95,8 +96,8 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
   or a bug in gonum/fourier (unlikely).
 - Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms because of extreme stretching of the magnitude spectrum.
-  Mitigated by factorization of stretch coefficient and repeated stretching (hint from Elastiqué SDK docs).
-  From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`. 
+  Mitigated either by SELEBI or by factorization of stretch coefficient and repeated stretching (hint from Elastiqué SDK docs).
+  From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`.
   If `e-1` is negative, shrink by `|e-1|` times instead.
 - Triple echo in frequency on high-frequency content. Can be seen on 2x stretched log sweep.
 - [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) 

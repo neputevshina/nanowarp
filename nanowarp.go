@@ -25,12 +25,11 @@ type Options struct {
 
 	// Set algorithm quality.
 	//  -2: Don't perform transient separation, output raw PVDR without phase resets.
-	//	4x overlap.
-	//  -1: Extract transients and don't stretch signal at them. Slow.
-	//	Will accumulate numerical error for longer tracks.
-	//  0:  Same as -1, but resets the phase when not stretching.
-	//	Replaces sweepy artifacts with clicky artifacts and tonal interruptions.
+	//  -1: Extract transients and reset the phase when not stretching.
+	//	Introduces clicky artifacts but cleanest for transient-heavy material.
 	//	Better numerical stability because of resets.
+	//  0:  Same as -1, but detects and bypasses tonal components.
+	//	No artifacts, but noticeable slight loss in clarity.
 	Quality int
 
 	// Time for which signal will be bypassed at any detected transient.
