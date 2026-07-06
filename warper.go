@@ -237,7 +237,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
 	// Bypass short ridges on phase reset.
-	const ResetUpToHz = 2000
 	c := float64(hp.LongRidgeLength) * stretch
 	upto := hztobin(hp.ResetUpToHz, n.nfft, n.root.fs)
 	for w := range a.Y {

@@ -55,7 +55,7 @@ sample indexes. Steady portions of the signal are detected inside the same PGHI 
 by counting the directions from where phase must be integrated.
 If the derivative of the signal is 1, non-steady portions of the spectrum 
 are bypassed to the output, and steady are integrated further. 
-Bins above 2000 Hz are always considered non-steady.
+Bins above 6000 Hz are always considered non-steady by default.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
