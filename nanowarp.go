@@ -36,15 +36,22 @@ type Options struct {
 }
 
 type Hyperparams struct {
-	// Time for which signal will be bypassed at any detected transient.
+	// Diameter of a transient in milliseconds.
+	// Amount of time around the detected transient, for which the signal
+	// will be unscaled.
+	//
+	// Please note that if this value is less than synthesis hop size
+	// (1024 samples at 48 kHz sample rate), transient reset is not guaranteed.
 	TransientMs int `default:"30"`
 
-	// The size of the transient picking filter in milliseconds.
+	// Size of transient picking filter in milliseconds.
+	// Minimum amount of time between two consecutive transient detections.
 	PickingMs int `default:"250"`
 
-	// Measure the pooling size in output time, not in input time.
+	// If true, measure pooling size in output time, not in input time.
+	//
 	// I.e. scale the pooling size with the stretch coefficient.
-	// Effective only for stretches, not shrinkages.
+	// Effective only for stretches, not shrinks, which are always scaled.
 	ScalePool bool
 
 	// Minimum amount of frequency bins a trajectory must travel in
