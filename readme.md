@@ -27,7 +27,7 @@ nanowarp -i inputfile.wav -from <bpm> -to <bpm> -st <semitones> [-o outputfile.w
 ```
 If your system can't find `nanowarp` executable, you have probably changed PATH variable in your system.
 Probably the simplest way to bring it back if you are under Windows is by reinstalling the Go.
-On Linux, you should probably know what to do.
+On Linux, you should know what to do.
 
 Consult 
 ```
@@ -65,22 +65,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 
 ## Notes
 - There could be ways to optimize the “phase gradient heap integration” to not need a heap.
-- Some more onset detectors:
-  - https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
-  - https://www.dlsi.ua.es/~pertusa/pub/pdf/ciarp05.pdf
-  - Expecting a regular beat might be bad for some types of music.
-- SELEBI exists (preprint): https://arxiv.org/abs/2602.16421
-- ~~PGHI, being a “brute-force sinusoidal modeling”, probably can be abused as a tonality measure for ruling out erroneous onset detections.~~ 
-  ~~It can't, but it's still a cool concept to keep in mind.~~
-  It actually can, but you need to see where points are coming from, not where they lead.
-- [Non-causal PGHI](https://ltfat.org/notes/ltfatnote040.pdf) is ineffective because PGHI integrates the phase locally, 
-  ignoring overlap, so it is impossible to obtain globally coherent phase with phase resets using this method. 
-  We need some way to use the phase of up to overlap number of frames.
-- From the cellular automaton/WFC view, increasing the neighborhood of PGHI is ineffective. 
-  Anything other than current von Neumann (including Moore) neighborhood gives worse results both in causal and non-causal modes.
-  Can be useful for more elegant theoretical definition of PGHI.
-- Short-time (3×olap frames) phase reconstruction (Griffin-Lim and friends) is ineffective for eliminating clicks.
-  I don't know how, but it only makes worse. Skill issue maybe.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 
@@ -92,13 +76,13 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Does not reconstruct the signal perfectly,
   DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
   to doubly applied windowing.
-  Wrong Blackman-Harris window usage (doesn't occur with Hann IIRC)
+  Wrong Blackman-Harris window use (doesn't occur with Hann IIRC)
   or a bug in gonum/fourier (unlikely).
 - Triple echo in time on extreme (>4x) stretches. 
-  The bane of all PVDR-based algorithms because of extreme stretching of the magnitude spectrum.
-  Mitigated either by SELEBI or by factorization of stretch coefficient and repeated stretching (hint from Elastiqué SDK docs).
+  The bane of all PVDR-based algorithms due to extreme stretching of the magnitude spectrum.
+  Mitigated either by [SELEBI](https://arxiv.org/abs/2602.16421) or by factorization of stretch coefficient (hint from Elastiqué SDK docs).
   From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`.
-  If `e-1` is negative, shrink by `|e-1|` times instead.
+  If `e-1` is negative, shrink by `1-e` instead.
 - Triple echo in frequency on high-frequency content. Can be seen on 2x stretched log sweep.
 - [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) 
   Elastiqué doesn't do that.
