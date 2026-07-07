@@ -27,7 +27,7 @@ type Options struct {
 	//  -2: Don't perform transient separation, output raw PVDR without phase resets.
 	//  -1: Extract transients and reset the phase when not stretching.
 	//	Introduces clicky artifacts but cleanest for transient-heavy material.
-	//	Better numerical stability because of resets.
+	//	Best numerical stability because of resets.
 	//  0:  Same as -1, but detects and bypasses tonal components.
 	//	No artifacts, but noticeable slight loss in clarity.
 	Quality int
@@ -70,7 +70,7 @@ type Hyperparams struct {
 
 	// The frequency in hertz above which every bin at the transient
 	// frame will be reset.
-	ResetUpToHz float64 `default:"6000"`
+	ResetUpToHz float64 `default:"24000"`
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
