@@ -72,7 +72,7 @@ type Hyperparams struct {
 	// Phase will not be reset at this number of bins around the ridge.
 	//
 	// Higher values compromise transient quality over tonal quality.
-	InfluenceRadius int `default:"1"`
+	InfluenceRadius int `default:"3"`
 
 	// The frequency in hertz above which every bin at the transient
 	// frame will be reset.
