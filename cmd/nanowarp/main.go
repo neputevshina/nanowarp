@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 
 	"github.com/neputevshina/nanowarp"
@@ -28,13 +30,29 @@ var to = flag.Float64("to", 1, "target `bpm`")
 var st = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing the the pitch")
 var onsets = flag.Bool("onsets", false, "output displaced onsets only")
 var q = flag.Int("q", 0, "quality, run “go doc nanowarp.Options.Quality” for help")
-var onsetms = flag.Int("onsetms", 30, "onset size in milliseconds")
 var poolms = flag.Int("poolms", 250, "time of onset detection bucket in milliseconds")
 var outpool = flag.Bool("outpool", false, "measure pooling bucket in milliseconds of output, not input")
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp")
 
-func main() {
+func init() {
+	flag.Usage = func() {
+		buildinfo, _ := debug.ReadBuildInfo()
+		fmt.Fprint(flag.CommandLine.Output(),
+			`Nanowarp `,
+			buildinfo.Main.Version, ` `, runtime.Version(),
+			`
+Audio time stretching algorithm
+© 2025-2026 neputevshina
+https://github.com/neputevshina/nanowarp
+
+Usage:
+`)
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+}
+
+func main() {
 
 	if *cpuprofile != "" {
 		fmt.Fprintln(os.Stderr, `profiling`)
@@ -161,9 +179,8 @@ func main() {
 		Onsets:  *onsets,
 		Quality: *q,
 		Hyperparams: nanowarp.Hyperparams{
-			TransientMs: *onsetms,
-			PickingMs:   *poolms,
-			ScalePool:   *outpool,
+			PickingMs: *poolms,
+			ScalePool: *outpool,
 		},
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
