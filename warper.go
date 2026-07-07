@@ -202,7 +202,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 
 	// Note that trajectories are calculated with a one frame lag.
 	// Still good for our purposes.
-	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight)
+	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	// Bypass short ridges on phase reset.
 	c := float64(hp.LongRidgeLength) * stretch
@@ -226,7 +226,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	return a.Y, a.C, a.M
 }
 
-func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeight int) []float64 {
+func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeight, InfluenceRadius int) []float64 {
 	for w, v := range ridges {
 		p := boolfloat(bits.OnesCount(v&0b111000) >= 2)
 		trace[w] = trace[w]*p + p
@@ -253,8 +253,8 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeigh
 		fill(trace[l:], slices.Max(trace[l:]))
 	}
 	// Dilate ridges.
-	for w := range trace[2:] {
-		out[w+1] = max(trace[w], trace[w+1], trace[w+2])
+	for w := range trace[InfluenceRadius+1:] {
+		out[w+1] = slices.Max(trace[w : w+InfluenceRadius+2])
 	}
 	return out
 }

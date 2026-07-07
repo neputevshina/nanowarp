@@ -68,6 +68,12 @@ type Hyperparams struct {
 	// Higher values — more transient preservation and more interrupts.
 	LongRidgeLength int `default:"8"`
 
+	// Radius of influence of each detected tonal trajectory.
+	// Phase will not be reset at this number of bins around the ridge.
+	//
+	// Higher values compromise transient quality over tonal quality.
+	InfluenceRadius int `default:"1"`
+
 	// The frequency in hertz above which every bin at the transient
 	// frame will be reset.
 	ResetUpToHz float64 `default:"24000"`
