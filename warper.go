@@ -200,8 +200,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 
 	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
-	// Note that trajectories are calculated with a one frame lag.
-	// Still good for our purposes.
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	// Bypass short ridges on phase reset.
@@ -242,9 +240,18 @@ func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]
 	}
 }
 
+// Bitmasks for integration directions.
+// Ridges are encoded as 3-bit mask.
+const (
+	right = 1 << iota
+	down
+	up
+	ridgemask = right | down | up
+)
+
 func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeight, InfluenceRadius int) []float64 {
 	for w, v := range ridges {
-		p := boolfloat(bits.OnesCount(v&0b111000) >= 2)
+		p := boolfloat(bits.OnesCount(v&(ridgemask<<3)) >= 2)
 		trace[w] = trace[w]*p + p
 	}
 	// Propagate vertically.
@@ -268,7 +275,7 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeigh
 	if l > 0 {
 		fill(trace[l:], slices.Max(trace[l:]))
 	}
-	// Propagate the trace to its native (per PGHI directions) region of influence,
+	// Propagate each trace to its native (per PGHI directions) region of influence,
 	// limited by InfluenceRadius hyperparameter.
 	clear(out)
 	for w, v := range trace {
@@ -276,16 +283,14 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeigh
 			continue
 		}
 		for e := w - 1; e >= 0 && w-e <= InfluenceRadius; e-- {
-			// Bitmask means “goes down in previous frame”.
-			if trace[e] == 0 && ridges[e]&0b010000 > 0 {
+			if trace[e] == 0 && ridges[e]&(down<<3) > 0 {
 				out[e] = trace[w]
 			} else {
 				break
 			}
 		}
 		for e := w + 1; e < len(trace) && e-w <= InfluenceRadius; e++ {
-			// Bitmask means “goes up in previous frame”.
-			if trace[e] == 0 && ridges[e]&0b100000 > 0 {
+			if trace[e] == 0 && ridges[e]&(up<<3) > 0 {
 				out[e] = trace[w]
 			} else {
 				break
@@ -312,7 +317,8 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges 
 	fill(n.arm, true)
 	for w := range P {
 		n.heap[w] = heaptriple{P[w], w, -1}
-		// Ridges are encoded as 3-bit mask: 1 right, 2 down, 4 up
+		// Note that trajectories are calculated with a one frame lag.
+		// Still good for our purposes.
 		ridges[w] <<= 3
 	}
 	heapInit(&n.heap)
@@ -324,21 +330,21 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges 
 		switch h.t {
 		case -1:
 			if arm[w] {
-				arrows = append(arrows, [2]int{w, 'p'})
-				ridges[w] |= 1 << 3
+				arrows = append(arrows, [2]int{w, right})
+				ridges[w] |= right << 3
 				arm[w] = false
 				heapPush(&n.heap, heaptriple{M[w], w, 0})
 			}
 		case 0:
 			if w >= 1 && arm[w-1] {
-				arrows = append(arrows, [2]int{w, 'd'})
-				ridges[w] |= 2
+				arrows = append(arrows, [2]int{w, down})
+				ridges[w] |= down
 				arm[w-1] = false
 				heapPush(&n.heap, heaptriple{M[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && arm[w+1] {
-				arrows = append(arrows, [2]int{w, 'u'})
-				ridges[w] |= 4
+				arrows = append(arrows, [2]int{w, up})
+				ridges[w] |= up
 				arm[w+1] = false
 				heapPush(&n.heap, heaptriple{M[w+1], w + 1, 0})
 			}
@@ -352,11 +358,11 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges 
 func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) {
 	for _, e := range arrows {
 		switch e[1] {
-		case 'p':
+		case right:
 			Ph[e[0]] = princarg(Past[e[0]]) + Tadv[e[0]]
-		case 'd':
+		case down:
 			Ph[e[0]-1] = Ph[e[0]] - Fadv[e[0]-1]
-		case 'u':
+		case up:
 			Ph[e[0]+1] = Ph[e[0]] + Fadv[e[0]+1]
 		}
 	}

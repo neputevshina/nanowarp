@@ -30,8 +30,7 @@ var to = flag.Float64("to", 1, "Target `BPM`.")
 var st = flag.Float64("st", 0, `Pitch shift in semitones.
 Currently adjusts time stretch without changing the the pitch.`)
 var onsets = flag.Bool("onsets", false, "Output displaced onsets only.")
-var q = flag.Int("q", 0, `Quality.
-
+var q = flag.Int("q", 0, `Quality:
 -2: Don't perform transient separation, output raw PVDR without phase resets.
 -1: Extract transients and reset the phase when not stretching.
     Introduces clicky artifacts but cleanest for transient-heavy material.
@@ -40,8 +39,7 @@ var q = flag.Int("q", 0, `Quality.
     No artifacts, but noticeable slight loss in clarity.`)
 var poolms = flag.Int("poolms", 250, "Time of onset detection bucket in milliseconds.")
 var outpool = flag.Bool("outpool", false, "Measure pooling bucket in milliseconds of output, not input.")
-var ifr = flag.Int("if", 2, `Maximum radius of influence for each sinusoidal trajectory at the phase reset.
-Recommended values are 1 and 2.`)
+var ifr = flag.Int("if", 2, `Maximum radius of influence for each sinusoidal trajectory at the phase reset.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 
 func init() {
