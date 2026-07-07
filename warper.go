@@ -226,6 +226,22 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	return a.Y, a.C, a.M
 }
 
+func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]complex128) {
+	a := &n.a
+	defft := func(out []float64, x []complex128) {
+		n.fft.Sequence(a.S, x)
+		floats.Scale(1/n.norm, a.S)
+		mul(a.S, a.Wr)
+		copy(out, a.S)
+	}
+
+	for ch := range outgrain {
+		// Add stereo phase differences back through multiplication.
+		mul(diff[ch], normal)
+		defft(outgrain[ch], diff[ch])
+	}
+}
+
 func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeight, InfluenceRadius int) []float64 {
 	for w, v := range ridges {
 		p := boolfloat(bits.OnesCount(v&0b111000) >= 2)
@@ -252,27 +268,38 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeigh
 	if l > 0 {
 		fill(trace[l:], slices.Max(trace[l:]))
 	}
-	// Dilate ridges.
-	for w := range trace[InfluenceRadius+1:] {
-		out[w+1] = slices.Max(trace[w : w+InfluenceRadius+2])
+	// Propagate the trace to its native (per PGHI directions) region of influence,
+	// limited by InfluenceRadius hyperparameter.
+	clear(out)
+	for w, v := range trace {
+		if v == 0 {
+			continue
+		}
+		for e := w - 1; e >= 0 && w-e <= InfluenceRadius; e-- {
+			// Bitmask means “goes down in previous frame”.
+			if trace[e] == 0 && ridges[e]&0b010000 > 0 {
+				out[e] = trace[w]
+			} else {
+				break
+			}
+		}
+		for e := w + 1; e < len(trace) && e-w <= InfluenceRadius; e++ {
+			// Bitmask means “goes up in previous frame”.
+			if trace[e] == 0 && ridges[e]&0b100000 > 0 {
+				out[e] = trace[w]
+			} else {
+				break
+			}
+		}
+	}
+	// Add original traces to the output.
+	for w, v := range trace {
+		if v == 0 {
+			continue
+		}
+		out[w] = v
 	}
 	return out
-}
-
-func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]complex128) {
-	a := &n.a
-	defft := func(out []float64, x []complex128) {
-		n.fft.Sequence(a.S, x)
-		floats.Scale(1/n.norm, a.S)
-		mul(a.S, a.Wr)
-		copy(out, a.S)
-	}
-
-	for ch := range outgrain {
-		// Add stereo phase differences back through multiplication.
-		mul(diff[ch], normal)
-		defft(outgrain[ch], diff[ch])
-	}
 }
 
 // pghiarrows calculates integration directions from a pair of magnitude

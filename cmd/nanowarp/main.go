@@ -21,18 +21,28 @@ import (
 
 var println = fmt.Println
 
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-var finput = flag.String("i", "", "input WAV (or anything else, if ffmpeg is present) `path`")
-var foutput = flag.String("o", "", "output WAV `path`")
-var coeff = flag.Float64("t", 0, "time stretch multiplier")
-var from = flag.Float64("from", 1, "source `bpm`")
-var to = flag.Float64("to", 1, "target `bpm`")
-var st = flag.Float64("st", 0, "pitch shift in semitones, currently adjusts time stretch without changing the the pitch")
-var onsets = flag.Bool("onsets", false, "output displaced onsets only")
-var q = flag.Int("q", 0, "quality, run “go doc nanowarp.Options.Quality” for help")
-var poolms = flag.Int("poolms", 250, "time of onset detection bucket in milliseconds")
-var outpool = flag.Bool("outpool", false, "measure pooling bucket in milliseconds of output, not input")
-var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp")
+var cpuprofile = flag.String("cpuprofile", "", "Write cpu profile to `file`.")
+var finput = flag.String("i", "", "Input WAV (or anything else, if ffmpeg is present) `path`.")
+var foutput = flag.String("o", "", "Output WAV `path`.")
+var coeff = flag.Float64("t", 0, "Time stretch multiplier.")
+var from = flag.Float64("from", 1, "Source `BPM`.")
+var to = flag.Float64("to", 1, "Target `BPM`.")
+var st = flag.Float64("st", 0, `Pitch shift in semitones.
+Currently adjusts time stretch without changing the the pitch.`)
+var onsets = flag.Bool("onsets", false, "Output displaced onsets only.")
+var q = flag.Int("q", 0, `Quality.
+
+-2: Don't perform transient separation, output raw PVDR without phase resets.
+-1: Extract transients and reset the phase when not stretching.
+    Introduces clicky artifacts but cleanest for transient-heavy material.
+    Best numerical stability because of resets.
+0:  Same as -1, but detects and bypasses tonal components.
+    No artifacts, but noticeable slight loss in clarity.`)
+var poolms = flag.Int("poolms", 250, "Time of onset detection bucket in milliseconds.")
+var outpool = flag.Bool("outpool", false, "Measure pooling bucket in milliseconds of output, not input.")
+var ifr = flag.Int("if", 2, `Maximum radius of influence for each sinusoidal trajectory at the phase reset.
+Recommended values are 1 and 2.`)
+var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 
 func init() {
 	flag.Usage = func() {
@@ -179,8 +189,9 @@ func main() {
 		Onsets:  *onsets,
 		Quality: *q,
 		Hyperparams: nanowarp.Hyperparams{
-			PickingMs: *poolms,
-			ScalePool: *outpool,
+			PickingMs:       *poolms,
+			ScalePool:       *outpool,
+			InfluenceRadius: *ifr,
 		},
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
