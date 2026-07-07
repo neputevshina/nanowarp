@@ -66,6 +66,9 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - There could be ways to optimize the “phase gradient heap integration” to not need a heap.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
+- Phase could be reset on PGHI-detected transients.
+- Analysis lookahead will help in correct ridge detection.
+- We may limit amount of continued on reset ridges to, say, 10-20.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
