@@ -48,10 +48,9 @@ stretch size, and points between regions are linearly interpolated.
 
 Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for input 
 sample indexes. Steady portions of the signal are detected inside the same PGHI process 
-by counting the directions from where the phase must be integrated.
+by counting directions from where the phase must be integrated and their regions of influence.
 If the derivative of the signal is 1, non-steady portions of the spectrum 
-are bypassed to the output, and steady are integrated further. 
-Bins above 6000 Hz are always considered non-steady by default.
+are bypassed to the output, and steady are integrated further.
 
 Like in original implementation of PVDR, FFT is oversampled by factor of 2 with zero-padding. 
 Stereo coherence is obtained through stretching mono and adding complex phase difference of 
