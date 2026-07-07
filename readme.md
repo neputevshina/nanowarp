@@ -67,8 +67,12 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 - Phase could be reset on PGHI-detected transients.
+- Phase could be reset at the start of each PGHI-detected tonal trajectory 
+  (when trace\[w\] == 1).
 - Analysis lookahead will help in correct ridge detection.
-- We may limit amount of continued on reset ridges to, say, 10-20.
+- We may limit amount of reset-continued ridges to, say, loudest 10-20 using 
+  existing arrow data.
+
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
