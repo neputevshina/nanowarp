@@ -50,9 +50,9 @@ func mix[F constraints.Float](a, b, x F) F {
 	return a*(1-x) + b*x
 }
 
-// prescisionmix is a highly accurate linear interpolation.
+// precisionmix is a highly accurate linear interpolation.
 // It is slow because math.FMA is done in software floating point.
-func prescisionmix(a, b, x float64) float64 {
+func precisionmix(a, b, x float64) float64 {
 	return math.FMA(x, b-a, a)
 }
 

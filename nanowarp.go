@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 )
 
 type Nanowarp struct {
@@ -68,8 +69,8 @@ type Hyperparams struct {
 	// Higher values — more transient preservation and more interrupts.
 	LongRidgeLength int `default:"8"`
 
-	// Radius of influence of each detected tonal trajectory.
-	// Phase will not be reset at this number of bins around the ridge.
+	// Maximum radius of influence of each detected tonal trajectory.
+	// Phase never be reset at this number of bins around the ridge.
 	//
 	// Higher values compromise transient quality over tonal quality.
 	InfluenceRadius int `default:"3"`
@@ -129,11 +130,17 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			poolstretch = stretch
 		}
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
-		n.getCoeffSignal(coeffs, sam, stretch)
-	}
+		// n.getCoeffSignal(coeffs, sam, stretch)
 
-	for j := range phasor[1:] {
-		phasor[j+1] = phasor[j] + coeffs[j+1]
+		c := &Curve{}
+		n.generatePhasor(c, len(lin), stretch)
+		n.bendPhasor(c, sam)
+
+		for j := range phasor {
+			fj := float64(j)
+			coeffs[j], _ = c.Dy(fj)
+			phasor[j], _ = c.ReverseSample(fj)
+		}
 	}
 
 	n.process6([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
@@ -181,123 +188,152 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 	fill(coeffs[len(coeffs)-tsa/2:], 1/s)
 }
 
-func (n *Nanowarp) generatePhasor(c *Curve, inputLength, s float64) {
-	c.Mutate(func(f [][2]float64) [][2]float64 {
-		return [][2]float64{{0, 0}, {inputLength, inputLength * s}}
+func (n *Nanowarp) generatePhasor(c *Curve, inputLength int, s float64) {
+	c.Mutate(func(f []Breakpoint) []Breakpoint {
+		in := float64(inputLength)
+		return []Breakpoint{Bp(0, 0), Bp(in, in*s)}
 	})
 }
+
+var println = fmt.Println
 
 func (n *Nanowarp) bendPhasor(c *Curve, onsets [][2]float64) {
 	tsa := n.opts.TransientMs * n.fs / 1000
 	for k := 0; k < len(onsets)-1; k++ {
-		i := onsets[k]
-		j := onsets[k+1]
-		e, _ := c.ReverseSample(j[0])
-		sa, _ := c.Dx(e[1])
-		if j[0]-i[0] < float64(max(n.warper.nbuf, tsa))*sa[1] {
+		a := onsets[k]
+		b := onsets[k+1]
+		j, _ := c.Sample(b[0])
+		sa, _ := c.Dx(j)
+		if b[0]-a[0] < float64(max(n.warper.nbuf, tsa))/sa {
 			// Leave only louder one
-			if i[1] > j[1] {
-				onsets[k] = i
+			if a[1] > b[1] {
+				onsets[k] = a
 			}
 			copy(onsets[k:], onsets[k+1:])
 			onsets = onsets[:len(onsets)-1]
 			k--
 		}
 	}
-	// for k := 0; k < len(onsets)-1; k++ {
-	// 	i, _ := c.ReverseSample(onsets[k][0])
-
-	// }
-	c.Mutate(func(f [][2]float64) [][2]float64 {
-		return f
-	})
+	for k := 0; k < len(onsets)-1; k++ {
+		i := onsets[k][0]
+		r := float64(tsa / 2)
+		j, _ := c.Sample(i)
+		a, b := c.Between(i-r), c.Between(i+r)
+		c.Mutate(func(f []Breakpoint) []Breakpoint {
+			if a != b {
+				f = slices.Delete(f, a, b)
+			}
+			f = slices.Insert(f, a+1, []Breakpoint{{i - r, j - r}, {i + r, j + r}}...)
+			return f
+		})
+	}
 }
 
 type Breakpoint struct {
-	I int
-	V float64
+	I, J float64
 }
+
+func Bp(i, j float64) Breakpoint { return Breakpoint{I: i, J: j} }
 
 type Curve struct {
-	elems       [][2]float64
+	elems       []Breakpoint
 	last, rlast int
-	start, end  [2]float64
+	start, end  Breakpoint
 }
 
-func (c *Curve) Sample(i float64) (sa [2]float64, oflow int) {
-	sa[0] = i
-	if c.elems[c.last][0] < i {
-		c.last = 0
+func (c *Curve) Dx(i float64) (v float64, oflow int) {
+	if i >= c.end.I {
+		return c.dx(len(c.elems) - 2), 1
 	}
-	if i > c.end[0] {
-		sa[1] = c.end[1]
-		return sa, 1
+	if i < c.start.I {
+		return c.dx(0), -1
 	}
-	if i < c.start[0] {
-		sa[1] = c.start[1]
-		return sa, -1
+	f := c.Between(i)
+	return c.dx(f), 0
+}
+
+func (c *Curve) Dy(j float64) (v float64, oflow int) {
+	if j >= c.end.J {
+		return 1 / c.dx(len(c.elems)-2), 1
+	}
+	if j < c.start.J {
+		return 1 / c.dx(0), -1
+	}
+	f := c.ReverseBetween(j)
+	return 1 / c.dx(f), 0
+}
+
+func (c *Curve) dx(f int) float64 {
+	delx := (c.elems[f+1].I - c.elems[f].I)
+	dely := (c.elems[f+1].J - c.elems[f].J)
+	return dely / delx
+}
+
+func (c *Curve) Sample(i float64) (j float64, oflow int) {
+	if i >= c.end.I {
+		return c.end.J, 1
+	}
+	if i < c.start.I {
+		return c.start.J, -1
+	}
+	f := c.Between(i)
+	ni := unmix(c.elems[f].I, c.elems[f+1].I, i)
+	j = precisionmix(c.elems[f].J, c.elems[f+1].J, ni)
+	return
+}
+
+func (c *Curve) ReverseSample(j float64) (i float64, oflow int) {
+	if j >= c.end.J {
+		return c.end.I, 1
+	}
+	if j < c.start.J {
+		return c.start.I, -1
+	}
+	f := c.ReverseBetween(j)
+	nj := unmix(c.elems[f].J, c.elems[f+1].J, j)
+	i = precisionmix(c.elems[f].I, c.elems[f+1].I, nj)
+	return
+}
+
+func (c *Curve) Between(i float64) (a int) {
+	// if c.elems[c.last].I < i {
+	// 	c.last = 0
+	// }
+	if i >= c.end.I {
+		return len(c.elems)
+	}
+	if i < c.start.I {
+		return -1
 	}
 	for f := c.last; f < len(c.elems); f++ {
-		if c.elems[f+1][0] > i {
+		if c.elems[f+1].I > i {
 			c.last = f
-			ni := unmix(c.elems[f][0], c.elems[f+1][0], i)
-			sa[1] = prescisionmix(c.elems[f][1], c.elems[f+1][1], ni)
-			return
+			return f
 		}
 	}
-	return
+	panic(`unreachable`)
 }
 
-func (c *Curve) Dx(i float64) (sa [2]float64, oflow int) {
-	sa[0] = i
-	if c.elems[c.last][0] < i {
-		c.last = 0
+func (c *Curve) ReverseBetween(j float64) (a int) {
+	// if c.elems[c.rlast].I < j {
+	// 	c.rlast = 0
+	// }
+	if j >= c.end.J {
+		return len(c.elems)
 	}
-	if i > c.end[0] {
-		sa[1] = 0
-		return sa, 1
-	}
-	if i < c.start[0] {
-		sa[1] = 0
-		return sa, -1
+	if j < c.start.J {
+		return -1
 	}
 	for f := c.last; f < len(c.elems); f++ {
-		if c.elems[f+1][0] > i {
+		if c.elems[f+1].J > j {
 			c.last = f
-			dx := (c.elems[f+1][0] - c.elems[f][0])
-			dy := (c.elems[f+1][1] - c.elems[f][1])
-			sa[1] = dx / dy
-			return
+			return f
 		}
 	}
-	return
+	panic(`unreachable`)
 }
 
-func (c *Curve) ReverseSample(j float64) (sa [2]float64, oflow int) {
-	sa[1] = j
-	if c.elems[c.rlast][1] < j {
-		c.rlast = 0
-	}
-	if j > c.end[1] {
-		sa[0] = c.end[0]
-		return sa, 1
-	}
-	if j < c.start[1] {
-		sa[0] = c.start[0]
-		return sa, -1
-	}
-	for f := c.rlast; f < len(c.elems); f++ {
-		if c.elems[f+1][1] > j {
-			c.rlast = f
-			nj := unmix(c.elems[f][1], c.elems[f+1][1], j)
-			sa[1] = prescisionmix(c.elems[f][0], c.elems[f+1][0], nj)
-			return
-		}
-	}
-	return
-}
-
-func (c *Curve) Mutate(f func([][2]float64) [][2]float64) {
+func (c *Curve) Mutate(f func([]Breakpoint) []Breakpoint) {
 	c.elems = f(c.elems)
 	c.start = c.elems[0]
 	c.end = c.elems[len(c.elems)-1]

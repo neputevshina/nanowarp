@@ -9,3 +9,5 @@
 *.svg
 cmd/nanowarp/Untitled Project
 cmd/nanowarp/peaks
+cmd/nanowarp/pics
+**/default.pgo

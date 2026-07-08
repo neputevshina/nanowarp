@@ -37,9 +37,14 @@ var q = flag.Int("q", 0, `Quality:
     Best numerical stability because of resets.
 0:  Same as -1, but detects and bypasses tonal components.
     No artifacts, but noticeable slight loss in clarity.`)
-var poolms = flag.Int("poolms", 250, "Time of onset detection bucket in milliseconds.")
-var outpool = flag.Bool("outpool", false, "Measure pooling bucket in milliseconds of output, not input.")
-var ifr = flag.Int("if", 2, `Maximum radius of influence for each sinusoidal trajectory at the phase reset.`)
+var poolms = flag.Int("poolms", 250, `Time of onset detection bucket in milliseconds.
+Minimum amount of time between two consecutive transient detections.`)
+var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
+I.e. scale the pooling size with the stretch coefficient.
+Effective only for stretches, not shrinks, which are always scaled.`)
+var ifr = flag.Int("if", 2, `Maximum radius of influence of each detected tonal trajectory.
+Phase never be reset at this number of bins around the ridge.
+Higher values compromise transient quality over tonal quality.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 
 func init() {
