@@ -72,7 +72,8 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Analysis lookahead will help in correct ridge detection.
 - We may limit amount of reset-continued ridges to, say, loudest 10-20 using 
   existing arrow data.
-
+- Differentiation of major (full) and minor (with continued partials) phase resets.
+- cmd/nanowarp: progressbar REQUIRED.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 

@@ -241,7 +241,7 @@ func (n *warper) synthesize(outgrain [][]float64, normal []complex128, diff [][]
 }
 
 // Bitmasks for integration directions.
-// Ridges are encoded as 3-bit mask.
+// Each ridge is encoded as a 3-bit mask.
 const (
 	right = 1 << iota
 	down
