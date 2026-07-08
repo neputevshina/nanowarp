@@ -93,7 +93,7 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []float64) {
+func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
 	nch := len(in)
@@ -105,9 +105,8 @@ func (n *warper) process6(in [][]float64, out [][]float64, coeffs, phasor []floa
 	lastone := 0
 	for j := -n.nbuf / 2; j < len(out[0])-1+n.nbuf/2; j += n.hop {
 		bounds := func(i int) int { return clamp(0, len(out[0])-1, i) }
-		fi := func(j int) int { return int(phasor[bounds(j)]) }
-		i := fi(j)
-		c := 1 / coeffs[bounds(j)]
+		i := phasor.IntReverseSample(j)
+		c := 1 / phasor.IntDy(j)
 
 		for ch := range nch {
 			cr := in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)]

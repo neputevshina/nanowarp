@@ -118,74 +118,21 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	ons := make([]float64, len(lin))
 	ons1 := make([]float64, len(lin))
 
-	coeffs := make([]float64, len(lout))
-	phasor := make([]float64, len(lout))
-	if n.opts.Quality == -2 {
-		for j := range coeffs {
-			coeffs[j] = 1 / stretch
-		}
-	} else {
+	phasor := &Curve{}
+	n.generatePhasor(phasor, len(lin), stretch)
+	if n.opts.Quality > -2 {
 		poolstretch := 1.
 		if n.opts.ScalePool || stretch < 1 {
 			poolstretch = stretch
 		}
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
 
-		o := &Curve{}
-		n.generatePhasor(o, len(lin), stretch)
-		c := o.Clone()
-		n.bendPhasor(o, c, sam)
-
-		for j := range phasor {
-			fj := float64(j)
-			coeffs[j], _ = c.Dy(fj)
-			phasor[j], _ = c.ReverseSample(fj)
-		}
+		c := phasor.Clone()
+		n.bendPhasor(phasor, c, sam)
+		phasor = c
 	}
 
-	n.process6([][]float64{lin, rin}, [][]float64{lout, rout}, coeffs, phasor)
-}
-
-func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float64) {
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).getCoeffSignal")
-
-	tsa := n.opts.TransientMs * n.fs / 1000
-
-	// Coefficients in returned signal are dt (scan speed, inverse of stretch,
-	// which current coefficient describes)
-
-	// Trim transients that are too near to each other
-	for k := 0; k < len(onsets)-1; k++ {
-		i := onsets[k]
-		j := onsets[k+1]
-		if j[0]-i[0] < float64(max(n.warper.nbuf, tsa))/s {
-			// Leave only louder one
-			if i[1] > j[1] {
-				onsets[k] = i
-			}
-			copy(onsets[k:], onsets[k+1:])
-			onsets = onsets[:len(onsets)-1]
-			k--
-		}
-	}
-	fill(coeffs[:int(onsets[0][0]*s)], 1/s)
-	for k := 0; k < len(onsets)-1; k++ {
-		i := int(onsets[k][0] * s)
-		j := int(onsets[k+1][0] * s)
-		if s == 1 {
-			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
-			fill(coeffs[i+tsa/2:j-tsa/2], 1.00001)
-		} else {
-			fill(coeffs[max(0, i-tsa/2):i+tsa/2], 1)
-			t, x := float64(j-i), float64(tsa)
-			r := tsa / 2
-			if k == len(onsets) {
-				r = 0
-			}
-			fill(coeffs[i+tsa/2:j-r], (t/s-x)/(t-x))
-		}
-	}
-	fill(coeffs[len(coeffs)-tsa/2:], 1/s)
+	n.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
 }
 
 func (n *Nanowarp) generatePhasor(c *Curve, inputLength int, s float64) {
@@ -194,8 +141,6 @@ func (n *Nanowarp) generatePhasor(c *Curve, inputLength int, s float64) {
 		return []Breakpoint{Bp(0, 0), Bp(in, in*s)}
 	})
 }
-
-var println = fmt.Println
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets [][2]float64) {
 	tsa := n.opts.TransientMs * n.fs / 1000
@@ -227,130 +172,6 @@ func (n *Nanowarp) bendPhasor(old, new *Curve, onsets [][2]float64) {
 			return f
 		})
 	}
-}
-
-type Breakpoint struct {
-	I, J float64
-}
-
-func Bp(i, j float64) Breakpoint { return Breakpoint{I: i, J: j} }
-
-type Curve struct {
-	elems       []Breakpoint
-	last, rlast int
-	start, end  Breakpoint
-}
-
-func (c *Curve) Dx(i float64) (v float64, oflow int) {
-	if i >= c.end.I {
-		return c.dx(len(c.elems) - 2), 1
-	}
-	if i < c.start.I {
-		return c.dx(0), -1
-	}
-	f := c.Between(i)
-	return c.dx(f), 0
-}
-
-func (c *Curve) Dy(j float64) (v float64, oflow int) {
-	if j >= c.end.J {
-		return 1 / c.dx(len(c.elems)-2), 1
-	}
-	if j < c.start.J {
-		return 1 / c.dx(0), -1
-	}
-	f := c.ReverseBetween(j)
-	return 1 / c.dx(f), 0
-}
-
-func (c *Curve) dx(f int) float64 {
-	delx := (c.elems[f+1].I - c.elems[f].I)
-	dely := (c.elems[f+1].J - c.elems[f].J)
-	return dely / delx
-}
-
-func (c *Curve) Sample(i float64) (j float64, oflow int) {
-	if i >= c.end.I {
-		return c.end.J, 1
-	}
-	if i < c.start.I {
-		return c.start.J, -1
-	}
-	f := c.Between(i)
-	ni := unmix(c.elems[f].I, c.elems[f+1].I, i)
-	j = precisionmix(c.elems[f].J, c.elems[f+1].J, ni)
-	return
-}
-
-func (c *Curve) ReverseSample(j float64) (i float64, oflow int) {
-	if j >= c.end.J {
-		return c.end.I, 1
-	}
-	if j < c.start.J {
-		return c.start.I, -1
-	}
-	f := c.ReverseBetween(j)
-	nj := unmix(c.elems[f].J, c.elems[f+1].J, j)
-	i = precisionmix(c.elems[f].I, c.elems[f+1].I, nj)
-	return
-}
-
-func (c *Curve) Between(i float64) (a int) {
-	// if c.elems[c.last].I < i {
-	// 	c.last = 0
-	// }
-	if i >= c.end.I {
-		return len(c.elems)
-	}
-	if i < c.start.I {
-		return -1
-	}
-	for f := c.last; f < len(c.elems); f++ {
-		if c.elems[f+1].I > i {
-			c.last = f
-			return f
-		}
-	}
-	panic(`unreachable`)
-}
-
-func (c *Curve) ReverseBetween(j float64) (a int) {
-	// if c.elems[c.rlast].I < j {
-	// 	c.rlast = 0
-	// }
-	if j >= c.end.J {
-		return len(c.elems)
-	}
-	if j < c.start.J {
-		return -1
-	}
-	for f := c.last; f < len(c.elems); f++ {
-		if c.elems[f+1].J > j {
-			c.last = f
-			return f
-		}
-	}
-	panic(`unreachable`)
-}
-
-func (c *Curve) Mutate(f func([]Breakpoint) []Breakpoint) {
-	c.elems = f(c.elems)
-	c.mutate()
-}
-
-func (c *Curve) mutate() {
-	c.start = c.elems[0]
-	c.end = c.elems[len(c.elems)-1]
-	c.last = 0
-	c.rlast = 0
-}
-
-func (c *Curve) Clone() *Curve {
-	oc := &Curve{
-		elems: slices.Clone(c.elems),
-	}
-	oc.mutate()
-	return oc
 }
 
 /*

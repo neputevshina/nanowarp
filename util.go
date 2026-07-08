@@ -12,6 +12,8 @@ import (
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
+var println = fmt.Println
+
 type bang = struct{}
 
 func bitsafe(v float64) float64 {
