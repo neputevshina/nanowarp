@@ -181,6 +181,129 @@ func (n *Nanowarp) getCoeffSignal(coeffs []float64, onsets [][2]float64, s float
 	fill(coeffs[len(coeffs)-tsa/2:], 1/s)
 }
 
+func (n *Nanowarp) generatePhasor(c *Curve, inputLength, s float64) {
+	c.Mutate(func(f [][2]float64) [][2]float64 {
+		return [][2]float64{{0, 0}, {inputLength, inputLength * s}}
+	})
+}
+
+func (n *Nanowarp) bendPhasor(c *Curve, onsets [][2]float64) {
+	tsa := n.opts.TransientMs * n.fs / 1000
+	for k := 0; k < len(onsets)-1; k++ {
+		i := onsets[k]
+		j := onsets[k+1]
+		e, _ := c.ReverseSample(j[0])
+		sa, _ := c.Dx(e[1])
+		if j[0]-i[0] < float64(max(n.warper.nbuf, tsa))*sa[1] {
+			// Leave only louder one
+			if i[1] > j[1] {
+				onsets[k] = i
+			}
+			copy(onsets[k:], onsets[k+1:])
+			onsets = onsets[:len(onsets)-1]
+			k--
+		}
+	}
+	// for k := 0; k < len(onsets)-1; k++ {
+	// 	i, _ := c.ReverseSample(onsets[k][0])
+
+	// }
+	c.Mutate(func(f [][2]float64) [][2]float64 {
+		return f
+	})
+}
+
+type Breakpoint struct {
+	I int
+	V float64
+}
+
+type Curve struct {
+	elems       [][2]float64
+	last, rlast int
+	start, end  [2]float64
+}
+
+func (c *Curve) Sample(i float64) (sa [2]float64, oflow int) {
+	sa[0] = i
+	if c.elems[c.last][0] < i {
+		c.last = 0
+	}
+	if i > c.end[0] {
+		sa[1] = c.end[1]
+		return sa, 1
+	}
+	if i < c.start[0] {
+		sa[1] = c.start[1]
+		return sa, -1
+	}
+	for f := c.last; f < len(c.elems); f++ {
+		if c.elems[f+1][0] > i {
+			c.last = f
+			ni := unmix(c.elems[f][0], c.elems[f+1][0], i)
+			sa[1] = prescisionmix(c.elems[f][1], c.elems[f+1][1], ni)
+			return
+		}
+	}
+	return
+}
+
+func (c *Curve) Dx(i float64) (sa [2]float64, oflow int) {
+	sa[0] = i
+	if c.elems[c.last][0] < i {
+		c.last = 0
+	}
+	if i > c.end[0] {
+		sa[1] = 0
+		return sa, 1
+	}
+	if i < c.start[0] {
+		sa[1] = 0
+		return sa, -1
+	}
+	for f := c.last; f < len(c.elems); f++ {
+		if c.elems[f+1][0] > i {
+			c.last = f
+			dx := (c.elems[f+1][0] - c.elems[f][0])
+			dy := (c.elems[f+1][1] - c.elems[f][1])
+			sa[1] = dx / dy
+			return
+		}
+	}
+	return
+}
+
+func (c *Curve) ReverseSample(j float64) (sa [2]float64, oflow int) {
+	sa[1] = j
+	if c.elems[c.rlast][1] < j {
+		c.rlast = 0
+	}
+	if j > c.end[1] {
+		sa[0] = c.end[0]
+		return sa, 1
+	}
+	if j < c.start[1] {
+		sa[0] = c.start[0]
+		return sa, -1
+	}
+	for f := c.rlast; f < len(c.elems); f++ {
+		if c.elems[f+1][1] > j {
+			c.rlast = f
+			nj := unmix(c.elems[f][1], c.elems[f+1][1], j)
+			sa[1] = prescisionmix(c.elems[f][0], c.elems[f+1][0], nj)
+			return
+		}
+	}
+	return
+}
+
+func (c *Curve) Mutate(f func([][2]float64) [][2]float64) {
+	c.elems = f(c.elems)
+	c.start = c.elems[0]
+	c.end = c.elems[len(c.elems)-1]
+	c.last = 0
+}
+
 /*
 nw.Push(left []float32, right []float32) (nl, nr int)
 nw.Push64(left []float64, right []float64) (nl, nr int)

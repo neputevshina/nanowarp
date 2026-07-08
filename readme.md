@@ -74,6 +74,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
   existing arrow data.
 - Differentiation of major (full) and minor (with continued partials) phase resets.
 - cmd/nanowarp: progressbar REQUIRED.
+- Discrete partial phase derivatives may perform better than reassignment.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 

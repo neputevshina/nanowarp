@@ -45,10 +45,29 @@ func mul[T constraints.Float | constraints.Complex](dst, src []T) {
 	}
 }
 
+// mix is a linear interpolation.
 func mix[F constraints.Float](a, b, x F) F {
 	return a*(1-x) + b*x
 }
 
+// prescisionmix is a highly accurate linear interpolation.
+// It is slow because math.FMA is done in software floating point.
+func prescisionmix(a, b, x float64) float64 {
+	return math.FMA(x, b-a, a)
+}
+
+// unmix is a linear extrapolation.
+func unmix[F constraints.Float](a, b, x F) F {
+	return (x - a) / (b - a)
+}
+
+// project projects a point x from interval [ai:bi] to interval [ao:bo].
+// It is a more accurate
+func project[N constraints.Float | constraints.Integer](x, ai, bi, ao, bo N) N {
+	return (x-ai)*(bo-ao)/(bi-ai) + ao
+}
+
+// clamp hard clips value x to satisfy a ≤ x ≤ b.
 func clamp[T cmp.Ordered](a, b, x T) T {
 	return max(a, min(b, x))
 }
