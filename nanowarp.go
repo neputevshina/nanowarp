@@ -130,11 +130,11 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 			poolstretch = stretch
 		}
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
-		// n.getCoeffSignal(coeffs, sam, stretch)
 
-		c := &Curve{}
-		n.generatePhasor(c, len(lin), stretch)
-		n.bendPhasor(c, sam)
+		o := &Curve{}
+		n.generatePhasor(o, len(lin), stretch)
+		c := o.Clone()
+		n.bendPhasor(o, c, sam)
 
 		for j := range phasor {
 			fj := float64(j)
@@ -197,13 +197,13 @@ func (n *Nanowarp) generatePhasor(c *Curve, inputLength int, s float64) {
 
 var println = fmt.Println
 
-func (n *Nanowarp) bendPhasor(c *Curve, onsets [][2]float64) {
+func (n *Nanowarp) bendPhasor(old, new *Curve, onsets [][2]float64) {
 	tsa := n.opts.TransientMs * n.fs / 1000
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
 		b := onsets[k+1]
-		j, _ := c.Sample(b[0])
-		sa, _ := c.Dx(j)
+		j, _ := old.Sample(b[0])
+		sa, _ := old.Dx(j)
 		if b[0]-a[0] < float64(max(n.warper.nbuf, tsa))/sa {
 			// Leave only louder one
 			if a[1] > b[1] {
@@ -217,9 +217,9 @@ func (n *Nanowarp) bendPhasor(c *Curve, onsets [][2]float64) {
 	for k := 0; k < len(onsets)-1; k++ {
 		i := onsets[k][0]
 		r := float64(tsa / 2)
-		j, _ := c.Sample(i)
-		a, b := c.Between(i-r), c.Between(i+r)
-		c.Mutate(func(f []Breakpoint) []Breakpoint {
+		j, _ := old.Sample(i)
+		a, b := new.Between(i-r), new.Between(i+r)
+		new.Mutate(func(f []Breakpoint) []Breakpoint {
 			if a != b {
 				f = slices.Delete(f, a, b)
 			}
@@ -335,9 +335,22 @@ func (c *Curve) ReverseBetween(j float64) (a int) {
 
 func (c *Curve) Mutate(f func([]Breakpoint) []Breakpoint) {
 	c.elems = f(c.elems)
+	c.mutate()
+}
+
+func (c *Curve) mutate() {
 	c.start = c.elems[0]
 	c.end = c.elems[len(c.elems)-1]
 	c.last = 0
+	c.rlast = 0
+}
+
+func (c *Curve) Clone() *Curve {
+	oc := &Curve{
+		elems: slices.Clone(c.elems),
+	}
+	oc.mutate()
+	return oc
 }
 
 /*
