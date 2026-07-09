@@ -210,17 +210,17 @@ func main() {
 			if !ok {
 				panic(fmt.Sprint(`malformed index pair at line `, n))
 			}
-			// 53 is the size of mantissa of float64.
+			// 53 is the lossless integer resolution of float64 in bits.
 			// In an unlikely event some of indexes got greater
 			// than 9 quadrillion (which at 48000 Hz is ≈6000 years),
 			// strconv will catch it.
 			i, err := strconv.ParseInt(string(ib), 10, 53)
 			if err != nil {
-				panic(fmt.Sprint(`first element of pair is an incorrect number, line `, n))
+				panic(fmt.Sprint(`first element of pair is invalid number, line `, n))
 			}
 			j, err := strconv.ParseInt(string(jb), 10, 53)
 			if err != nil {
-				panic(fmt.Sprint(`second element of pair is an incorrect number, line `, n))
+				panic(fmt.Sprint(`second element of pair is invalid number, line `, n))
 			}
 			bps = append(bps, nanowarp.Bp(float64(i), float64(j)))
 		}

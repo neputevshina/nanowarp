@@ -4,7 +4,7 @@ Studio-grade audio time stretching algorithm.
 Reference implementation is going to be in Go, and a possible C implementation will share
 this repo with a Go version.
 
-Includes a modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
+Includes modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export. © 2013–2025 youpy.
 
 Current state: algorithm done. No streaming, pitching and user-facing API exists yet.
@@ -81,7 +81,10 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
 - cmd/nanowarp: allow cuts in timemap, force phase reset on each cut.
 - cmd/nanowarp: Ableton Live Clip (.asd) to timemap converter.
+- cmd/nanowarp: allow external onset detectors. Already possible with right timemap, 
+  algorithm does phase reset on any region with Dy = 1.
 - Cibo Matto — Sci-Fi Wasabi (mp3 320k): most transient detections are wrong.
+
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
@@ -94,7 +97,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
   Wrong Blackman-Harris window use (doesn't occur with Hann IIRC)
   or a bug in gonum/fourier (unlikely).
 - Triple echo in time on extreme (>4x) stretches. 
-  The bane of all PVDR-based algorithms due to extreme stretching of the magnitude spectrum.
+  The bane of all PVDR-based algorithms due to extreme stretching of magnitude spectrum.
   Mitigated either by [SELEBI](https://arxiv.org/abs/2602.16421) or by factorization of stretch coefficient (hint from Elastiqué SDK docs).
   From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`.
   If `e-1` is negative, shrink by `1-e` instead.
