@@ -154,8 +154,8 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 	}
 	if p != nil {
 		p <- Bp(phasor.end.I, phasor.end.J)
+		close(p)
 	}
-	close(p)
 }
 
 // advance constructs the next frame of the output.
