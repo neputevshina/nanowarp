@@ -35,7 +35,7 @@ type Options struct {
 	// Channel for receiving processing progress.
 	//
 	// If not nil, this channel will receive current input and output index
-	// pair for every 10 seconds of output and at the start of processing.
+	// pair for every 5 seconds of output and at the start and end of processing.
 	//
 	// Nanowarp will close the channel at the end of processing.
 	Progress chan<- Breakpoint

@@ -101,13 +101,19 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 	crop := make([][]float64, nch)
 
 	lastone := 0
+	fivesec := n.root.fs * 5
+	tsc := 0
+	if p != nil {
+		p <- Bp(0, 0)
+	}
 	for j := -n.nbuf / 2; j < len(out[0])-1+n.nbuf/2; j += n.hop {
 		bounds := func(i int) int { return clamp(0, len(out[0])-1, i) }
 		i := int(phasor.ReverseSample(float64(j)))
 		c := 1 / phasor.Dy(float64(j))
 
-		if p != nil {
+		if p != nil && j/fivesec > tsc {
 			p <- Bp(float64(i), float64(j))
+			tsc = j / fivesec
 		}
 
 		for ch := range nch {
@@ -145,6 +151,9 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 			g := out[ch][max(0, j-n.nbuf/2):bounds(j+n.nbuf/2)]
 			add(g, grain[ch][clamp(0, n.nbuf, -j):])
 		}
+	}
+	if p != nil {
+		p <- Bp(phasor.end.I, phasor.end.J)
 	}
 	close(p)
 }
