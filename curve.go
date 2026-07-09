@@ -55,10 +55,6 @@ func (c *Curve) Dy(j float64) (v float64) {
 	return 1 / c.dx(f)
 }
 
-func (c *Curve) IntDy(j int) (v float64) {
-	return c.Dy(float64(j))
-}
-
 func (c *Curve) dx(f int) float64 {
 	delx := (c.elems[f+1].I - c.elems[f].I)
 	dely := (c.elems[f+1].J - c.elems[f].J)
@@ -89,10 +85,6 @@ func (c *Curve) ReverseSample(j float64) (i float64) {
 	nj := unmix(c.elems[f].J, c.elems[f+1].J, j)
 	i = precisionmix(c.elems[f].I, c.elems[f+1].I, nj)
 	return
-}
-
-func (c *Curve) IntReverseSample(j int) (i int) {
-	return int(c.ReverseSample(float64(j)))
 }
 
 func (c *Curve) Between(i float64) (a int) {

@@ -103,8 +103,8 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 	lastone := 0
 	for j := -n.nbuf / 2; j < len(out[0])-1+n.nbuf/2; j += n.hop {
 		bounds := func(i int) int { return clamp(0, len(out[0])-1, i) }
-		i := phasor.IntReverseSample(j)
-		c := 1 / phasor.IntDy(j)
+		i := int(phasor.ReverseSample(float64(j)))
+		c := 1 / phasor.Dy(float64(j))
 
 		if p != nil {
 			p <- Bp(float64(i), float64(j))
