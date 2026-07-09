@@ -1,6 +1,17 @@
 package nanowarp
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
+
+type ErrorNotMonotonicCurve struct {
+	Index int
+}
+
+func (i *ErrorNotMonotonicCurve) Error() string {
+	return fmt.Sprintf(`curve is not monotonic, e[%d+1]<e[%d]`, i.Index, i.Index)
+}
 
 type Breakpoint struct {
 	I, J float64
@@ -14,15 +25,23 @@ type Curve struct {
 	start, end  Breakpoint
 }
 
-func (c *Curve) Dx(i float64) (v float64, oflow int) {
+func NewCurve(bps []Breakpoint) (*Curve, error) {
+	c := &Curve{}
+	c.Mutate(func(b []Breakpoint) []Breakpoint {
+		return slices.Clone(bps)
+	})
+	return c, c.Validate()
+}
+
+func (c *Curve) Dx(i float64) (v float64) {
 	if i >= c.end.I {
-		return c.dx(len(c.elems) - 2), 1
+		return c.dx(len(c.elems) - 2)
 	}
 	if i < c.start.I {
-		return c.dx(0), -1
+		return c.dx(0)
 	}
 	f := c.Between(i)
-	return c.dx(f), 0
+	return c.dx(f)
 }
 
 func (c *Curve) Dy(j float64) (v float64) {
@@ -132,4 +151,14 @@ func (c *Curve) Clone() *Curve {
 	}
 	oc.mutate()
 	return oc
+}
+
+func (c *Curve) Validate() error {
+	for e := range c.elems[1:] {
+		if c.elems[e+1].I < c.elems[e].I ||
+			c.elems[e+1].J < c.elems[e].J {
+			return &ErrorNotMonotonicCurve{Index: e}
+		}
+	}
+	return nil
 }

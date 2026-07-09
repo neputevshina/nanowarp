@@ -12,7 +12,6 @@ type Nanowarp struct {
 	left, right []float64
 
 	*warper
-	// hpss  *splitter
 	*detector
 
 	opts      Options
@@ -28,7 +27,7 @@ type Options struct {
 	//  -2: Don't perform transient separation, output raw PVDR without phase resets.
 	//  -1: Extract transients and reset the phase when not stretching.
 	//	Introduces clicky artifacts but cleanest for transient-heavy material.
-	//	Best numerical stability because of resets.
+	//	Best numerical stability because of full-frame resets.
 	//  0:  Same as -1, but detects and bypasses tonal components.
 	//	No artifacts, but noticeable slight loss in clarity.
 	Quality int
@@ -111,17 +110,15 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	return
 }
 
-func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
+func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
-	fmt.Fprintln(os.Stderr, "Coeff =", stretch)
 
 	ons := make([]float64, len(lin))
 	ons1 := make([]float64, len(lin))
 
-	phasor := &Curve{}
-	n.generatePhasor(phasor, len(lin), stretch)
 	if n.opts.Quality > -2 {
 		poolstretch := 1.
+		stretch := phasor.Dx(phasor.elems[len(phasor.elems)-1].I)
 		if n.opts.ScalePool || stretch < 1 {
 			poolstretch = stretch
 		}
@@ -135,20 +132,13 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, stretch float64) {
 	n.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
 }
 
-func (n *Nanowarp) generatePhasor(c *Curve, inputLength int, s float64) {
-	c.Mutate(func(f []Breakpoint) []Breakpoint {
-		in := float64(inputLength)
-		return []Breakpoint{Bp(0, 0), Bp(in, in*s)}
-	})
-}
-
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets [][2]float64) {
 	tsa := n.opts.TransientMs * n.fs / 1000
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
 		b := onsets[k+1]
 		j, _ := old.Sample(b[0])
-		sa, _ := old.Dx(j)
+		sa := old.Dx(j)
 		if b[0]-a[0] < float64(max(n.warper.nbuf, tsa))/sa {
 			// Leave only louder one
 			if a[1] > b[1] {

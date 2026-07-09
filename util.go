@@ -63,17 +63,15 @@ func unmix[F constraints.Float](a, b, x F) F {
 	return (x - a) / (b - a)
 }
 
-// project projects a point x from interval [ai:bi] to interval [ao:bo].
-// It is a more accurate
-func project[N constraints.Float | constraints.Integer](x, ai, bi, ao, bo N) N {
-	return (x-ai)*(bo-ao)/(bi-ai) + ao
-}
-
 // clamp hard clips value x to satisfy a ≤ x ≤ b.
 func clamp[T cmp.Ordered](a, b, x T) T {
 	return max(a, min(b, x))
 }
 
+// makeslices is a helper function to initialize all slices in a
+// structure instance using reflection.
+//
+// a must be a pointer to struct.
 func makeslices(a any, nbins, nfft, nch, lah int) {
 	rn := reflect.ValueOf(a).Elem()
 	tf := reflect.TypeOf(a).Elem()
@@ -128,6 +126,10 @@ func makeslices(a any, nbins, nfft, nch, lah int) {
 	}
 }
 
+// structinit replaces all zero values in a given struct with a value
+// from `default` annotation for each corresponding field.
+//
+// a must be a pointer to struct.
 func structinit(a any) {
 	rn := reflect.ValueOf(a).Elem()
 	ts := reflect.TypeOf(a).Elem()
@@ -161,6 +163,7 @@ func structinit(a any) {
 	}
 }
 
+// hann is a Hann windowing function.
 func hann(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
@@ -168,6 +171,7 @@ func hann(out []float64) {
 	}
 }
 
+// blackmanHarris is a Blackman-Harris windowing function.
 // TODO Does not achieve perfect reconstruction.
 func blackmanHarris(out []float64) {
 	for i := range out {
@@ -176,9 +180,11 @@ func blackmanHarris(out []float64) {
 	}
 }
 
+// niemitalo is an asymmetric windowing function, designed by Olli Niemitalo.
+//
+// See https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing
 func niemitalo(out []float64) {
-	// 3 VERY FAINT echoes, but breaks tonals
-	// https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing
+	// 3 VERY FAINT echoes on PGHI reconstruction, but breaks tonals
 	nfft := float64(len(out))
 	clear(out)
 	sin, cos := math.Sin, math.Cos
@@ -234,6 +240,7 @@ func windowDx(out, w []float64) {
 	}
 }
 
+// nextpow2 returns the minimum power of two greater than i.
 func nextpow2(i int) int {
 	return int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(i))))))
 }
@@ -244,13 +251,6 @@ func norm(c complex128) complex128 {
 		return 0
 	}
 	return c / complex(cmplx.Abs(c), 0)
-}
-
-func boolint(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }
 
 func fill[T any](s []T, e T) {
@@ -273,8 +273,10 @@ func boolfloat(b bool) float64 {
 	return 0
 }
 
-func hztobin(hz float64, nfft, fs int) int {
-	return int(hz * float64(nfft) / float64(fs))
+// hztobin converts a frequency value in hertz to bin number of a DFT
+// of size nfft on a signal with known sample rate.
+func hztobin(hz float64, nfft, samplerate int) int {
+	return int(hz * float64(nfft) / float64(samplerate))
 }
 
 func scale[T constraints.Float | constraints.Complex](dst []T, s T) {

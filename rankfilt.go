@@ -7,10 +7,12 @@
 
 package nanowarp
 
-import "golang.org/x/exp/constraints"
+import (
+	"cmp"
+)
 
 // mediator - rank keeping structure
-type mediator[T constraints.Ordered, I any] struct {
+type mediator[T cmp.Ordered, I any] struct {
 	pos   []int // index into `heap` for each value (signed position)
 	heap  []int // underlying storage
 	maxN  int   // allocated size
@@ -26,7 +28,7 @@ type mediator[T constraints.Ordered, I any] struct {
 }
 
 // Creates new Mediator: to calculate `nItems` running rank.
-func mediatorNew[T constraints.Ordered, I any](maxnItems, nItems int, rank float64) *mediator[T, I] {
+func mediatorNew[T cmp.Ordered, I any](maxnItems, nItems int, rank float64) *mediator[T, I] {
 	if nItems > maxnItems {
 		panic("nItems > maxnItems")
 	}

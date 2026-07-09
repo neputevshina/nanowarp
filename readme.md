@@ -75,6 +75,9 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Differentiation of major (full) and minor (with continued partials) phase resets.
 - cmd/nanowarp: progressbar REQUIRED.
 - Discrete partial phase derivatives may perform better than reassignment.
+- cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
+- cmd/nanowarp: allow cuts in timemap, force phase reset on each cut.
+- cmd/nanowarp: Ableton Live Clip (.asd) to timemap converter.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 

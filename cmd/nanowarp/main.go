@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
+	"strconv"
 
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/oscope"
@@ -45,6 +48,14 @@ Effective only for stretches, not shrinks, which are always scaled.`)
 var ifr = flag.Int("if", 2, `Maximum radius of influence of each detected tonal trajectory.
 Phase never be reset at this number of bins around the ridge.
 Higher values compromise transient quality over tonal quality.`)
+var timemappath = flag.String("timemap", "", `Path to timemap file in rubberband program format.
+Each line is a pair of two integers, separated by space. 
+First integer is an input sample index, second is an output sample index.
+Unlike rubberband, specifying total duration is not needed, but last pair 
+must be a pair of input sample index and a last output sample index.
+Time map must be functional. Output index of any breakpoint can't be 
+less than that of any previous breakpoint.`)
+var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 
 func init() {
@@ -66,7 +77,7 @@ Usage:
 }
 
 func main() {
-
+	var err error
 	if *cpuprofile != "" {
 		fmt.Fprintln(os.Stderr, `profiling`)
 		f, err := os.Create(*cpuprofile)
@@ -80,13 +91,11 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	if *coeff <= 0 && (*from > 1 && *to > 1 || math.Abs(*st) > 0) {
-		*coeff = *from / *to * math.Pow(2, *st/12)
-	}
-	if *finput == "" || *coeff <= 0 {
+	if *finput == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
+
 	nooutname := false
 	generateOutName := func(dir, fn string) string {
 		pitchSuffix := ""
@@ -167,11 +176,69 @@ func main() {
 		}
 	}
 
+	inputLength := 0.
+	_, err = wavrd.Duration() // Populate wavrd.Size field
+	if err != nil {
+		panic(err)
+	}
+	inputLength = float64(wavrd.Size) / float64(wavfmt.BlockAlign)
+	// TODO This wav package is a piece of shit. Write own.
+
 	if *experiment != 0 {
 		experiments(*experiment, file, *foutput)
 		return
 	}
 
+	var bps []nanowarp.Breakpoint
+	var timemapfile *os.File
+	if *timemappath != "" {
+		timemapfile, err = os.Open(*timemappath)
+		if err != nil {
+			panic(err)
+		}
+		bs, err := io.ReadAll(timemapfile)
+		if err != nil {
+			panic(err)
+		}
+		lines := bytes.SplitSeq(bs, []byte("\n"))
+		for l := range lines {
+			n := len(bps)
+			ib, jb, ok := bytes.Cut(l, []byte(` `))
+			if !ok {
+				panic(fmt.Sprint(`malformed index pair at line `, n))
+			}
+			// 53 is the size of mantissa of float64.
+			// In an unlikely event some of indexes got greater
+			// than 9 quadrillion, strconv will catch it.
+			i, err := strconv.ParseInt(string(ib), 10, 53)
+			if err != nil {
+				panic(fmt.Sprint(`first element of pair is an incorrect number, line `, n))
+			}
+			j, err := strconv.ParseInt(string(jb), 10, 53)
+			if err != nil {
+				panic(fmt.Sprint(`second element of pair is an incorrect number, line `, n))
+			}
+			bps = append(bps, nanowarp.Bp(float64(i), float64(j)))
+		}
+	} else {
+		if *coeff <= 0 && (*from > 1 && *to > 1 || math.Abs(*st) > 0) {
+			*coeff = *from / *to * math.Pow(2, *st/12)
+		}
+		if *coeff <= 0 {
+			flag.Usage()
+			os.Exit(1)
+		}
+		bps = []nanowarp.Breakpoint{nanowarp.Bp(0, 0), nanowarp.Bp(inputLength, inputLength**coeff)}
+	}
+	slices.SortFunc(bps, func(a, b nanowarp.Breakpoint) int {
+		return int((a.I - b.I) / math.Abs(a.I-b.I))
+	})
+	phasor, err := nanowarp.NewCurve(bps)
+	if err != nil {
+		panic(err)
+	}
+
+	// Reading the whole file to memory.
 	left := []float64{}
 	right := []float64{}
 	var samples []wav.Sample
@@ -188,6 +255,7 @@ func main() {
 		}
 	}
 
+	// Working.
 	opts := nanowarp.Options{
 		Onsets:  *onsets,
 		Quality: *q,
@@ -199,17 +267,19 @@ func main() {
 	}
 	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
 
-	lout := make([]float64, int(float64(len(left))**coeff))
-	rout := make([]float64, int(float64(len(left))**coeff))
+	end := int(bps[len(bps)-1].J)
+	lout := make([]float64, end)
+	rout := make([]float64, end)
 
-	mnw.Process(left, right, lout, rout, *coeff)
+	mnw.Process(left, right, lout, rout, phasor)
 
+	// Dumping the output.
 	file, err = os.Create(*foutput)
-
 	if err != nil {
 		panic(err)
 	}
 	wr := wav.NewWriter(file, uint32(len(lout)), 2, wavfmt.SampleRate, 32, true)
+	fmt.Fprint(os.Stderr, "\r\033[K")
 	fmt.Fprintln(os.Stderr, `encoding...`)
 	nbuf := 2048
 	buf := make([]wav.Sample, 0, nbuf)

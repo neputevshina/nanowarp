@@ -182,6 +182,13 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 	// This function is expected to exit when io.EOF is encountered.
 }
 
+// cdodf calculates complex-domain onset detection function for a given stereo grain.
+//
+// See Duxbury, C., Bello, J. P., Davies, M., & Sandler, M. (2003, September).
+// Complex domain onset detection for musical signals. In Proc. Digital Audio
+// Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.
+//
+// https://www.audiolabs-erlangen.de/resources/MIR/FMP/C6/C6S1_NoveltyComplex.html
 func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 	a := &n.a
 
@@ -196,13 +203,7 @@ func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 	enfft(a.R, a.Wf, ringrain)
 
 	for w := range a.L {
-		// Complex-domain novelty measure calculation in cartesian form.
-		//
-		// See Duxbury, C., Bello, J. P., Davies, M., & Sandler, M. (2003, September).
-		// Complex domain onset detection for musical signals. In Proc. Digital Audio
-		// Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.
-		//
-		// https://www.audiolabs-erlangen.de/resources/MIR/FMP/C6/C6S1_NoveltyComplex.html
+		// Cartesian form of CDODF.
 		cnov := func(x, px, ppx complex128) float64 {
 			m := cmplx.Abs(x - px*norm(px*cmplx.Conj(ppx)))
 			return m * boolfloat(cmplx.Abs(x) > cmplx.Abs(px))
@@ -222,6 +223,14 @@ func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 	return
 }
 
+// superflux calculates an approximation of Superflux onset detection function for a
+// given stereo grain.
+//
+// See Böck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression
+// for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects
+// (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.
+//
+// https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
 func (n *detector) superflux(lingrain, ringrain []float64) (s float64) {
 	a := &n.a
 
@@ -235,13 +244,6 @@ func (n *detector) superflux(lingrain, ringrain []float64) (s float64) {
 	enfft(a.L, a.Wf, lingrain)
 	enfft(a.R, a.Wf, ringrain)
 
-	// Superflux novelty measure calculation.
-	//
-	// See Böck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression
-	// for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects
-	// (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.
-	//
-	// https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
 	for w := range a.L {
 		a.X[w] = cmplx.Abs(a.L[w]) + cmplx.Abs(a.R[w])
 		a.Y[w] = cmplx.Abs(a.PL[w]) + cmplx.Abs(a.PR[w])
