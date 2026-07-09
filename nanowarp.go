@@ -11,8 +11,8 @@ type Nanowarp struct {
 	fs          int
 	left, right []float64
 
-	*warper
-	*detector
+	warper   *warper
+	detector *detector
 
 	opts      Options
 	stretch   float64
@@ -137,7 +137,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 		phasor = c
 	}
 
-	n.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
+	n.warper.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets [][2]float64) {

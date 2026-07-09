@@ -212,7 +212,8 @@ func main() {
 			}
 			// 53 is the size of mantissa of float64.
 			// In an unlikely event some of indexes got greater
-			// than 9 quadrillion, strconv will catch it.
+			// than 9 quadrillion (which at 48000 Hz is ≈6000 years),
+			// strconv will catch it.
 			i, err := strconv.ParseInt(string(ib), 10, 53)
 			if err != nil {
 				panic(fmt.Sprint(`first element of pair is an incorrect number, line `, n))
@@ -281,6 +282,7 @@ func main() {
 
 	if *progress {
 		pb := progressbar.NewOptions(end,
+			progressbar.OptionShowElapsedTimeOnFinish(),
 			progressbar.OptionSetTheme(progressbar.Theme{
 				Saucer:        "█",
 				SaucerPadding: " ",

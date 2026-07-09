@@ -81,6 +81,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
 - cmd/nanowarp: allow cuts in timemap, force phase reset on each cut.
 - cmd/nanowarp: Ableton Live Clip (.asd) to timemap converter.
+- Cibo Matto — Sci-Fi Wasabi (mp3 320k): most transient detections are wrong.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
