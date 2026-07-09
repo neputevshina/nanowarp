@@ -20,10 +20,12 @@ import (
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/oscope"
 	"github.com/neputevshina/nanowarp/wav"
+	"github.com/schollz/progressbar/v3"
 )
 
 var println = fmt.Println
 
+var progress = flag.Bool("p", false, "Display progress bar.")
 var cpuprofile = flag.String("cpuprofile", "", "Write cpu profile to `file`.")
 var finput = flag.String("i", "", "Input WAV (or anything else, if ffmpeg is present) `path`.")
 var foutput = flag.String("o", "", "Output WAV `path`.")
@@ -189,6 +191,7 @@ func main() {
 		return
 	}
 
+	// Phase ramp generation.
 	var bps []nanowarp.Breakpoint
 	var timemapfile *os.File
 	if *timemappath != "" {
@@ -256,9 +259,14 @@ func main() {
 	}
 
 	// Working.
+	var pch chan nanowarp.Breakpoint
+	if *progress {
+		pch = make(chan nanowarp.Breakpoint)
+	}
 	opts := nanowarp.Options{
-		Onsets:  *onsets,
-		Quality: *q,
+		Onsets:   *onsets,
+		Quality:  *q,
+		Progress: pch,
 		Hyperparams: nanowarp.Hyperparams{
 			PickingMs:       *poolms,
 			ScalePool:       *outpool,
@@ -271,6 +279,18 @@ func main() {
 	lout := make([]float64, end)
 	rout := make([]float64, end)
 
+	if *progress {
+		pb := progressbar.NewOptions(end,
+			progressbar.OptionSetTheme(progressbar.Theme{
+				Saucer:        "█",
+				SaucerPadding: " ",
+			}))
+		go func() {
+			for bp := range pch {
+				pb.Set(int(bp.J))
+			}
+		}()
+	}
 	mnw.Process(left, right, lout, rout, phasor)
 
 	// Dumping the output.
@@ -279,8 +299,7 @@ func main() {
 		panic(err)
 	}
 	wr := wav.NewWriter(file, uint32(len(lout)), 2, wavfmt.SampleRate, 32, true)
-	fmt.Fprint(os.Stderr, "\r\033[K")
-	fmt.Fprintln(os.Stderr, `encoding...`)
+
 	nbuf := 2048
 	buf := make([]wav.Sample, 0, nbuf)
 	for i := 0; i < len(lout); i += nbuf {
@@ -296,6 +315,7 @@ func main() {
 			panic(err)
 		}
 	}
+	println()
 
 	oscope.Dump(nil, "./pics")
 }

@@ -1,11 +1,9 @@
 package nanowarp
 
 import (
-	"fmt"
 	"math"
 	"math/bits"
 	"math/cmplx"
-	"os"
 	"slices"
 
 	"gonum.org/v1/gonum/cmplxs"
@@ -94,9 +92,9 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 }
 
 func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
-	fmt.Fprintln(os.Stderr, `(*warper).process3`)
 	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
 	nch := len(in)
+	p := n.root.opts.Progress
 
 	lead := get()
 	grain := get()
@@ -107,6 +105,10 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 		bounds := func(i int) int { return clamp(0, len(out[0])-1, i) }
 		i := phasor.IntReverseSample(j)
 		c := 1 / phasor.IntDy(j)
+
+		if p != nil {
+			p <- Bp(float64(i), float64(j))
+		}
 
 		for ch := range nch {
 			cr := in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)]
@@ -144,6 +146,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 			add(g, grain[ch][clamp(0, n.nbuf, -j):])
 		}
 	}
+	close(p)
 }
 
 // advance constructs the next frame of the output.

@@ -19,11 +19,15 @@ go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
 ```
 4. Use it
 ```
-nanowarp -i inputfile.wav -t <stretch> [-o outputfile.wav]
+nanowarp -p -i inputfile.wav -t <stretch> [-o outputfile.wav]
 ```
 or
 ```
-nanowarp -i inputfile.wav -from <bpm> -to <bpm> -st <semitones> [-o outputfile.wav]
+nanowarp -p -i inputfile.wav -from <bpm> -to <bpm> -st <semitones> [-o outputfile.wav]
+```
+or
+```
+nanowarp -p -i inputfile.wav -timemap <time map file> [-o outputfile.wav]
 ```
 If your system can't find `nanowarp` executable, you have probably changed PATH variable in your system.
 Probably the simplest way to bring it back if you are under Windows is by reinstalling the Go.
@@ -73,7 +77,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - We may limit amount of reset-continued ridges to, say, loudest 10-20 using 
   existing arrow data.
 - Differentiation of major (full) and minor (with continued partials) phase resets.
-- cmd/nanowarp: progressbar REQUIRED.
 - Discrete partial phase derivatives may perform better than reassignment.
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
 - cmd/nanowarp: allow cuts in timemap, force phase reset on each cut.

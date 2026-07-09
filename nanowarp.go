@@ -32,6 +32,14 @@ type Options struct {
 	//	No artifacts, but noticeable slight loss in clarity.
 	Quality int
 
+	// Channel for receiving processing progress.
+	//
+	// If not nil, this channel will receive current input and output index
+	// pair for every 10 seconds of output and at the start of processing.
+	//
+	// Nanowarp will close the channel at the end of processing.
+	Progress chan<- Breakpoint
+
 	Hyperparams
 }
 
@@ -41,7 +49,7 @@ type Hyperparams struct {
 	// will be unscaled.
 	//
 	// Please note that if this value is less than synthesis hop size
-	// (1024 samples at 48 kHz sample rate), transient reset is not guaranteed.
+	// (1024 samples at 48 kHz sample rate), transient resets are not guaranteed.
 	TransientMs int `default:"30"`
 
 	// Size of transient picking filter in milliseconds.

@@ -67,8 +67,6 @@ func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 }
 
 func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (onsons [][2]float64) {
-	fmt.Fprintln(os.Stderr, `(*detector).process`)
-
 	onsons = make([][2]float64, 0, 1000)
 
 	t := make([]float64, n.nfft)
