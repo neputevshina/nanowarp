@@ -50,8 +50,9 @@ type wbufs struct {
 	C, Co         [][]complex128 // Channel differences, original channels
 }
 
-func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
+func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Only 2x oversampling works, no more, no less.
+	olap := 4 // Depends on window, see comment on blackmanHarris function.
 	nfft := nextpow2(nbuf * osamp)
 	n = &warper{
 		nfft:  nfft,
@@ -71,8 +72,8 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 	s := func(w []float64) []float64 {
 		return w[:nbuf]
 	}
-	blackmanHarris(s(a.W))
-	// hann(s(a.W))
+	hann(s(a.W))
+	// blackmanHarris(s(a.W))
 	n.heap = make(hp, n.nbins)
 
 	windowDx(s(a.Wd), s(a.W))
@@ -112,7 +113,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 	}
 	for j := -n.nbuf / 2; j < len(out[0])-1+n.nbuf/2; j += n.hop {
 		bounds := func(i int) int { return clamp(0, len(out[0])-1, i) }
-		cut := func(s []float64, i int) []float64 { return s[max(0, (i-n.nbuf/2)):bounds(i+n.nbuf/2)] }
+		cut := func(s []float64, i int) []float64 { return s[bounds(i-n.nbuf/2):bounds(i+n.nbuf/2)] }
 		i := int(phasor.ReverseSample(float64(j)))
 		c := 1 / phasor.Dy(float64(j))
 

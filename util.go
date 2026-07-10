@@ -164,6 +164,7 @@ func structinit(a any) {
 }
 
 // hann is a Hann windowing function.
+// Achieves COLA (perfect reconstruction) at any integer overlap greater than 2.
 func hann(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
@@ -172,7 +173,8 @@ func hann(out []float64) {
 }
 
 // blackmanHarris is a Blackman-Harris windowing function.
-// TODO Does not achieve perfect reconstruction.
+// Achieves COLA (perfect reconstruction) at overlap 3.
+// https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.closest_STFT_dual_window.html
 func blackmanHarris(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)

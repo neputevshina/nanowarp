@@ -91,11 +91,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
   Either port it or use through cgo.
 - No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
-- Does not reconstruct the signal perfectly,
-  DC turns into a slow oscillation after FFT/IFFT cycle and is not equal
-  to doubly applied windowing.
-  Wrong Blackman-Harris window use (doesn't occur with Hann IIRC)
-  or a bug in gonum/fourier (unlikely).
 - Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms due to extreme stretching of magnitude spectrum.
   Mitigated either by [SELEBI](https://arxiv.org/abs/2602.16421) or by factorization of stretch coefficient (hint from Elastiqué SDK docs).
