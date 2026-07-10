@@ -291,6 +291,7 @@ func main() {
 			for bp := range pch {
 				pb.Set(int(bp.J))
 			}
+			println()
 		}()
 	}
 	mnw.Process(left, right, lout, rout, phasor)
@@ -317,7 +318,6 @@ func main() {
 			panic(err)
 		}
 	}
-	println()
 
 	oscope.Dump(nil, "./pics")
 }

@@ -25,6 +25,8 @@ type Options struct {
 
 	// Set algorithm quality.
 	//  -2: Don't perform transient separation, output raw PVDR without phase resets.
+	//	Still resets the phase if derivative of input timemap is 1.
+	//	Useful if timemap is generated using external onset detector.
 	//  -1: Extract transients and reset the phase when not stretching.
 	//	Introduces clicky artifacts but cleanest for transient-heavy material.
 	//	Best numerical stability because of full-frame resets.
@@ -34,22 +36,23 @@ type Options struct {
 
 	// Channel for receiving processing progress.
 	//
-	// If not nil, this channel will receive current input and output index
+	// If not nil, this channel will receive current input and output sample index
 	// pair for every 5 seconds of output and at the start and end of processing.
 	//
-	// Nanowarp will close the channel at the end of processing.
+	// Nanowarp will close the channel after the end of processing.
 	Progress chan<- Breakpoint
 
 	Hyperparams
 }
 
 type Hyperparams struct {
-	// Diameter of a transient in milliseconds.
+	// Diameter of transient in milliseconds.
 	// Amount of time around the detected transient, for which the signal
 	// will be unscaled.
 	//
 	// Please note that if this value is less than synthesis hop size
-	// (1024 samples at 48 kHz sample rate), transient resets are not guaranteed.
+	// (1024 samples at 48 kHz sample rate, 21.3 ms),transient resets are
+	// not guaranteed.
 	TransientMs int `default:"30"`
 
 	// Size of transient picking filter in milliseconds.

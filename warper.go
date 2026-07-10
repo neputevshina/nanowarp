@@ -25,12 +25,14 @@ type warper struct {
 	fft *fourier.FFT
 
 	// PGHI-related
-	arm    []bool    // Done mask
-	heap   hp        // Heap
-	arrows [][2]int  // Integration directions
-	trace  []float64 // Ridge accumulator
-	ftrace []float64 // Filtered trace
-	ridges []uint    // Extracted ridges
+	arm      []bool    // Done mask
+	heap     hp        // Heap
+	arrows   [][2]int  // Integration directions for next frame
+	parrows  [][2]int  // Current integration directions
+	trace    []float64 // Ridge accumulator
+	ftrace   []float64 // Filtered trace
+	ridges   []uint    // Extracted ridges
+	resetnow []bool    // Forced per-bin resets
 
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
@@ -39,7 +41,7 @@ type warper struct {
 
 type wbufs struct {
 	S, Mid        []float64      // Scratch buffers
-	M, P          []float64      `size:"nbins"` // Current and previous magnitude
+	F, M, P       []float64      `size:"nbins"` // Magnitudes: future, current and previous
 	Ph            []float64      `size:"nbins"` // Current phase
 	Past          []float64      // Phase accumulator
 	Fadv, Tadv    []float64      // Partial derivatives
@@ -83,7 +85,8 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
-	n.arrows = make([][2]int, 0, n.nbins)
+	n.parrows = make([][2]int, 0, n.nbins)
+	n.arrows = slices.Clone(n.parrows)
 	n.ridges = make([]uint, n.nbins)
 	n.trace = make([]float64, n.nbins)
 	n.ftrace = make([]float64, n.nbins)
@@ -94,30 +97,32 @@ func warperNew(nbuf, osamp, olap, nch int, nanowarp *Nanowarp) (n *warper) {
 func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
 	nch := len(in)
-	p := n.root.opts.Progress
+	progress := n.root.opts.Progress
 
 	lead := get()
 	grain := get()
 	crop := make([][]float64, nch)
+	futurecrop := make([][]float64, nch)
 
 	lastone := 0
 	fivesec := n.root.fs * 5
 	tsc := 0
-	if p != nil {
-		p <- Bp(0, 0)
+	if progress != nil {
+		progress <- Bp(0, 0)
 	}
 	for j := -n.nbuf / 2; j < len(out[0])-1+n.nbuf/2; j += n.hop {
 		bounds := func(i int) int { return clamp(0, len(out[0])-1, i) }
+		cut := func(s []float64, i int) []float64 { return s[max(0, (i-n.nbuf/2)):bounds(i+n.nbuf/2)] }
 		i := int(phasor.ReverseSample(float64(j)))
 		c := 1 / phasor.Dy(float64(j))
 
-		if p != nil && j/fivesec > tsc {
-			p <- Bp(float64(i), float64(j))
+		if progress != nil && j/fivesec > tsc {
+			progress <- Bp(float64(i), float64(j))
 			tsc = j / fivesec
 		}
 
 		for ch := range nch {
-			cr := in[ch][max(0, (i-n.nbuf/2)):clamp(0, len(in[ch]), i+n.nbuf/2)]
+			cr := cut(in[ch], i)
 			if i < n.nbuf/2 {
 				copy(lead[ch][max(0, n.nbuf/2-i):], cr)
 				crop[ch] = lead[ch]
@@ -127,7 +132,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 		}
 
 		q := n.root.opts.Quality
-		normal, diff, _ := n.advance(crop, abs(c), q >= -1 && c == 1, q == -1)
+		normal, diff, _ := n.advance(crop, futurecrop, c, q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
 
 		d := j - lastone
@@ -148,18 +153,18 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 				clear(grain[ch])
 			}
 
-			g := out[ch][max(0, j-n.nbuf/2):bounds(j+n.nbuf/2)]
+			g := cut(out[ch], j)
 			add(g, grain[ch][clamp(0, n.nbuf, -j):])
 		}
 	}
-	if p != nil {
-		p <- Bp(phasor.end.I, phasor.end.J)
-		close(p)
+	if progress != nil {
+		progress <- Bp(phasor.end.I, phasor.end.J)
+		close(progress)
 	}
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
+func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
 	hp := n.root.opts.Hyperparams
 	nch := len(ingrain)
@@ -179,7 +184,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	enfft(a.X, a.W, a.Mid)
 
 	cmplxs.Abs(a.M, a.X)
-	arr := n.pghiarrows(a.P, a.M, n.arm, n.arrows, n.ridges)
+	arr := n.pghiarrows(a.P, a.M, n.arm, n.parrows, n.ridges)
 
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.
@@ -323,11 +328,11 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeigh
 //
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges []uint) [][2]int {
+func (n *warper) pghiarrows(M, F []float64, arm []bool, arrows [][2]int, ridges []uint) [][2]int {
 	n.heap = n.heap[:n.nbins]
 	fill(n.arm, true)
-	for w := range P {
-		n.heap[w] = heaptriple{P[w], w, -1}
+	for w := range M {
+		n.heap[w] = heaptriple{M[w], w, -1}
 		// Note that trajectories are calculated with a one frame lag.
 		// Still good for our purposes.
 		ridges[w] <<= 3
@@ -344,20 +349,20 @@ func (n *warper) pghiarrows(P, M []float64, arm []bool, arrows [][2]int, ridges 
 				arrows = append(arrows, [2]int{w, right})
 				ridges[w] |= right << 3
 				arm[w] = false
-				heapPush(&n.heap, heaptriple{M[w], w, 0})
+				heapPush(&n.heap, heaptriple{F[w], w, 0})
 			}
 		case 0:
 			if w >= 1 && arm[w-1] {
 				arrows = append(arrows, [2]int{w, down})
 				ridges[w] |= down
 				arm[w-1] = false
-				heapPush(&n.heap, heaptriple{M[w-1], w - 1, 0})
+				heapPush(&n.heap, heaptriple{F[w-1], w - 1, 0})
 			}
 			if w < n.nbins-1 && arm[w+1] {
 				arrows = append(arrows, [2]int{w, up})
 				ridges[w] |= up
 				arm[w+1] = false
-				heapPush(&n.heap, heaptriple{M[w+1], w + 1, 0})
+				heapPush(&n.heap, heaptriple{F[w+1], w + 1, 0})
 			}
 		}
 	}
