@@ -14,15 +14,12 @@ import (
 )
 
 type detector struct {
-	nfft        int
-	nbuf        int
-	nbins       int
-	hop         int
-	norm, wgain float64
-	corr        float64
-	thresh      float64
-	fs          int
-	m           *mediator[float64, bang]
+	nfft  int
+	nbuf  int
+	nbins int
+	hop   int
+	fs    int
+	m     *mediator[float64, bang]
 
 	fft *fourier.FFT
 
@@ -46,7 +43,6 @@ func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 		nbins: nbins,
 		nbuf:  nbuf,
 		hop:   nbuf / olap,
-		corr:  corr,
 		fs:    fs,
 	}
 	makeslices(&n.a, nbins, nfft, 0, 0)
