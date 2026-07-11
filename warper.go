@@ -72,7 +72,7 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	s := func(w []float64) []float64 {
 		return w[:nbuf]
 	}
-	blackmanHarris(s(a.W))
+	blackmanHarrisClassic(s(a.W))
 	windowDx(s(a.Wd), s(a.W))
 	windowT(s(a.Wt), s(a.W))
 	n.wgain = windowDualUniform(s(a.Wr), s(a.W), n.hop)
