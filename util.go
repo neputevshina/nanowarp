@@ -29,10 +29,11 @@ func princarg(phase float64) float64 {
 	return phase - math.Round(phase/pi2)*pi2
 }
 
-func add[T constraints.Float | constraints.Complex](dst, src []T) {
+func add[T constraints.Float | constraints.Complex](dst, src []T) []T {
 	for i := 0; i < min(len(dst), len(src)); i++ {
 		dst[i] += src[i]
 	}
+	return dst
 }
 
 func sum[T constraints.Float | constraints.Complex](src []T) (s T) {
@@ -42,10 +43,11 @@ func sum[T constraints.Float | constraints.Complex](src []T) (s T) {
 	return
 }
 
-func mul[T constraints.Float | constraints.Complex](dst, src []T) {
+func mul[T constraints.Float | constraints.Complex](dst, src []T) []T {
 	for i := 0; i < min(len(dst), len(src)); i++ {
 		dst[i] *= src[i]
 	}
+	return dst
 }
 
 // mix is a linear interpolation.
@@ -260,6 +262,26 @@ func windowDx(out, w []float64) {
 	for i := range out {
 		out[i] = -out[i] * math.Pi * 2
 	}
+}
+
+// windowDualUniform calculates dual window for uniform synthesis hop size
+// from given symmetrical window for satisfying constant overlap-add (COLA)
+// condition for perfect reconstruction.
+//
+// It returns the total gain after application of both windows.
+//
+// It can't necessarily be used to generate windows for NSDGT.
+func windowDualUniform(out, w []float64, hop int) (gain float64) {
+	buf := make([]float64, 4*len(w))
+	w2 := slices.Clone(w)
+	mul(w2, w)
+	half := len(w) / 2
+	for i := half; i < len(buf)-half; i += hop {
+		add(buf[i-half:i+half], w2)
+	}
+	copy(out, w)
+	mul(out, buf[len(w):2*len(w)])
+	return sum(mul(slices.Clone(w), out)) / float64(len(w))
 }
 
 // nextpow2 returns the minimum power of two greater than i.

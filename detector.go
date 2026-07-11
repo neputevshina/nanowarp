@@ -56,8 +56,6 @@ func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 	copy(n.a.Wr, n.a.Wf)
 	slices.Reverse(n.a.Wr)
 
-	n.wgain = windowGain(n.a.Wf)
-	n.norm = float64(nfft) * float64(olap) * n.wgain
 	n.fft = fourier.NewFFT(nfft)
 
 	tsa := int(onsetevery) * n.fs / 1000

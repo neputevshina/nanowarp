@@ -76,10 +76,9 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	windowDx(s(a.Wd), s(a.W))
 	windowT(s(a.Wt), s(a.W))
 	copy(s(a.Wr), s(a.W))
-	slices.Reverse(s(a.Wr))
+	n.wgain = windowDualUniform(s(a.Wr), s(a.W), n.hop)
 
-	n.wgain = windowGain(n.a.W)
-	n.norm = float64(nfft) * float64(n.olap) * n.osamp * n.wgain
+	n.norm = float64(nfft) * float64(n.olap) * n.wgain
 
 	n.heap = make(hp, n.nbins)
 	n.fft = fourier.NewFFT(nfft)
