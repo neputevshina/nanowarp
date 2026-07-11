@@ -20,7 +20,6 @@ import (
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/oscope"
 	"github.com/neputevshina/nanowarp/wav"
-	"github.com/schollz/progressbar/v3"
 )
 
 var println = fmt.Println
@@ -281,15 +280,10 @@ func main() {
 	rout := make([]float64, end)
 
 	if *progress {
-		pb := progressbar.NewOptions(end,
-			progressbar.OptionShowElapsedTimeOnFinish(),
-			progressbar.OptionSetTheme(progressbar.Theme{
-				Saucer:        "█",
-				SaucerPadding: " ",
-			}))
+		pb := startProgress(os.Stderr, end)
 		go func() {
 			for bp := range pch {
-				pb.Set(int(bp.J))
+				pb.Set(bp.J)
 			}
 			println()
 		}()

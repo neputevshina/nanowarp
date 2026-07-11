@@ -265,7 +265,7 @@ func windowDx(out, w []float64) {
 }
 
 // windowDualUniform calculates dual window for uniform synthesis hop size
-// from given symmetrical window for satisfying constant overlap-add (COLA)
+// from a given symmetrical window to satisfy constant overlap-add (COLA)
 // condition for perfect reconstruction.
 //
 // It returns the total gain after application of both windows.

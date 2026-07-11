@@ -75,7 +75,6 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	blackmanHarris(s(a.W))
 	windowDx(s(a.Wd), s(a.W))
 	windowT(s(a.Wt), s(a.W))
-	copy(s(a.Wr), s(a.W))
 	n.wgain = windowDualUniform(s(a.Wr), s(a.W), n.hop)
 
 	n.norm = float64(nfft) * float64(n.olap) * n.wgain
