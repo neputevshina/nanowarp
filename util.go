@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/cmplx"
 	"reflect"
+	"slices"
 	"strconv"
 
 	"golang.org/x/exp/constraints"
@@ -163,7 +164,7 @@ func structinit(a any) {
 	}
 }
 
-// hann is a Hann windowing function.
+// hann is a Hann window function.
 // Achieves COLA (perfect reconstruction) at any integer overlap greater than 2.
 func hann(out []float64) {
 	for i := range out {
@@ -172,13 +173,32 @@ func hann(out []float64) {
 	}
 }
 
-// blackmanHarris is a Blackman-Harris windowing function.
+// blackmanHarris is a Blackman-Harris window function.
 // Achieves COLA (perfect reconstruction) at overlap 3.
 // https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.closest_STFT_dual_window.html
 func blackmanHarris(out []float64) {
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
 		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
+	}
+}
+
+// avciNacaroglu is an Avci-Nacaroglu window function.
+// It is related to DPSS window like Kaiser, but doesn't require
+// modified Bessel function to calculate.
+// Acieves approximate COLA at overlap 4 with a ≈ 1.78.
+//
+// Doerry, Armin W. Catalog of window taper functions for sidelobe control. No. SAND2017-4042.
+// Sandia National Laboratories (SNL-NM), Albuquerque, NM (United States), 2017.
+// https://www.osti.gov/servlets/purl/1365510
+func avciNacaroglu(out []float64, a float64) {
+	for i := range out {
+		x := float64(i) / float64(len(out)-1)
+		out[i] = math.Exp(math.Pi*a*math.Sqrt(1-(4*(x-0.5)*(x-0.5))) - 1)
+	}
+	m := slices.Max(out)
+	for i := range out {
+		out[i] /= m
 	}
 }
 

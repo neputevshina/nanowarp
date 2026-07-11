@@ -72,18 +72,16 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	s := func(w []float64) []float64 {
 		return w[:nbuf]
 	}
-	hann(s(a.W))
-	// blackmanHarris(s(a.W))
-	n.heap = make(hp, n.nbins)
-
+	avciNacaroglu(s(a.W), 1.78)
 	windowDx(s(a.Wd), s(a.W))
 	windowT(s(a.Wt), s(a.W))
-
 	copy(s(a.Wr), s(a.W))
 	slices.Reverse(s(a.Wr))
+
 	n.wgain = windowGain(n.a.W)
 	n.norm = float64(nfft) * float64(n.olap) * n.osamp * n.wgain
 
+	n.heap = make(hp, n.nbins)
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
 	n.parrows = make([][2]int, 0, n.nbins)
