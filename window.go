@@ -25,7 +25,7 @@ func hann(out []float64) {
 // Fun fact: frequency response in the article “Window functon” in English Wikipedia is for
 // four-term -92 dB Blackman-Harris. And the picture of it was created and uploaded by Olli Niemitalo,
 // the creator of asymmetric window function defined below. Correct parameters for the pictured window
-// can be found in German version of this article. Still sounds better than four-term version.
+// can be found in German version of this article. This window still sounds better than its four-term version.
 //
 // [1]: Doerry, Armin W. Catalog of window taper functions for sidelobe control. No. SAND2017-4042.
 // Sandia National Laboratories (SNL-NM), Albuquerque, NM (United States), 2017.
