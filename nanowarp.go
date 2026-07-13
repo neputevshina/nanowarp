@@ -125,6 +125,39 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 		if n.opts.ScalePool || stretch < 1 {
 			poolstretch = stretch
 		}
+		// wsr := dspio.SliceReader([][]float64{lin, rin})
+		// po, pi := dspio.GoPipe(2)
+		// wg := sync.WaitGroup{}
+		// wg.Add(3)
+		// sam := make([]Onset, 0)
+		// onsc := make(chan Onset, 0)
+		// go func() {
+		// 	defer wg.Done()
+		// 	// This piece of shit must be deferred after `defer wg.Done()` or else we get deadlock.
+		// 	// No, wg.Go() won't work.
+		// 	// Closing the pipe inside processors after EOF won't work either.
+		// 	defer pi.Close()
+		// 	err := n.detector.NoveltyCurveProcess(wsr, pi)
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
+		// }()
+		// go func() {
+		// 	defer wg.Done()
+		// 	err := n.detector.DilatePeakSelectProcess(po, nil, poolstretch, onsc)
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
+		// }()
+		// go func() {
+		// 	defer wg.Done()
+		// 	for o := range onsc {
+		// 		sam = append(sam, o)
+		// 	}
+		// 	sam = append(sam, Onset{I: float64(len(lin)), Power: 0})
+		// }()
+		// wg.Wait()
+		// sam = sam[1:] // Skip onset at index 0
 		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
 
 		c := phasor.Clone()
@@ -135,16 +168,16 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 	n.warper.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
 }
 
-func (n *Nanowarp) bendPhasor(old, new *Curve, onsets [][2]float64) {
+func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {
 	tsa := n.opts.TransientMs * n.fs / 1000
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
 		b := onsets[k+1]
-		j, _ := old.Sample(b[0])
+		j, _ := old.Sample(b.I)
 		sa := old.Dx(j)
-		if b[0]-a[0] < float64(max(n.warper.nbuf, tsa))/sa {
+		if b.I-a.I < float64(max(n.warper.nbuf, tsa))/sa {
 			// Leave only louder one
-			if a[1] > b[1] {
+			if a.Power > b.Power {
 				onsets[k] = a
 			}
 			copy(onsets[k:], onsets[k+1:])
@@ -153,7 +186,7 @@ func (n *Nanowarp) bendPhasor(old, new *Curve, onsets [][2]float64) {
 		}
 	}
 	for k := 0; k < len(onsets)-1; k++ {
-		i := onsets[k][0]
+		i := onsets[k].I
 		r := float64(tsa / 2)
 		j, _ := old.Sample(i)
 		a, b := new.Between(i-r), new.Between(i+r)

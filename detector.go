@@ -60,8 +60,8 @@ func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 	return
 }
 
-func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (onsons [][2]float64) {
-	onsons = make([][2]float64, 0, 1000)
+func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (onsons []Onset) {
+	onsons = make([]Onset, 0, 1000)
 
 	t := make([]float64, n.nfft)
 	for i := 0; i < len(lin); i += n.hop {
@@ -81,11 +81,11 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 
 	for i := range ons1 {
 		if ons[i] == ons1[i] {
-			onsons = append(onsons, [2]float64{float64(i), ons[i]})
+			onsons = append(onsons, Onset{I: float64(i), Power: ons[i]})
 		}
 	}
 
-	onsons = append(onsons, [2]float64{float64(len(ons)), 0})
+	onsons = append(onsons, Onset{I: float64(len(ons)), Power: 0})
 
 	return
 }
@@ -116,12 +116,7 @@ func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 
 		c := n.cdodf(gs[0], gs[1])
 
-		fill(fr, c)
-		fill(fr[n.hop:], 0)
-
-		// fill(fr, sum(c[:]))
-
-		// mul(fr, n.a.Wr)
+		fill(fl, c)
 		mul(fl, n.a.Wr)
 		_, err = gw.SignalWrite(nil, [][]float64{fl, fr})
 		if err != nil {
@@ -131,30 +126,37 @@ func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 	// This function is expected to exit when io.EOF is encountered.
 }
 
-type onset struct {
-	i    int
-	pow  float64
-	bins int
+type Onset struct {
+	I     float64
+	Power float64
 }
 
-func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan onset) (err error) {
+func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan Onset) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).Dilate`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}
 	step := even(int(float64(n.m.maxN) / stretch))
-	gr := dspio.NewOfflineGrainReader(step, step/2, ar)
-	gw := dspio.NewOfflineGrainWriter(step, step/2, aw)
+	hop := step / 2
+	gr := dspio.NewOfflineGrainReader(step, hop, ar)
+	var gw *dspio.GrainWriter
+	if aw != nil {
+		gw = dspio.NewOfflineGrainWriter(step, hop, aw)
+	}
 	gs := make([][]float64, 2)
 	for ch := range gs {
 		gs[ch] = make([]float64, step)
 	}
 
 	n.m.Reset(step)
+	track := 0
 	for {
 		_, err := gr.SignalRead(nil, gs)
 		if err != nil {
+			if ons != nil {
+				close(ons)
+			}
 			if err == io.EOF {
 				return nil
 			}
@@ -164,11 +166,18 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 		for i := range gs[0][:step/2] {
 			// Center-windowed dilation
 			gs[1][i], _ = n.m.Filt(gs[0][i+step/2], bang{})
+			if gs[1][i] == gs[0][i+step/2] && ons != nil {
+				ons <- Onset{I: float64(track + i), Power: gs[1][i]}
+			}
 		}
 
-		_, err = gw.SignalWrite(nil, [][]float64{gs[1], gs[0]})
-		if err != nil {
-			return err
+		track += hop
+
+		if aw != nil {
+			_, err = gw.SignalWrite(nil, [][]float64{gs[1], gs[0]})
+			if err != nil {
+				return err
+			}
 		}
 	}
 	// This function is expected to exit when io.EOF is encountered.
@@ -217,6 +226,8 @@ func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 
 // superflux calculates an approximation of Superflux onset detection function for a
 // given stereo grain.
+//
+// Not finished.
 //
 // See Böck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression
 // for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects

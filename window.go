@@ -17,7 +17,7 @@ func hann(out []float64) {
 	}
 }
 
-// blackmanHarrisClassic is a, counterintuitively, three-term Nutall minimum sidelobe window function
+// blackmanHarrisClassic is, surprisingly, a three-term Nutall minimum sidelobe window function
 // also known as “three-term Blackman-Harris window”[1].
 //
 // Dual to itself (achieves COLA/perfect reconstruction) at overlap 6.

@@ -121,5 +121,37 @@ func (l *limitreader) SignalRead(prr error, buf [][]float64) (n int, err error) 
 	return
 }
 
+func SliceReader(sl [][]float64) SignalReader {
+	return &slicereader{sl: sl}
+}
+
+type slicereader struct {
+	sl [][]float64
+}
+
+func (t *slicereader) NchRead() int { return len(t.sl) }
+
+func (l *slicereader) SignalRead(prr error, buf [][]float64) (n int, err error) {
+	if prr != nil {
+		return 0, prr
+	}
+	if len(l.sl) == 0 || len(l.sl[0]) == 0 {
+		return 0, io.EOF
+	}
+	pn := -1
+	for ch := range l.sl {
+		n = copy(buf[ch], l.sl[ch])
+		l.sl[ch] = l.sl[ch][n:]
+		if pn >= 0 && n != pn {
+			panic(ErrNonSerialRead)
+		}
+		if len(l.sl[ch]) == 0 {
+			err = io.EOF
+		}
+		pn = n
+	}
+	return
+}
+
 var ErrNonSerialWrite error = errors.New(`non-serial write: amount of samples written is not equal for all channels`)
 var ErrNonSerialRead error = errors.New(`non-serial read: amount of samples consumed is not equal for all channels`)

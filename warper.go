@@ -1,11 +1,13 @@
 package nanowarp
 
 import (
+	"io"
 	"math"
 	"math/bits"
 	"math/cmplx"
 	"slices"
 
+	"github.com/neputevshina/nanowarp/dspio"
 	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/dsp/fourier"
 	"gonum.org/v1/gonum/floats"
@@ -52,7 +54,7 @@ type wbufs struct {
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Only 2x oversampling works, no more, no less.
-	olap := 4 // Depends on window, see comment on blackmanHarris function.
+	olap := 4 // Depends on window, see comment on blackmanHarrisClassic function.
 	nfft := nextpow2(nbuf * osamp)
 	n = &warper{
 		nfft:  nfft,
@@ -158,6 +160,74 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 		progress <- Bp(phasor.end.I, phasor.end.J)
 		close(progress)
 	}
+}
+
+func (n *warper) processFinal(in dspio.GrainSeeker, out dspio.GrainWriter, phasor *Curve) error {
+	nch := in.NchRead()
+	get := func() [][]float64 { return make2[float64](nch, n.nfft) }
+	progress := n.root.opts.Progress
+
+	lead := get()
+	grain := get()
+	crop := make([][]float64, nch)
+	futurecrop := make([][]float64, nch)
+
+	lastone := 0
+	fivesec := n.root.fs * 5
+	tsc := 0
+	if progress != nil {
+		progress <- Bp(0, 0)
+	}
+	var err error
+	for j := -n.nbuf / 2; err == nil; j += n.hop {
+		i := int(phasor.ReverseSample(float64(j)))
+		c := 1 / phasor.Dy(float64(j))
+
+		if progress != nil && j/fivesec > tsc {
+			progress <- Bp(float64(i), float64(j))
+			tsc = j / fivesec
+		}
+
+		err = in.GrainSeek(err, int64(i), lead)
+		if err != nil && err != io.EOF {
+			return err
+		}
+
+		q := n.root.opts.Quality
+		normal, diff, _ := n.advance(crop, futurecrop, c, q >= -1 && c == 1, q == -1)
+		n.synthesize(grain, normal, diff)
+
+		d := j - lastone
+		if c == 1 {
+			lastone = j
+		}
+		for ch := range nch {
+			// Cut pre-echo in transient regions.
+			if c != 1 && d < n.nbuf/2 {
+				rr := grain[ch][max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
+				for i := range rr {
+					rr[i] *= float64(i) / float64(len(rr))
+				}
+				fill(grain[ch][:n.nbuf/2-d-n.hop], 0)
+			}
+
+			if n.root.opts.Onsets && c != 1 {
+				clear(grain[ch])
+			}
+		}
+		_, err = out.SignalWrite(nil, grain)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+	if progress != nil {
+		progress <- Bp(phasor.end.I, phasor.end.J)
+		close(progress)
+	}
+	return err
 }
 
 // advance constructs the next frame of the output.

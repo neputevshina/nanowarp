@@ -208,7 +208,7 @@ var _ SignalWriter = &GrainWriter{}
 // GrainSeeker allows to read a grain of fixed size (filling the buffer) from the input
 // at the given offset from the start of the input.
 type GrainSeeker interface {
-	NchRead()
+	NchRead() int
 	GrainSeek(prr error, offset int64, buf [][]float64) error
 	// Why not (newoffset int64, err error)?
 	//
