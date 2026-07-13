@@ -84,7 +84,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - cmd/nanowarp: allow external onset detectors. Already possible with right timemap, 
   algorithm does phase reset on any region with Dy = 1.
 - Cibo Matto — Sci-Fi Wasabi (mp3 320k): most transient detections are wrong.
-- Phase ramp monotonity (?) is not needed. We never use `(*Curve).Sample`.
+- Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 

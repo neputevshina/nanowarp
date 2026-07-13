@@ -5,12 +5,12 @@ import (
 	"slices"
 )
 
-type ErrorNotMonotonicCurve struct {
+type ErrorNotFunctionalCurve struct {
 	Index int
 }
 
-func (i *ErrorNotMonotonicCurve) Error() string {
-	return fmt.Sprintf(`curve is not monotonic, e[%d+1]<e[%d]`, i.Index, i.Index)
+func (i *ErrorNotFunctionalCurve) Error() string {
+	return fmt.Sprintf(`curve is not functional, e[%d+1].J<e[%d].J`, i.Index, i.Index)
 }
 
 type Breakpoint struct {
@@ -147,9 +147,8 @@ func (c *Curve) Clone() *Curve {
 
 func (c *Curve) Validate() error {
 	for e := range c.elems[1:] {
-		if c.elems[e+1].I < c.elems[e].I ||
-			c.elems[e+1].J < c.elems[e].J {
-			return &ErrorNotMonotonicCurve{Index: e}
+		if c.elems[e+1].J < c.elems[e].J {
+			return &ErrorNotFunctionalCurve{Index: e}
 		}
 	}
 	return nil
