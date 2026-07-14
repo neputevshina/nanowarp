@@ -217,3 +217,54 @@ type GrainSeeker interface {
 	// to the index of read sample, like in grain synthesis or
 	// time scale modification.
 }
+
+// func MonotonicGrainSeeker(r SignalReader) GrainSeeker {
+// 	return &monotonicGrainSeeker{
+// 		r:      r,
+// 		buffer: make2(r.NchRead(), 4096),
+// 		nch:    r.NchRead(),
+// 	}
+// }
+
+// type monotonicGrainSeeker struct {
+// 	r           SignalReader
+// 	nch         int
+// 	i, pi, toll int64
+// 	buffer      [][]float64
+// }
+
+// func (s *monotonicGrainSeeker) NchRead() int { return s.nch }
+
+// func (r *monotonicGrainSeeker) GrainSeek(prr error, offset int64, grain [][]float64) error {
+// 	nch := r.nch
+// 	if prr != nil {
+// 		return prr
+// 	}
+// 	if len(grain) != r.nch {
+// 		panic(fmt.Errorf(`different number of channels: expected %d, got %d`, r.nch, len(grain)))
+// 	}
+// 	if r.i > offset {
+// 		panic(fmt.Errorf(`non-monotonic read: %d > %d (which is previous read)`, offset, r.i))
+// 	}
+
+// 	ngrain := len(grain[0])
+// 	nbuf := cap(r.buffer[0])
+// 	s := 0
+// 	ue := 0
+// 	if offset-r.toll > int64(len(r.buffer)) {
+// 		for ch := range nch {
+// 			r.buffer[ch] = r.buffer[ch][:cap(r.buffer[ch])]
+// 		}
+// 		n, err := r.r.SignalRead(nil, r.buffer)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		for ch := range nch {
+// 			copy(grain[ch][ue:], r.buffer[ch])
+// 			r.buffer[ch] = r.buffer[ch][n:]
+// 		}
+// 	}
+
+// 	return nil
+// 	panic(`unimplemented`)
+// }

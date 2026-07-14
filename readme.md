@@ -68,6 +68,48 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 
 ## Notes
 - There could be ways to optimize the “phase gradient heap integration” to not need a heap.
+Not tested:
+```
+// See nanowarp/warper.go from exp2 branch to make sense of this.
+// 2 means previous and current frames.
+
+// Integration neighborhood.
+hood := [][]float64{
+    {1, 0},
+    {0, 1},
+    {1, 0},
+}
+reverse := make2[int](2, nbins) 
+pairs := make([]heaptriple, 2*nbins)
+npairs := make([]heaptriple, 0, 2*nbins)
+for t := range 2 {
+    for w := range nbins {
+        pairs[t*nbins+w] = heaptriple{m: Ms[t][w], t: t, w: w, a: 0}
+    }
+}
+slices.Sort(pairs, func(a, b heaptriple) { return a.m-b.m })
+for i, p := range pairs {
+    reverse[p.t][p.w] = i
+}
+for len(pairs) > 0 {
+    for _, p := range pairs {
+        if p.t == 1 && p.a == 0 {
+            npairs = append(npairs, p)
+        } else if p.t == 0 || p.a == 1 {
+            addArrow(p.t, p.w, ...)
+            for i := range hood {
+                for j := range hood[i] {
+                    if hood[i][j] != 0 {
+                        pairs[reverse[p.t+j][p.w+i]] = 1
+                    }
+                }
+            }
+        }
+    }
+    pairs, npairs = npairs, pairs
+    npairs = npairs[:0]
+}
+```
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 - Phase could be reset on PGHI-detected transients.
