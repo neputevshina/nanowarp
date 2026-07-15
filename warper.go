@@ -465,6 +465,7 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 	}
 	arrows = arrows[:0]
 
+	// Draw arrows from top to bottom, adding each from direction of largest neighbor.
 	for w := n.nbins - 1; w >= 0; w-- {
 		d := 0
 		top := 0.
@@ -490,11 +491,12 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 		case up:
 			arrows = append(arrows, [2]int{w - 1, up})
 			ridges[w-1] |= up
+			// Make sure we don't add arrows pointing back.
 			n.arm[w] = false
 		}
 	}
 
-	// Repair ordering: start from rights, then do ups, then do downs reversed.
+	// Repair ordering: start from rights, then do downs, then do ups reversed.
 	do := func(arrows [][2]int, what, save int) int {
 		arrows = arrows[save:]
 		save = 0

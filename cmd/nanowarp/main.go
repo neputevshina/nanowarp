@@ -43,7 +43,7 @@ var resets = flag.Int("resets", 0, `Time and phase resets:
     No artifacts, but noticeable slight loss in clarity.`)
 var q = flag.Int("q", 0, `Quality:
 Set algorithm quality.
--1: Use 20% faster brute force approximation to PGHI.
+-1: Use brute force approximation to PGHI. Less transparent, 20% faster.
 0:  Use PGHI.`)
 var poolms = flag.Int("poolms", 250, `Time of onset detection bucket in milliseconds.
 Minimum amount of time between two consecutive transient detections.`)

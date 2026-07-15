@@ -24,7 +24,7 @@ type Options struct {
 	Onsets bool
 
 	// Set algorithm quality.
-	//  -1: Use 20% faster brute force approximation to PGHI.
+	//  -1: Use brute force approximation to PGHI. Less transparent, 20% faster.
 	//  0:  Use PGHI.
 	Quality int
 
