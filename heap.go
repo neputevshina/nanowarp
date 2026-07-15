@@ -5,6 +5,7 @@ package nanowarp
 type heaptriple struct {
 	mag  float64
 	w, t int
+	a    int
 }
 type hp []heaptriple
 

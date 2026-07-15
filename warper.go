@@ -36,6 +36,10 @@ type warper struct {
 	ridges   []uint    // Extracted ridges
 	resetnow []bool    // Forced per-bin resets
 
+	// PGPI-related
+	reverse       [][]int      // Reverse index
+	pairs, fpairs []heaptriple // Sorted tapes
+
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
 	a wbufs
@@ -251,7 +255,8 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 	enfft(a.X, a.W, a.Mid)
 
 	cmplxs.Abs(a.M, a.X)
-	arr := n.pghiarrows(a.P, a.M, n.arm, n.parrows, n.ridges)
+	arr := n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+	// arr := n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
 
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.
@@ -395,11 +400,11 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeigh
 //
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
-func (n *warper) pghiarrows(M, F []float64, arm []bool, arrows [][2]int, ridges []uint) [][2]int {
+func (n *warper) pghiarrows(M, F []float64, arrows [][2]int, ridges []uint) [][2]int {
 	n.heap = n.heap[:n.nbins]
 	fill(n.arm, true)
 	for w := range M {
-		n.heap[w] = heaptriple{M[w], w, -1}
+		n.heap[w] = heaptriple{M[w], w, -1, 0}
 		// Note that trajectories are calculated with a one frame lag.
 		// Still good for our purposes.
 		ridges[w] <<= 3
@@ -407,32 +412,103 @@ func (n *warper) pghiarrows(M, F []float64, arm []bool, arrows [][2]int, ridges 
 	heapInit(&n.heap)
 	arrows = arrows[:0]
 
+	narm := n.nbins
 	for len(n.heap) > 0 {
+		if narm == 0 {
+			break
+		}
 		h := heapPop(&n.heap)
 		w := h.w
 		switch h.t {
 		case -1:
-			if arm[w] {
+			if n.arm[w] {
 				arrows = append(arrows, [2]int{w, right})
 				ridges[w] |= right << 3
-				arm[w] = false
-				heapPush(&n.heap, heaptriple{F[w], w, 0})
+				n.arm[w] = false
+				narm--
+				heapPush(&n.heap, heaptriple{F[w], w, 0, 0})
 			}
 		case 0:
-			if w >= 1 && arm[w-1] {
+			if w >= 1 && n.arm[w-1] {
 				arrows = append(arrows, [2]int{w, down})
 				ridges[w] |= down
-				arm[w-1] = false
-				heapPush(&n.heap, heaptriple{F[w-1], w - 1, 0})
+				n.arm[w-1] = false
+				narm--
+				heapPush(&n.heap, heaptriple{F[w-1], w - 1, 0, 0})
 			}
-			if w < n.nbins-1 && arm[w+1] {
+			if w < n.nbins-1 && n.arm[w+1] {
 				arrows = append(arrows, [2]int{w, up})
 				ridges[w] |= up
-				arm[w+1] = false
-				heapPush(&n.heap, heaptriple{F[w+1], w + 1, 0})
+				n.arm[w+1] = false
+				narm--
+				heapPush(&n.heap, heaptriple{F[w+1], w + 1, 0, 0})
 			}
 		}
 	}
+
+	return arrows
+}
+
+// bruteforcearrows calculates integration directions from local magnitude maxima.
+//
+// It is faster than PGHI, but less accurate.
+func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint) [][2]int {
+	fill(n.arm, true)
+	for w := range M {
+		// Note that trajectories are calculated with a one frame lag.
+		// Still good for our purposes.
+		ridges[w] <<= 3
+	}
+	arrows = arrows[:0]
+
+	for w := n.nbins - 1; w >= 0; w-- {
+		d := 0
+		top := 0.
+		if M[w] >= top {
+			d = right
+			top = M[w]
+		}
+		if w > 0 && F[w-1] > top {
+			d = up
+			top = F[w-1]
+		}
+		if w < n.nbins-1 && F[w+1] > top && n.arm[w+1] {
+			d = down
+		}
+
+		switch d {
+		case right:
+			arrows = append(arrows, [2]int{w, right})
+			ridges[w] |= right << 3
+		case down:
+			arrows = append(arrows, [2]int{w + 1, down})
+			ridges[w+1] |= down
+		case up:
+			arrows = append(arrows, [2]int{w - 1, up})
+			ridges[w-1] |= up
+			n.arm[w] = false
+		}
+	}
+
+	// Repair ordering: start from rights, then do ups, then do downs reversed.
+	do := func(arrows [][2]int, what, save int) int {
+		arrows = arrows[save:]
+		save = 0
+		for i, a := range arrows {
+			if a[1] == what {
+				arrows[save], arrows[i] = arrows[i], arrows[save]
+				save++
+			}
+		}
+		return save
+	}
+
+	save := 0
+	save += do(arrows, right, save)
+	save += do(arrows, down, save)
+	do(arrows, up, save)
+	slices.Reverse(arrows[save:])
+
 	return arrows
 }
 
