@@ -134,7 +134,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 			}
 		}
 
-		q := n.root.opts.Quality
+		q := n.root.opts.Resets
 		normal, diff, _ := n.advance(crop, futurecrop, c, q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
 
@@ -197,7 +197,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out dspio.GrainWriter, phaso
 			return err
 		}
 
-		q := n.root.opts.Quality
+		q := n.root.opts.Resets
 		normal, diff, _ := n.advance(crop, futurecrop, c, q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
 
@@ -255,8 +255,12 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 	enfft(a.X, a.W, a.Mid)
 
 	cmplxs.Abs(a.M, a.X)
-	arr := n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
-	// arr := n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+	var arr [][2]int
+	if n.root.opts.Quality == -1 {
+		arr = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+	} else {
+		arr = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+	}
 
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.

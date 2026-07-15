@@ -34,13 +34,17 @@ var to = flag.Float64("to", 1, "Target `BPM`.")
 var st = flag.Float64("st", 0, `Pitch shift in semitones.
 Currently adjusts time stretch without changing the the pitch.`)
 var onsets = flag.Bool("onsets", false, "Output displaced onsets only.")
-var q = flag.Int("q", 0, `Quality:
+var resets = flag.Int("resets", 0, `Time and phase resets:
 -2: Don't perform transient separation, output raw PVDR without phase resets.
 -1: Extract transients and reset the phase when not stretching.
     Introduces clicky artifacts but cleanest for transient-heavy material.
     Best numerical stability because of resets.
 0:  Same as -1, but detects and bypasses tonal components.
     No artifacts, but noticeable slight loss in clarity.`)
+var q = flag.Int("q", 0, `Quality:
+Set algorithm quality.
+-1: Use 20% faster brute force approximation to PGHI.
+0:  Use PGHI.`)
 var poolms = flag.Int("poolms", 250, `Time of onset detection bucket in milliseconds.
 Minimum amount of time between two consecutive transient detections.`)
 var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
@@ -266,6 +270,7 @@ func main() {
 	opts := nanowarp.Options{
 		Onsets:   *onsets,
 		Quality:  *q,
+		Resets:   *resets,
 		Progress: pch,
 		Hyperparams: nanowarp.Hyperparams{
 			PickingMs:       *poolms,

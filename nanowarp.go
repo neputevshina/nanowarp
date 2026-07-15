@@ -24,6 +24,11 @@ type Options struct {
 	Onsets bool
 
 	// Set algorithm quality.
+	//  -1: Use 20% faster brute force approximation to PGHI.
+	//  0:  Use PGHI.
+	Quality int
+
+	// Enable phase resets.
 	//  -2: Don't perform transient separation, output raw PVDR without phase resets.
 	//	Still resets the phase if derivative of input timemap is 1.
 	//	Useful if timemap is generated using external onset detector.
@@ -32,7 +37,7 @@ type Options struct {
 	//	Best numerical stability because of full-frame resets.
 	//  0:  Same as -1, but detects and bypasses tonal components.
 	//	No artifacts, but noticeable slight loss in clarity.
-	Quality int
+	Resets int
 
 	// Channel for receiving processing progress.
 	//
@@ -119,7 +124,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 	ons := make([]float64, len(lin))
 	ons1 := make([]float64, len(lin))
 
-	if n.opts.Quality > -2 {
+	if n.opts.Resets > -2 {
 		poolstretch := 1.
 		stretch := phasor.Dx(phasor.elems[len(phasor.elems)-1].I)
 		if n.opts.ScalePool || stretch < 1 {
