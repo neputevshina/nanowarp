@@ -496,6 +496,13 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 		}
 	}
 
+	// t := make([]float64, n.nbins)
+	// for w := range arrows {
+	// 	t[w] = float64(bits.OnesCount(n.ridges[w] & 0b111000))
+	// }
+	// oscope.Enable = true
+	// oscope.Oscope(t, oscope.Name(`asdf`))
+
 	// Repair ordering: start from rights, then do downs, then do ups reversed.
 	do := func(arrows [][2]int, what, save int) int {
 		arrows = arrows[save:]
