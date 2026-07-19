@@ -50,11 +50,12 @@ complex-domain novelty function[3]. If onset is detected, phase ramp will have a
 1 in a region around detected onset. Starting points of these sample regions are scaled by the 
 stretch size, and points between regions are linearly interpolated.
 
-Then the large-grained (nfft=4096) PVDR is applied, using phase ramp for input 
-sample indexes. Steady portions of the signal are detected inside the same PGHI process 
-by counting directions from where the phase must be integrated and their regions of influence.
-If the derivative of the signal is 1, non-steady portions of the spectrum 
-are bypassed to the output, and steady are integrated further.
+Then the large-grained (nfft=4096) PVDR is applied, using phase ramp curve for input 
+sample indexes. PVDR is applied in two steps: first, integration directions (arrows) and are detected.
+Sources of these arrows (ridges) are extracted too. Then, phase is accumulated from partial derivatives by interpreting the arrows. 
+If `Quality` parameter set to -1, Nanowarp uses faster greedy local maximum arrow detection instead of heap.
+If the derivative of the ramp is 1, phase accumulator is reset, except ridges from previous 
+frame with their regions of influence.
 
 Like in original implementation of PVDR, FFT is oversampled by factor of 2 with zero-padding. 
 Stereo coherence is obtained through stretching mono and adding complex phase difference of 
@@ -67,6 +68,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
+- We need a regression testing GitHub CI.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
 - Phase could be reset on PGHI-detected transients.
