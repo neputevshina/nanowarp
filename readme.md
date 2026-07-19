@@ -46,16 +46,16 @@ of phase are obtained through time-frequency reassignment[2]. This way accurate 
 advance can be obtained using only one windowed grain instead of two for simplicity.
 
 A phase ramp for the entire output signal is generated. Onsets are detected using rectified 
-complex-domain novelty function[3]. If onset is detected, phase ramp will have a derivative of 
+complex-domain novelty function[3]. If onset is detected, phase ramp will have a derivative (scan speed) of 
 1 in a region around detected onset. Starting points of these sample regions are scaled by the 
 stretch size, and points between regions are linearly interpolated.
 
 Then the large-grained (nfft=4096) PVDR is applied, using phase ramp curve for input 
-sample indexes. PVDR is applied in two steps: first, integration directions (arrows) and are detected.
+sample indexes. PVDR is applied in two steps: first, integration directions (arrows) are detected.
+If `Quality` parameter set to -1, Nanowarp uses faster greedy local maximum arrow detection instead of PGHI, which uses priority queue.
 Sources of these arrows (ridges) are extracted too. Then, phase is accumulated from partial derivatives by interpreting the arrows. 
-If `Quality` parameter set to -1, Nanowarp uses faster greedy local maximum arrow detection instead of heap.
-If the derivative of the ramp is 1, phase accumulator is reset, except ridges from previous 
-frame with their regions of influence.
+If current frame speed is 1, phase accumulator is reset, except ridges from previous 
+frame with their regions of influence, which are accumulated further.
 
 Like in original implementation of PVDR, FFT is oversampled by factor of 2 with zero-padding. 
 Stereo coherence is obtained through stretching mono and adding complex phase difference of 
