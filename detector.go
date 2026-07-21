@@ -91,7 +91,7 @@ func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (ons
 }
 
 func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
-	fmt.Fprintln(os.Stderr, `(*detector).OnsetFunctionWriter`)
+	fmt.Fprintln(os.Stderr, `(*detector).NoveltyCurveProcess`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
@@ -132,7 +132,7 @@ type Onset struct {
 }
 
 func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan Onset) (err error) {
-	fmt.Fprintln(os.Stderr, `(*detector).Dilate`)
+	fmt.Fprintln(os.Stderr, `(*detector).DilatePeakSelectProcess`)
 
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
@@ -151,27 +151,37 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 
 	n.m.Reset(step)
 	track := 0
+	end := 0
+	ending := false
 	for {
-		_, err := gr.SignalRead(nil, gs)
-		if err != nil {
-			if ons != nil {
-				close(ons)
+		if !ending {
+			_, err := gr.SignalRead(nil, gs)
+			if err != nil {
+				if ons != nil {
+					close(ons)
+				}
+				if err == io.EOF {
+					end = track + len(gs[0])
+					ending = true
+				} else {
+					return err
+				}
 			}
-			if err == io.EOF {
-				return nil
-			}
-			return err
 		}
 
 		for i := range gs[0][:step/2] {
 			// Center-windowed dilation
 			gs[1][i], _ = n.m.Filt(gs[0][i+step/2], bang{})
-			if gs[1][i] == gs[0][i+step/2] && ons != nil {
+			if gs[1][i] == gs[0][i] && ons != nil {
 				ons <- Onset{I: float64(track + i), Power: gs[1][i]}
 			}
 		}
 
 		track += hop
+
+		if ending && track >= end {
+			return nil
+		}
 
 		if aw != nil {
 			_, err = gw.SignalWrite(nil, [][]float64{gs[1], gs[0]})

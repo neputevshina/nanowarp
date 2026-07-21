@@ -248,7 +248,7 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	}
 
 	if offset < m.pos {
-		panic(fmt.Errorf(`non-monotonic read: %d > %d (which is previous read)`, offset, m.pos))
+		panic(fmt.Errorf(`non-monotonic read: %d < %d (which is previous read)`, offset, m.pos))
 
 	}
 

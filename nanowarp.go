@@ -162,8 +162,14 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 		// 	sam = append(sam, Onset{I: float64(len(lin)), Power: 0})
 		// }()
 		// wg.Wait()
-		// sam = sam[1:] // Skip onset at index 0
-		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
+		// println(sam)
+
+		sam = n.detector.process2(lin, rin, ons, ons1, poolstretch)
+		// println(sam)
+
+		// copy(lout, ons)
+		// copy(rout, ons1)
+		// return
 
 		c := phasor.Clone()
 		n.bendPhasor(phasor, c, sam)
