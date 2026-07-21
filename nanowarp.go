@@ -164,7 +164,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 		// wg.Wait()
 		// println(sam)
 
-		sam = n.detector.process2(lin, rin, ons, ons1, poolstretch)
+		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
 		// println(sam)
 
 		// copy(lout, ons)
