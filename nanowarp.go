@@ -121,19 +121,19 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	return
 }
 
-func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
+func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.SignalWriter, phasor *Curve) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
 	// ons := make([]float64, len(lin))
 	// ons1 := make([]float64, len(lin))
 
+	firstread := wsr()
 	if n.opts.Resets > -2 {
 		poolstretch := 1.
 		stretch := phasor.Dx(phasor.elems[len(phasor.elems)-1].I)
 		if n.opts.ScalePool || stretch < 1 {
 			poolstretch = stretch
 		}
-		wsr := dspio.SliceReader([][]float64{lin, rin})
 		po, pi := dspio.GoPipe(2)
 		wg := sync.WaitGroup{}
 		wg.Add(3)
@@ -142,7 +142,7 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 		go func() {
 			defer wg.Done()
 			defer pi.Close()
-			err := n.detector.NoveltyCurveProcess(wsr, pi)
+			err := n.detector.NoveltyCurveProcess(firstread, pi)
 			if err != nil {
 				panic(err)
 			}
@@ -159,24 +159,21 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 			for o := range onsc {
 				sam = append(sam, o)
 			}
-			sam = append(sam, Onset{I: float64(len(lin)), Power: 0})
+			sam = append(sam, Onset{I: float64(filelen), Power: 0})
 		}()
 		wg.Wait()
-		// println(sam)
-
-		// sam = n.detector.process2(lin, rin, ons, ons1, poolstretch)
-		// println(sam)
-
-		// copy(lout, ons)
-		// copy(rout, ons1)
-		// return
 
 		c := phasor.Clone()
 		n.bendPhasor(phasor, c, sam)
 		phasor = c
 	}
 
-	n.warper.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
+	secondread := wsr()
+	mgs := dspio.MonotonicGrainSeeker(secondread)
+	grw := dspio.NewGrainWriter(n.warper.nbuf, n.warper.hop, w)
+	n.warper.processFinal(mgs, grw, phasor)
+
+	// n.warper.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {

@@ -18,8 +18,8 @@ import (
 	"strconv"
 
 	"github.com/neputevshina/nanowarp"
+	"github.com/neputevshina/nanowarp/dspio"
 	"github.com/neputevshina/nanowarp/oscope"
-	"github.com/neputevshina/nanowarp/wav"
 )
 
 var println = fmt.Println
@@ -126,8 +126,7 @@ func main() {
 		panic(err)
 	}
 
-	wavrd := wav.NewReader(file)
-	wavfmt, err := wavrd.Format()
+	wsr, err := NewWavSignalReader(nil, file)
 	if err != nil {
 		// Try to call ffmpeg, we've probably got an MP3.
 		// FIXME Bodge error type check
@@ -171,8 +170,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			wavrd = wav.NewReader(file)
-			wavfmt, err = wavrd.Format()
+			wsr, err = NewWavSignalReader(nil, file)
 			if err != nil {
 				panic(err)
 			}
@@ -182,11 +180,11 @@ func main() {
 	}
 
 	inputLength := 0.
-	_, err = wavrd.Duration() // Populate wavrd.Size field
+	_, err = wsr.Duration() // Populate wsr.Size field
 	if err != nil {
 		panic(err)
 	}
-	inputLength = float64(wavrd.Size) / float64(wavfmt.BlockAlign)
+	inputLength = float64(wsr.Size) / float64(wsr.BlockAlign)
 	// TODO This wav package is a piece of shit. Write own.
 
 	if *experiment != 0 {
@@ -245,23 +243,6 @@ func main() {
 		panic(err)
 	}
 
-	// Reading the whole file to memory.
-	left := []float64{}
-	right := []float64{}
-	var samples []wav.Sample
-	for {
-		_, samples, err = wavrd.ReadSamples(samples)
-		if err == io.EOF {
-			break
-		}
-
-		for _, sample := range samples {
-			l, r := wavrd.FloatValue(sample, 0), wavrd.FloatValue(sample, 1)
-			left = append(left, l)
-			right = append(right, r)
-		}
-	}
-
 	// Working.
 	var pch chan nanowarp.Breakpoint
 	if *progress {
@@ -278,11 +259,9 @@ func main() {
 			InfluenceRadius: *ifr,
 		},
 	}
-	mnw := nanowarp.New(int(wavfmt.SampleRate), opts)
+	mnw := nanowarp.New(int(wsr.SampleRate), opts)
 
 	end := int(bps[len(bps)-1].J)
-	lout := make([]float64, end)
-	rout := make([]float64, end)
 
 	if *progress {
 		pb := startProgress(os.Stderr, end)
@@ -293,30 +272,49 @@ func main() {
 			println()
 		}()
 	}
-	mnw.Process(left, right, lout, rout, phasor)
-
 	// Dumping the output.
-	file, err = os.Create(*foutput)
+	outfile, err := os.Create(*foutput)
 	if err != nil {
 		panic(err)
 	}
-	wr := wav.NewWriter(file, uint32(len(lout)), 2, wavfmt.SampleRate, 32, true)
 
-	nbuf := 2048
-	buf := make([]wav.Sample, 0, nbuf)
-	for i := 0; i < len(lout); i += nbuf {
-		buf = buf[:0]
-		for j := i; j < min(i+nbuf, len(lout)); j++ {
-			lsa, rsa := lout[j], rout[j]
-			buf = append(buf, wav.Sample{Values: [2]int{
-				int(math.Float32bits(float32(lsa))),
-				int(math.Float32bits(float32(rsa)))}})
+	wsw, err := NewWavSignalWriter(err, outfile, end, 2, int(wsr.SampleRate))
+	if err != nil {
+		panic(err)
+	}
+
+	first := true
+	wsrf := func() dspio.SignalReader {
+		if first {
+			first = false
+			return wsr
 		}
-		err := wr.WriteSamples(buf)
+		_, err := file.Seek(0, io.SeekStart)
+		wsr, err = NewWavSignalReader(err, file)
 		if err != nil {
 			panic(err)
 		}
+		return wsr
 	}
+	mnw.Process(int(inputLength), wsrf, wsw, phasor)
+
+	// wr := wav.NewWriter(outfile, uint32(len(lout)), 2, wavfmt.SampleRate, 32, true)
+
+	// nbuf := 2048
+	// buf := make([]wav.Sample, 0, nbuf)
+	// for i := 0; i < len(lout); i += nbuf {
+	// 	buf = buf[:0]
+	// 	for j := i; j < min(i+nbuf, len(lout)); j++ {
+	// 		lsa, rsa := lout[j], rout[j]
+	// 		buf = append(buf, wav.Sample{Values: [2]int{
+	// 			int(math.Float32bits(float32(lsa))),
+	// 			int(math.Float32bits(float32(rsa)))}})
+	// 	}
+	// 	err := wr.WriteSamples(buf)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// }
 
 	oscope.Dump(nil, "./pics")
 }

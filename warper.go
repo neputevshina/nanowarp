@@ -166,7 +166,7 @@ func (n *warper) process6(in [][]float64, out [][]float64, phasor *Curve) {
 	}
 }
 
-func (n *warper) processFinal(in dspio.GrainSeeker, out dspio.GrainWriter, phasor *Curve) error {
+func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Curve) error {
 	nch := in.NchRead()
 	get := func() [][]float64 { return make2[float64](nch, n.nfft) }
 	progress := n.root.opts.Progress
