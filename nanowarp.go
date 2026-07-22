@@ -5,6 +5,9 @@ import (
 	"math"
 	"os"
 	"slices"
+	"sync"
+
+	"github.com/neputevshina/nanowarp/dspio"
 )
 
 type Nanowarp struct {
@@ -121,8 +124,8 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
-	ons := make([]float64, len(lin))
-	ons1 := make([]float64, len(lin))
+	// ons := make([]float64, len(lin))
+	// ons1 := make([]float64, len(lin))
 
 	if n.opts.Resets > -2 {
 		poolstretch := 1.
@@ -130,41 +133,38 @@ func (n *Nanowarp) Process(lin, rin, lout, rout []float64, phasor *Curve) {
 		if n.opts.ScalePool || stretch < 1 {
 			poolstretch = stretch
 		}
-		// wsr := dspio.SliceReader([][]float64{lin, rin})
-		// po, pi := dspio.GoPipe(2)
-		// wg := sync.WaitGroup{}
-		// wg.Add(3)
-		// sam := make([]Onset, 0)
-		// onsc := make(chan Onset, 0)
-		// go func() {
-		// 	defer wg.Done()
-		// 	// This piece of shit must be deferred after `defer wg.Done()` or else we get deadlock.
-		// 	// No, wg.Go() won't work.
-		// 	// Closing the pipe inside processors after EOF won't work either.
-		// 	defer pi.Close()
-		// 	err := n.detector.NoveltyCurveProcess(wsr, pi)
-		// 	if err != nil {
-		// 		panic(err)
-		// 	}
-		// }()
-		// go func() {
-		// 	defer wg.Done()
-		// 	err := n.detector.DilatePeakSelectProcess(po, nil, poolstretch, onsc)
-		// 	if err != nil {
-		// 		panic(err)
-		// 	}
-		// }()
-		// go func() {
-		// 	defer wg.Done()
-		// 	for o := range onsc {
-		// 		sam = append(sam, o)
-		// 	}
-		// 	sam = append(sam, Onset{I: float64(len(lin)), Power: 0})
-		// }()
-		// wg.Wait()
+		wsr := dspio.SliceReader([][]float64{lin, rin})
+		po, pi := dspio.GoPipe(2)
+		wg := sync.WaitGroup{}
+		wg.Add(3)
+		sam := make([]Onset, 0)
+		onsc := make(chan Onset, 0)
+		go func() {
+			defer wg.Done()
+			defer pi.Close()
+			err := n.detector.NoveltyCurveProcess(wsr, pi)
+			if err != nil {
+				panic(err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			err := n.detector.DilatePeakSelectProcess(po, nil, poolstretch, onsc)
+			if err != nil {
+				panic(err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for o := range onsc {
+				sam = append(sam, o)
+			}
+			sam = append(sam, Onset{I: float64(len(lin)), Power: 0})
+		}()
+		wg.Wait()
 		// println(sam)
 
-		sam := n.detector.process2(lin, rin, ons, ons1, poolstretch)
+		// sam = n.detector.process2(lin, rin, ons, ons1, poolstretch)
 		// println(sam)
 
 		// copy(lout, ons)

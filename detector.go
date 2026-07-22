@@ -169,8 +169,11 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 			}
 		}
 
-		for i := range gs[0][:step/2] {
+		for i := range gs[0][step/2:] {
 			// Center-windowed dilation
+			//
+			// If process2 was reading ahead like here, the result of that process
+			// would be identical to this.
 			gs[1][i], _ = n.m.Filt(gs[0][i+step/2], bang{})
 			if gs[1][i] == gs[0][i] && ons != nil {
 				ons <- Onset{I: float64(track + i), Power: gs[1][i]}
