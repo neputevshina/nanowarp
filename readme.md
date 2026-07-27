@@ -71,6 +71,8 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
+- We need a `dspio` WAV SignalReader/Writer written from scratch. 
+  **DO NOT USE youpy/wav IN YOUR PROJECTS, IT SILENTLY QUANTIZES FLOAT32 SAMPLES TO INT!!!**
 - We need a regression testing GitHub CI.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
@@ -102,8 +104,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
   From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`.
   If `e-1` is negative, shrink by `2**(1-e)` instead.
 - Triple echo in frequency on high-frequency content. Can be seen on 2x stretched log sweep.
-- [Modifies the tonal balance of the material.](https://mega.nz/file/emQkAArB#_HzQqUP_-1f_C9jzMcZLxSM8W21_YZoqkDXltqZgX6E) 
-  Elastiqué doesn't do that.
 
 ## AI use disclosure
 `rankfilt.go` was initially translated from C++ by free ChatGPT.

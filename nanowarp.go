@@ -157,7 +157,6 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 			defer wg.Done()
 			for o := range onsc {
 				sam = append(sam, o)
-				println(o)
 			}
 			sam = append(sam, Onset{I: float64(filelen), Power: 0})
 		}()
