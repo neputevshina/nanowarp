@@ -106,7 +106,7 @@ func (r *Reader) ReadSamples(samples []Sample) (numSamples int, out []Sample, er
 						(int(bytes[soffset+2]) << 16) +
 						(int(bytes[soffset+1]) << 8) +
 						int(bytes[soffset]))
-				samples[i].Values[j] = int(math.MaxInt32 * math.Float32frombits(bits))
+				samples[i].Values[j] = int(bits)
 
 			case AudioFormatALaw:
 				var val uint

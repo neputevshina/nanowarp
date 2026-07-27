@@ -39,6 +39,16 @@ func (w *WavSignalReader) NchRead() int {
 	return int(w.WavFormat.NumChannels)
 }
 
+func signalingBitsafe(v float64) float64 {
+	if v != v {
+		panic(`NaN detected`)
+	}
+	if math.IsInf(v, 0) {
+		panic(`infinity detected`)
+	}
+	return v
+}
+
 func (w *WavSignalReader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	if prr != nil {
 		return 0, prr
@@ -66,7 +76,7 @@ func (w *WavSignalReader) SignalRead(prr error, buf [][]float64) (n int, err err
 				norm := math.Pow(2, float64(w.BitsPerSample-1))
 				buf[ch][i] = float64(w.buf[i].Values[ch]) / norm
 			}
-
+			_ = signalingBitsafe(buf[ch][i])
 		}
 	}
 	return

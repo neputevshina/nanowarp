@@ -51,7 +51,7 @@ type wbufs struct {
 	Ph            []float64      `size:"nbins"` // Current phase
 	Past          []float64      // Phase accumulator
 	Fadv, Tadv    []float64      // Partial derivatives
-	W, Wr, Wd, Wt []float64      // Window functions
+	W, Wr, Wd, Wt []float64      // Window functions: analysis, synthesis (dual), derivative of W, time-weighted W
 	X, Y, Xd, Xt  []complex128   // Complex spectra
 	C, Co         [][]complex128 // Channel differences, original channels
 }

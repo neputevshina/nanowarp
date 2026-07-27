@@ -124,9 +124,6 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.SignalWriter, phasor *Curve) {
 	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
 
-	// ons := make([]float64, len(lin))
-	// ons1 := make([]float64, len(lin))
-
 	firstread := wsr()
 	if n.opts.Resets > -2 {
 		poolstretch := 1.
@@ -141,11 +138,12 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 		onsc := make(chan Onset, 0)
 		go func() {
 			defer wg.Done()
-			defer pi.Close()
 			err := n.detector.NoveltyCurveProcess(firstread, pi)
 			if err != nil {
 				panic(err)
 			}
+			println(`eee`)
+			pi.Close()
 		}()
 		go func() {
 			defer wg.Done()
@@ -153,11 +151,13 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 			if err != nil {
 				panic(err)
 			}
+			println(`done`)
 		}()
 		go func() {
 			defer wg.Done()
 			for o := range onsc {
 				sam = append(sam, o)
+				println(o)
 			}
 			sam = append(sam, Onset{I: float64(filelen), Power: 0})
 		}()
@@ -165,6 +165,7 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 
 		c := phasor.Clone()
 		n.bendPhasor(phasor, c, sam)
+
 		phasor = c
 	}
 

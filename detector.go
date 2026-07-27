@@ -151,22 +151,17 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 
 	n.m.Reset(step)
 	track := 0
-	end := 0
-	ending := false
+	if ons != nil {
+		defer close(ons)
+	}
 	for {
-		if !ending {
-			_, err := gr.SignalRead(nil, gs)
-			if err != nil {
-				if ons != nil {
-					close(ons)
-				}
-				if err == io.EOF {
-					end = track + len(gs[0])
-					ending = true
-				} else {
-					return err
-				}
+		_, err := gr.SignalRead(nil, gs)
+		if err != nil {
+			// FIXME Last transient in a track can be dropped.
+			if err == io.EOF {
+				err = nil
 			}
+			return err
 		}
 
 		for i := range gs[0][step/2:] {
@@ -182,13 +177,12 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 
 		track += hop
 
-		if ending && track >= end {
-			return nil
-		}
-
 		if aw != nil {
 			_, err = gw.SignalWrite(nil, [][]float64{gs[1], gs[0]})
 			if err != nil {
+				if err == io.EOF {
+					err = nil
+				}
 				return err
 			}
 		}
@@ -222,7 +216,7 @@ func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 			m := cmplx.Abs(x - px*norm(px*cmplx.Conj(ppx)))
 			return m * boolfloat(cmplx.Abs(x) > cmplx.Abs(px))
 		}
-		a.N[w] = bitsafe(max(
+		a.N[w] = signalingBitsafe(max(
 			cnov(a.L[w], a.PL[w], a.PPL[w]),
 			cnov(a.R[w], a.PR[w], a.PPR[w])))
 	}

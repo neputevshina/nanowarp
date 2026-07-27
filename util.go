@@ -22,6 +22,16 @@ func bitsafe(v float64) float64 {
 	return v
 }
 
+func signalingBitsafe(v float64) float64 {
+	if v != v {
+		panic(`NaN detected`)
+	}
+	if math.IsInf(v, 0) {
+		panic(`infinity detected`)
+	}
+	return v
+}
+
 func princarg(phase float64) float64 {
 	pi2 := 2 * math.Pi
 	return phase - math.Round(phase/pi2)*pi2
