@@ -39,7 +39,7 @@ func TestRead(t *testing.T) {
 
 	assert.Equal(t, "1.381496598s", duration.String())
 
-	samples, err := reader.ReadSamples(1)
+	_, samples, err := reader.ReadSamples(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestReadMulaw(t *testing.T) {
 
 	assert.Equal(t, "4.59125s", duration.String())
 
-	samples, err := reader.ReadSamples(1)
+	_, samples, err := reader.ReadSamples(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestReadAlaw(t *testing.T) {
 
 	assert.Equal(t, "4.59125s", duration.String())
 
-	samples, err := reader.ReadSamples(1)
+	_, samples, err := reader.ReadSamples(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func BenchmarkReadSamples(b *testing.B) {
 				reader := NewReader(file)
 
 				for {
-					samples, err := reader.ReadSamples(numSamples)
+					_, samples, err := reader.ReadSamples(make([]Sample, numSamples))
 					if err == io.EOF {
 						break
 					}

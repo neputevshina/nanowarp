@@ -296,9 +296,8 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 
 	// Bypass short ridges on phase reset.
 	c := float64(hp.LongRidgeLength) * stretch
-	upto := hztobin(hp.ResetUpToHz, n.nfft, n.root.fs)
 	for w := range a.Y {
-		if !reset || !allreset && trace[w] > c && w < upto {
+		if !reset || !allreset && trace[w] > c {
 			// Receive normals from the current phase, if not resetting.
 			a.Y[w] = cmplx.Rect(1, a.Ph[w])
 			continue

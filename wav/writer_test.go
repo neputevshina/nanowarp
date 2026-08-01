@@ -25,7 +25,7 @@ func TestWrite(t *testing.T) {
 	var sampleRate uint32 = 44100
 	var bitsPerSample uint16 = 16
 
-	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample)
+	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample, false)
 	samples := make([]Sample, numSamples)
 
 	samples[0].Values[0] = 32767
@@ -66,7 +66,7 @@ func TestWrite(t *testing.T) {
 	assert.Equal(t, fmt.BlockAlign, numChannels*(bitsPerSample/8))
 	assert.Equal(t, fmt.BitsPerSample, bitsPerSample)
 
-	samples, err = reader.ReadSamples()
+	_, samples, err = reader.ReadSamples(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestWrite8BitStereo(t *testing.T) {
 	var sampleRate uint32 = 44100
 	var bitsPerSample uint16 = 8
 
-	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample)
+	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample, false)
 	samples := make([]Sample, numSamples)
 
 	samples[0].Values[0] = 255
@@ -135,7 +135,7 @@ func TestWrite8BitStereo(t *testing.T) {
 	assert.Equal(t, fmt.BlockAlign, numChannels*(bitsPerSample/8))
 	assert.Equal(t, fmt.BitsPerSample, bitsPerSample)
 
-	samples, err = reader.ReadSamples()
+	_, samples, err = reader.ReadSamples(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestWrite24BitStereo(t *testing.T) {
 	var sampleRate uint32 = 44100
 	var bitsPerSample uint16 = 24
 
-	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample)
+	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample, false)
 	samples := make([]Sample, numSamples)
 
 	samples[0].Values[0] = 32767
@@ -204,7 +204,7 @@ func TestWrite24BitStereo(t *testing.T) {
 	assert.Equal(t, fmt.BlockAlign, numChannels*(bitsPerSample/8))
 	assert.Equal(t, fmt.BitsPerSample, bitsPerSample)
 
-	samples, err = reader.ReadSamples()
+	_, samples, err = reader.ReadSamples(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestWrite32BitStereo(t *testing.T) {
 	var sampleRate uint32 = 44100
 	var bitsPerSample uint16 = 32
 
-	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample)
+	writer := NewWriter(outfile, numSamples, numChannels, sampleRate, bitsPerSample, false)
 	samples := make([]Sample, numSamples)
 
 	samples[0].Values[0] = 32767
@@ -273,7 +273,7 @@ func TestWrite32BitStereo(t *testing.T) {
 	assert.Equal(t, fmt.BlockAlign, numChannels*(bitsPerSample/8))
 	assert.Equal(t, fmt.BitsPerSample, bitsPerSample)
 
-	samples, err = reader.ReadSamples()
+	_, samples, err = reader.ReadSamples(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func BenchmarkWriteSamples(b *testing.B) {
 	reader := NewReader(file)
 
 	for {
-		spls, err := reader.ReadSamples(uint32(n))
+		_, spls, err := reader.ReadSamples(make([]Sample, n))
 		if err == io.EOF {
 			break
 		}
@@ -307,7 +307,7 @@ func BenchmarkWriteSamples(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer os.Remove(tmpfile.Name())
-			writer := NewWriter(tmpfile, uint32(len(samples)), 2, 44100, 16)
+			writer := NewWriter(tmpfile, uint32(len(samples)), 2, 44100, 16, false)
 			writer.WriteSamples(samples)
 		}
 	})
