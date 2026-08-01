@@ -29,8 +29,14 @@ func Dump(prr error, b []float64) error {
 }
 
 // DumpWrited prints the waveform of the audio to out.
-func DumpWriter(prr error, out io.Writer, b []float64) error {
-	b = slices.Clone(b)
+func DumpWriter(prr error, out io.Writer, bo []float64) error {
+	b := slices.Clone(bo)[:0]
+
+	// The easiest way to get a continuous line.
+	for e := range bo[1:] {
+		b = append(b, bo[e], bo[e+1])
+	}
+
 	const height = 12
 	const pixheight = height * 3
 	if prr != nil {
@@ -41,7 +47,7 @@ func DumpWriter(prr error, out io.Writer, b []float64) error {
 		return err
 	}
 	w = min(w, len(b))
-	symb := max(1, len(b)/w/2)
+	symb := max(2, len(b)/w/2)
 	gmax, gmin := slices.Max(b), slices.Min(b)
 	absmax := max(gmax, -gmin)
 	if absmax != 0 {
@@ -71,6 +77,7 @@ func DumpWriter(prr error, out io.Writer, b []float64) error {
 			blines[i] = append(blines[i], column[i])
 		}
 	}
+
 	g := func(x, y int) int {
 		if y >= len(blines) {
 			return 0

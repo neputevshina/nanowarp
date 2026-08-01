@@ -25,6 +25,20 @@ func make2(nch, n int) [][]float64 {
 	return g
 }
 
+func copy2(dst [][]float64, src [][]float64) int {
+	if len(dst) != len(src) {
+		panic(`copy2: channel count mismatch`)
+	}
+	n := copy(dst[0], src[0])
+	for ch := range src[1:] {
+		nn := copy(dst[ch+1], src[ch+1])
+		if n != nn {
+			panic(`copy2: buffer size mismatch`)
+		}
+	}
+	return n
+}
+
 func dump(name string, data []float64, fs int) {
 	file, err := os.Create(name)
 	defer file.Close()

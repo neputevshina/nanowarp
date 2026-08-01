@@ -88,6 +88,11 @@ type Hyperparams struct {
 	LongRidgeLength int `default:"8"`
 
 	// Maximum radius of influence of each detected tonal trajectory.
+	// Limits vertical propagation of ridges' region of influence.
+	//
+	// Region of influence a ridge is defined as a set of all linked arrow
+	// chains starting from it, that are not ridges itself, and limited by a sink
+	// (bin that have no arrows exiting from it).
 	// Phase never be reset at this number of bins around the ridge.
 	//
 	// Higher values compromise transient quality over tonal quality.
@@ -95,7 +100,7 @@ type Hyperparams struct {
 
 	// The frequency in hertz above which every bin at the transient
 	// frame will be reset.
-	ResetUpToHz float64 `default:"24000"`
+	ResetUpToHz float64 `default:"999999"`
 }
 
 func New(samplerate int, opts Options) (n *Nanowarp) {
@@ -142,7 +147,6 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 			if err != nil {
 				panic(err)
 			}
-			println(`eee`)
 			pi.Close()
 		}()
 		go func() {
@@ -151,7 +155,6 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 			if err != nil {
 				panic(err)
 			}
-			println(`done`)
 		}()
 		go func() {
 			defer wg.Done()
