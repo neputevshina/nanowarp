@@ -3,6 +3,8 @@ package dspio
 import (
 	"fmt"
 	"io"
+
+	"github.com/neputevshina/nanowarp/waveform"
 )
 
 type GrainReader struct {
@@ -237,7 +239,7 @@ func MonotonicGrainSeeker(r SignalReader) GrainSeeker {
 		r:     r,
 		tmp:   make2(r.NchRead(), 32000),
 		knife: make([][]float64, r.NchRead()),
-		level: 0,
+		first: true,
 	}
 }
 
@@ -246,7 +248,7 @@ type monotonicGrainSeeker struct {
 	level, start, ended int64
 	tmp                 [][]float64
 	knife               [][]float64
-	notfirst            bool
+	first               bool
 }
 
 func (s *monotonicGrainSeeker) NchRead() int { return s.r.NchRead() }
@@ -267,10 +269,12 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	// }
 
 	refill := false
-	intmp := int(offset - m.start)
+	intmp := max(0, int(offset-m.start))
 	// println(m.level, m.start, m.ended)
 	// println(offset, intmp, len(m.tmp[0][intmp:]), len(buf[0]))
-	if offset < 0 {
+	println(offset)
+	if m.first {
+		m.first = false
 		refill = true
 	} else if len(m.tmp[0][intmp:]) < len(buf[0]) {
 		for ch := range nch {
@@ -302,6 +306,7 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	for ch := range nch {
 		copy(buf[ch][-min(0, offset):], m.tmp[ch][max(0, int(offset-m.start)):])
 	}
+	waveform.Dump(nil, buf[0])
 
 	return nil
 }

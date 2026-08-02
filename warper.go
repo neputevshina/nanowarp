@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
+	"github.com/neputevshina/nanowarp/waveform"
 	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/dsp/fourier"
 	"gonum.org/v1/gonum/floats"
@@ -242,7 +243,7 @@ func (n *warper) process6half(in [][]float64, out *dspio.GrainWriter, phasor *Cu
 
 func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Curve) error {
 	nch := in.NchRead()
-	get := func() [][]float64 { return make2[float64](nch, n.nfft) }
+	get := func() [][]float64 { return make2[float64](nch, n.nbuf) }
 	progress := n.root.opts.Progress
 
 	lead := get()
@@ -296,6 +297,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 				clear(grain[ch])
 			}
 		}
+		waveform.Dump(nil, grain[0])
 		_, err = out.SignalWrite(nil, grain)
 		if err != nil {
 			if err == io.EOF {
