@@ -205,6 +205,8 @@ func (n *warper) process6half(in [][]float64, out *dspio.GrainWriter, phasor *Cu
 			}
 		}
 
+		waveform.Dump(nil, crop[0])
+
 		q := n.root.opts.Resets
 		normal, diff, _ := n.advance(crop, futurecrop, c, q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
@@ -227,6 +229,7 @@ func (n *warper) process6half(in [][]float64, out *dspio.GrainWriter, phasor *Cu
 				clear(grain[ch])
 			}
 		}
+		waveform.Dump(nil, grain[0])
 		_, err = out.SignalWrite(nil, grain)
 		if err != nil {
 			if err == io.EOF {
@@ -274,6 +277,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 		if err != nil && err != io.EOF {
 			return err
 		}
+		waveform.Dump(nil, lead[0])
 
 		q := n.root.opts.Resets
 		normal, diff, _ := n.advance(lead, futurecrop, c, q >= -1 && c == 1, q == -1)

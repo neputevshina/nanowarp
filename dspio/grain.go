@@ -3,8 +3,6 @@ package dspio
 import (
 	"fmt"
 	"io"
-
-	"github.com/neputevshina/nanowarp/waveform"
 )
 
 type GrainReader struct {
@@ -306,7 +304,6 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	for ch := range nch {
 		copy(buf[ch][-min(0, offset):], m.tmp[ch][max(0, int(offset-m.start)):])
 	}
-	waveform.Dump(nil, buf[0])
 
 	return nil
 }
