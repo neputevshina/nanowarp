@@ -115,21 +115,26 @@ type GrainWriter struct {
 	outbuss   [][]float64
 	slicebuss [][]float64
 	w         SignalWriter
-	offline   bool
-	primed    bool
+	offline   int
+	toll      int
 }
 
 // NewGrainWriter constructs an overlap-add grain writer.
 func NewGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
-	return newGrainWriter(nfft, hop, w, false)
+	return newGrainWriter(nfft, hop, w, 0)
 }
 
-// NewGrainWriter constructs an offline overlap-add grain writer.
-func NewOfflineGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
-	return newGrainWriter(nfft, hop, w, true)
+// NewOfflineOfflineGrainWriter constructs an offline overlap-add GrainWriter for corresponding offline GrainReader.
+func NewOfflineOfflineGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
+	return newGrainWriter(nfft, hop, w, 1)
 }
 
-func newGrainWriter(nfft, hop int, w SignalWriter, offline bool) (g *GrainWriter) {
+// NewRegularToOfflineGrainWriter constructs an offline overlap-add GrainWriter for non-paired GrainReader.
+func NewRegularToOfflineGrainWriter(nfft, hop int, w SignalWriter) (g *GrainWriter) {
+	return newGrainWriter(nfft, hop, w, 2)
+}
+
+func newGrainWriter(nfft, hop int, w SignalWriter, offline int) (g *GrainWriter) {
 	nch := w.NchWrite()
 	g = &GrainWriter{
 		Hop:       hop,
@@ -139,6 +144,12 @@ func newGrainWriter(nfft, hop int, w SignalWriter, offline bool) (g *GrainWriter
 		slicebuss: make([][]float64, nch),
 		w:         w,
 		offline:   offline}
+	switch offline {
+	case 1:
+		g.toll = -hop
+	case 2:
+		g.toll = -nfft - hop
+	}
 	for ch := range nch {
 		g.outbuss[ch] = make([]float64, nfft*3)
 	}
@@ -148,14 +159,14 @@ func newGrainWriter(nfft, hop int, w SignalWriter, offline bool) (g *GrainWriter
 // N returns the grain size of this writer in samples.
 func (w *GrainWriter) N() int { return w.n }
 
-func (r *GrainWriter) Offline() bool { return r.offline }
+func (r *GrainWriter) Offline() int { return r.offline }
 
 // SignalWrite writes the next overlap-added grain to the output.
 // It returns the amount of samples written to the output (at least r.Hop),
 // but adds the whole buffer to the accumulator, so data in grain is expected to be
 // different each time.
 //
-// In offline mode the first call skips its write step entirely.
+// In offline mode first nfft+Hop samples are skipped.
 //
 // SignalWrite takes no more than nfft samples from each channel of grain.
 func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err error) {
@@ -170,8 +181,8 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 	}
 
 	s := 0
-	if w.offline && !w.primed {
-		w.primed = true
+	if w.offline > 0 && w.toll < 0 {
+		w.toll += w.Hop
 		s = w.Hop
 	} else {
 		for s < w.Hop {
@@ -289,11 +300,7 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	}
 
 	for ch := range nch {
-		if offset < 0 {
-			copy(buf[ch][-max(0, offset):], m.tmp[ch][max(0, int(offset-m.start)):])
-		} else {
-			copy(buf[ch], m.tmp[ch][int(offset-m.start):])
-		}
+		copy(buf[ch][-min(0, offset):], m.tmp[ch][max(0, int(offset-m.start)):])
 	}
 
 	return nil

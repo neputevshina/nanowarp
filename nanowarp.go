@@ -167,12 +167,19 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 		phasor = c
 	}
 
-	secondread := wsr()
-	mgs := dspio.MonotonicGrainSeeker(secondread)
-	grw := dspio.NewGrainWriter(n.warper.nbuf, n.warper.hop, w)
-	n.warper.processFinal(mgs, grw, phasor)
+	println(phasor)
 
-	// n.warper.process6([][]float64{lin, rin}, [][]float64{lout, rout}, phasor)
+	secondread := wsr()
+
+	d, err := dspio.ReadAll(nil, secondread)
+	if err != nil {
+		panic(err)
+	}
+	// mgs := dspio.MonotonicGrainSeeker(secondread)
+	grw := dspio.NewRegularToOfflineGrainWriter(n.warper.nbuf, n.warper.hop, w)
+	// n.warper.processFinal(mgs, grw, phasor)
+
+	n.warper.process6half(d, grw, phasor)
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {

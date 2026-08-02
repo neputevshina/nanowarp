@@ -97,7 +97,7 @@ func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}
 	gr := dspio.NewOfflineGrainReader(n.nfft, n.hop, ar)
-	gw := dspio.NewOfflineGrainWriter(n.nfft, n.hop, aw)
+	gw := dspio.NewOfflineOfflineGrainWriter(n.nfft, n.hop, aw)
 	gs := make([][]float64, 2)
 	for ch := range gs {
 		gs[ch] = make([]float64, n.nfft)
@@ -142,7 +142,7 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 	gr := dspio.NewOfflineGrainReader(step, hop, ar)
 	var gw *dspio.GrainWriter
 	if aw != nil {
-		gw = dspio.NewOfflineGrainWriter(step, hop, aw)
+		gw = dspio.NewOfflineOfflineGrainWriter(step, hop, aw)
 	}
 	gs := make([][]float64, 2)
 	for ch := range gs {

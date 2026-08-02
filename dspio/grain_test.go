@@ -152,7 +152,7 @@ func TestGrainWriterOfflineSkipsLeadingZeros(t *testing.T) {
 	// nfft=4, hop=2: without offline, first 2 output samples are zeros;
 	// with offline those zeros are skipped.
 	aw := newMockWriter(1)
-	w := NewOfflineGrainWriter(4, 2, aw)
+	w := NewOfflineOfflineGrainWriter(4, 2, aw)
 	g := make2(1, 4)
 	for i := range g[0] {
 		g[0][i] = 1
@@ -178,7 +178,7 @@ func TestGrainRoundTripOffline(t *testing.T) {
 	ar := &mockReader{data: [][]float64{input}, hop: hop}
 	aw := newMockWriter(1)
 	gr := NewOfflineGrainReader(nfft, hop, ar)
-	gw := NewOfflineGrainWriter(nfft, hop, aw)
+	gw := NewOfflineOfflineGrainWriter(nfft, hop, aw)
 
 	g := make2(1, nfft)
 	for range 3 {
