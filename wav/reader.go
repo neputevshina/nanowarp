@@ -85,8 +85,6 @@ func (r *Reader) ReadSamples(samples []Sample) (numSamples int, out []Sample, er
 	n, err = r.Read(bytes)
 	numSamples = n / blockAlign
 
-	println(err)
-
 	if err != nil {
 		return
 	}

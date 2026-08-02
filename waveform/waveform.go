@@ -108,7 +108,7 @@ func DumpWriter(prr error, out io.Writer, bo []float64) error {
 
 	sa := fmt.Sprint(gmax)
 	f := fmt.Sprintf("%%s%%%dd\n", w-len(sa))
-	fmt.Fprintf(out, f, sa, len(b))
+	fmt.Fprintf(out, f, sa, len(bo))
 	for _, l := range lines {
 		_, err := out.Write([]byte(string(l[:w])))
 		if err != nil {

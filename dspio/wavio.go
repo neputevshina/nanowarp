@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/neputevshina/nanowarp/wav"
+	"github.com/neputevshina/nanowarp/waveform"
 	"github.com/youpy/go-riff"
 )
 
@@ -101,6 +102,8 @@ func (w *WavSignalWriter) SignalWrite(prr error, buf [][]float64) (n int, err er
 	if prr != nil {
 		return 0, prr
 	}
+
+	waveform.Dump(nil, buf[0])
 
 	nbuf := len(buf[0])
 	sabuf := make([]wav.Sample, 0, nbuf)

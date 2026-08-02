@@ -137,7 +137,7 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}
-	step := even(int(float64(n.m.maxN) / stretch))
+	step := even(int(float64(n.m.maxN)))
 	hop := step / 2
 	gr := dspio.NewOfflineGrainReader(step, hop, ar)
 	var gw *dspio.GrainWriter

@@ -173,7 +173,6 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 
 	lead := get()
 	grain := get()
-	crop := make([][]float64, nch)
 	futurecrop := make([][]float64, nch)
 
 	lastone := 0
@@ -198,7 +197,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 		}
 
 		q := n.root.opts.Resets
-		normal, diff, _ := n.advance(crop, futurecrop, c, q >= -1 && c == 1, q == -1)
+		normal, diff, _ := n.advance(lead, futurecrop, c, q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
 
 		d := j - lastone

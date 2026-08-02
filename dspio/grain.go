@@ -259,7 +259,9 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	intmp := int(offset - m.start)
 	// println(m.level, m.start, m.ended)
 	// println(offset, intmp, len(m.tmp[0][intmp:]), len(buf[0]))
-	if len(m.tmp[0][intmp:]) < len(buf[0]) {
+	if offset < 0 {
+		refill = true
+	} else if len(m.tmp[0][intmp:]) < len(buf[0]) {
 		for ch := range nch {
 			copy(m.tmp[ch], m.tmp[ch][intmp:]) // =: n
 		}
@@ -273,7 +275,6 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 				m.knife[ch] = m.tmp[ch][m.level:]
 			}
 			n, err := m.r.SignalRead(nil, m.knife)
-			println(n)
 			if n == 0 {
 				return io.ErrNoProgress
 			}
@@ -286,8 +287,13 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 			return io.EOF
 		}
 	}
+
 	for ch := range nch {
-		copy(buf[ch], m.tmp[ch][int(offset-m.start):])
+		if offset < 0 {
+			copy(buf[ch][-max(0, offset):], m.tmp[ch][max(0, int(offset-m.start)):])
+		} else {
+			copy(buf[ch], m.tmp[ch][int(offset-m.start):])
+		}
 	}
 
 	return nil

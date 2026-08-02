@@ -76,10 +76,10 @@ func (c *Curve) Sample(i float64) (j float64, oflow int) {
 
 func (c *Curve) ReverseSample(j float64) (i float64) {
 	if j >= c.end.J {
-		return c.end.I
+		return c.end.I + j - c.end.J
 	}
 	if j < c.start.J {
-		return c.start.I
+		return c.start.I + j - c.start.J
 	}
 	f := c.ReverseBetween(j)
 	nj := unmix(c.elems[f].J, c.elems[f+1].J, j)
