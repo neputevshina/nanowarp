@@ -186,8 +186,7 @@ func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
 	nch := int(r.fmtchunk.NChannels)
 	for i := range buf[0] {
 		for ch := range nch {
-			// println(i, (i*nch+ch)*int(r.fmtchunk.NBlockAlign), len(buf[0]))
-			copy(sasa[:], bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/int(nch):])
+			copy(sasa[:], bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/r.bytespersa:])
 			binary.Decode(sasa[:], binary.LittleEndian, &sa)
 			sa += 1 << (nbits - 1)
 			sa &= uint64(1<<nbits - 1)
