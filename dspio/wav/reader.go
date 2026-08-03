@@ -91,12 +91,19 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Validate format.
 	wavfmt := Format(r.fmtchunk.WFormatTag)
-	if !(wavfmt == FormatPCM || wavfmt == FormatFloat) {
+	if !(wavfmt == FormatPCM || wavfmt == FormatFloat ||
+		wavfmt == FormatALaw || wavfmt == FormatMuLaw) {
 		return nil, UnsupportedFormat
 	}
 	if wavfmt == FormatFloat {
 		if !(r.fmtchunk.WBitsPerSample == 32 || r.fmtchunk.WBitsPerSample == 64) {
+			return nil, Malformed
+		}
+	}
+	if wavfmt == FormatALaw || wavfmt == FormatMuLaw {
+		if r.fmtchunk.WBitsPerSample != 8 {
 			return nil, Malformed
 		}
 	}
@@ -170,9 +177,9 @@ func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 
 	switch r.fmtchunk.WFormatTag {
 	case FormatALaw:
-		decodeCompanded(r, r.readbuf, buf, 0)
+		decodeCompanded(r, r.readbuf, buf, false)
 	case FormatMuLaw:
-		decodeCompanded(r, r.readbuf, buf, 1)
+		decodeCompanded(r, r.readbuf, buf, true)
 	case FormatPCM:
 		decodeInteger(r, int(r.fmtchunk.WBitsPerSample), r.readbuf, buf)
 	case FormatFloat:
@@ -188,15 +195,18 @@ func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	return n, nil
 }
 
-func decodeCompanded(r *Reader, bbuf []byte, buf [][]float64, law int) {
+func decodeCompanded(r *Reader, bbuf []byte, buf [][]float64, ulaw bool) {
 	var sa byte
 	nch := int(r.fmtchunk.NChannels)
 	for i := range buf[0] {
 		for ch := range nch {
-			sl := bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/r.bytespersa:]
-			binary.Decode(sl, binary.LittleEndian, &sa)
-			dec := []func(byte) int16{g711.DecodeAlawFrame, g711.DecodeUlawFrame}[law]
-			buf[ch][i] = float64(dec(sa)) / float64(1<<15)
+			sa = bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/r.bytespersa:][0]
+			if ulaw {
+				buf[ch][i] = float64(g711.DecodeUlawFrame(sa)) / float64(1<<15)
+			} else {
+				buf[ch][i] = float64(g711.DecodeAlawFrame(sa)) / float64(1<<15)
+			}
+
 		}
 	}
 }
@@ -208,6 +218,7 @@ func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
 	for i := range buf[0] {
 		for ch := range nch {
 			copy(sasa[:], bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/r.bytespersa:])
+			// NOTE(neputevshina): This call is inlined.
 			binary.Decode(sasa[:], binary.LittleEndian, &sa)
 			sa += 1 << (nbits - 1)
 			sa &= uint64(1<<nbits - 1)
@@ -220,6 +231,7 @@ func decodeFloat[T constraints.Float](r *Reader, bbuf []byte, buf [][]float64) {
 	var sa T
 	for i := range buf {
 		for ch := range int(r.fmtchunk.NChannels) {
+			// NOTE(neputevshina): This call is inlined.
 			binary.Decode(bbuf[i+ch*int(r.fmtchunk.NChannels):][:int(r.fmtchunk.NBlockAlign)/int(r.fmtchunk.NChannels)],
 				binary.LittleEndian, &sa)
 			buf[ch][i] = float64(sa)
