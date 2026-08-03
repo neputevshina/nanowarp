@@ -37,10 +37,10 @@ type fmtchunk struct {
 	SubFormat           [16]byte
 }
 
-// Cue is a pointer to a RIFF section in a file.
+// Section is a pointer to a RIFF section in a file.
 //
-// Seek points to the start of data, start of the section itself is at Seek - 8.
-type Cue struct {
+// Seek points to the start of data, start of the section itself is 8 bytes before Seek.
+type Section struct {
 	Seek   int64
 	FourCC [4]byte
 	Size   uint32

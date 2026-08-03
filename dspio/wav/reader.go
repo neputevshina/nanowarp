@@ -14,14 +14,14 @@ type Reader struct {
 	readbuf []byte
 	rs      io.ReadSeeker
 
-	data       Cue // Start of sample data in bytes
+	data       Section // Start of sample data in bytes
 	riff       riffHeader
 	bytespersa int // Bytes per each single-channel sample
 	fmtchunk   fmtchunk
 
 	// A list of all second-level RIFF headers identified in a file,
 	// except `WAVE` and `fmt `.
-	Headermap []Cue
+	Headermap []Section
 }
 
 // Properties returns all relevant properties of a file.
@@ -126,7 +126,7 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 			return nil, err
 		}
 
-		q := Cue{
+		q := Section{
 			Seek:   seek,
 			FourCC: data.Fourcc,
 			Size:   data.Cksize,
@@ -152,6 +152,61 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// Rewind seeks the file to the start of sample data.
+func (r *Reader) Rewind() (err error) {
+	_, err = r.rs.Seek(r.data.Seek, io.SeekStart)
+	return
+}
+
+// InfoChunk reads the INFO chunk from the file if there is one.
+// If chunk is not found, data is nil.
+//
+// InfoChunk assumes that there is none or only one INFO chunk in a file, but could be many chunks inside of it.
+//
+// If finished without error, it automatically rewinds r after reading the chunk.
+func (r *Reader) InfoChunk() (data map[[4]byte][]string, err error) {
+	siz := int64(0)
+	for _, m := range r.Headermap {
+		siz = int64(m.Size)
+		if string(m.FourCC[:]) == `LIST` {
+			_, err := r.rs.Seek(m.Seek, io.SeekStart)
+			if err != nil {
+				return nil, err
+			}
+
+			var sub [4]byte
+			err = binary.Read(r.rs, binary.LittleEndian, &sub)
+			if err != nil {
+				return nil, err
+			}
+			if string(sub[:]) == `INFO` {
+				goto found
+			}
+		}
+	}
+	return nil, r.Rewind()
+
+found:
+	data = make(map[[4]byte][]string)
+	for toll := int64(siz) - 4; toll > 0; {
+		var head riffHeader
+		err := binary.Read(r.rs, binary.LittleEndian, &head)
+		if err != nil {
+			return nil, err
+		}
+		toll -= 8
+		str := make([]byte, head.Cksize)
+		_, err = r.rs.Read(str)
+		if err != nil {
+			return nil, err
+		}
+		data[head.Fourcc] = append(data[head.Fourcc], string(str))
+		toll -= int64(head.Cksize)
+	}
+
+	return data, r.Rewind()
 }
 
 var _ dspio.SignalReader = &Reader{}

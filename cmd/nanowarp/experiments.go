@@ -118,6 +118,8 @@ func experiments(n int, inputfile *os.File, output string) {
 		if err != nil {
 			panic(err)
 		}
+		println(wsr.InfoChunk())
+
 		pps := wsr.Properties()
 		wsw, err := NewWavSignalWriter(err, of, pps.Samples, pps.Nch, pps.Samplerate)
 		if err != nil {
