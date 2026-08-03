@@ -71,6 +71,9 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
+- Reverse-engineer FabFilter Pro-L 2 “Dynamic” mode using technique from [Tokyo Dawn Labs](https://t.me/tokyodawnlabsru/547).
+  Dynamic, because from my and [Zvukar Bombit](https://www.youtube.com/@zvukarbombit) experience, it's the best sounding 
+  mode in most cases.
 - We need a `dspio` WAV SignalReader/Writer written from scratch.
   **DO NOT USE youpy/wav IN YOUR PROJECTS, IT SILENTLY QUANTIZES FLOAT32 SAMPLES TO INT!!!**
   - Reader is done and is in dspio/wav
@@ -96,7 +99,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues
-- BUG: When shrinking, Nanowarp outputs silence after output length × stretch factor numbef of samples.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
