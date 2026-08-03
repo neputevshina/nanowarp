@@ -6,7 +6,7 @@ var NotAWav = errors.New(`not a WAV file`)
 var Malformed = errors.New(`malformed WAV file`)
 var UnsupportedFormat = errors.New(`file is a WAV, but not in linear PCM or IEEE float format`)
 
-type Format int
+type Format uint16
 
 const (
 	FormatPCM        Format = 0x0001
@@ -25,7 +25,7 @@ type Properties struct {
 }
 
 type fmtchunk struct {
-	WFormatTag          uint16
+	WFormatTag          Format
 	NChannels           uint16
 	NSamplesPerSec      uint32
 	NAvgBytesPerSec     uint32

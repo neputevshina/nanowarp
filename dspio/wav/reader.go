@@ -3,9 +3,16 @@ package wav
 import (
 	"encoding/binary"
 	"io"
+	"math"
+
+	"github.com/neputevshina/nanowarp/dspio"
+	"golang.org/x/exp/constraints"
 )
 
 type Reader struct {
+	readbuf []byte
+	rs      io.ReadSeeker
+
 	data Cue // Start of sample data in bytes
 	riff riffHeader
 	fmtchunk
@@ -25,6 +32,7 @@ func (r *Reader) Properties() Properties {
 
 func NewReader(rs io.ReadSeeker) (*Reader, error) {
 	r := Reader{}
+	r.rs = rs
 
 	err := binary.Read(rs, binary.LittleEndian, r.riff)
 	if err != nil {
@@ -127,4 +135,61 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+var _ dspio.SignalReader = &Reader{}
+
+// NchRead returns the number of channels in a WAV file.
+func (r *Reader) NchRead() int {
+	return int(r.NChannels)
+}
+
+// SignalRead reads a non-overlapped multichannel grain of size len(buf[0]) from the input.
+func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
+	blen := len(buf[0]) * int(r.NChannels) * int(r.NBlockAlign)
+	if len(r.readbuf) < blen {
+		r.readbuf = make([]byte, blen)
+	}
+	r.readbuf = r.readbuf[:blen]
+
+	nbs, berr := r.rs.Read(r.readbuf)
+	n = nbs / int(r.NChannels) / int(r.NBlockAlign)
+	if berr != nil {
+		return n, err
+	}
+
+	switch r.WFormatTag {
+	case FormatPCM:
+		decodeInteger(r, int(r.WBitsPerSample), r.readbuf, buf)
+	case FormatFloat:
+		switch r.WBitsPerSample {
+		case 32:
+			decodeFloat[float32](r, r.readbuf, buf)
+		case 64:
+			decodeFloat[float64](r, r.readbuf, buf)
+		default:
+			panic(`fatal: early WAV file format verification failed`)
+		}
+	}
+	return n, nil
+}
+
+func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
+	var sa uint64
+	for i := range buf {
+		for ch := range int(r.NChannels) {
+			binary.Decode(bbuf[i+ch*int(r.NChannels):][:int(r.NBlockAlign)], binary.LittleEndian, sa)
+			buf[ch][i] = float64(sa)/math.Pow(2, float64(nbits)-1) - 1
+		}
+	}
+}
+
+func decodeFloat[T constraints.Float](r *Reader, bbuf []byte, buf [][]float64) {
+	var sa T
+	for i := range buf {
+		for ch := range int(r.NChannels) {
+			binary.Decode(bbuf[i+ch*int(r.NChannels):][:int(r.NBlockAlign)], binary.LittleEndian, sa)
+			buf[ch][i] = float64(sa)
+		}
+	}
 }
