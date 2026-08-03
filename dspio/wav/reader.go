@@ -13,9 +13,9 @@ type Reader struct {
 	readbuf []byte
 	rs      io.ReadSeeker
 
-	data Cue // Start of sample data in bytes
-	riff riffHeader
-	fmtchunk
+	data     Cue // Start of sample data in bytes
+	riff     riffHeader
+	fmtchunk fmtchunk
 
 	// A list of all second-level RIFF headers identified in a file,
 	// except `WAVE` and `fmt `.
@@ -24,9 +24,11 @@ type Reader struct {
 
 func (r *Reader) Properties() Properties {
 	return Properties{
-		Samples:    int(r.data.Size) / int(r.NBlockAlign),
-		Bytes:      int(r.riff.cksize) + 8, // Count RIFFxxxx 8-byte header too
+		Samples:    int(r.data.Size) / int(r.fmtchunk.NBlockAlign),
+		Bytes:      int(r.riff.Cksize) + 8, // Count RIFFxxxx 8-byte header too
 		Samplerate: int(r.fmtchunk.NSamplesPerSec),
+		Nch:        int(r.fmtchunk.NChannels),
+		Format:     r.fmtchunk.WFormatTag,
 	}
 }
 
@@ -34,16 +36,16 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 	r := Reader{}
 	r.rs = rs
 
-	err := binary.Read(rs, binary.LittleEndian, r.riff)
+	err := binary.Read(rs, binary.LittleEndian, &r.riff)
 	if err != nil {
 		return nil, err
 	}
-	if string(r.riff.fourcc[:]) != `RIFF` {
+	if string(r.riff.Fourcc[:]) != `RIFF` {
 		return nil, NotAWav
 	}
 
 	var WAVE [4]byte
-	err = binary.Read(rs, binary.LittleEndian, WAVE)
+	err = binary.Read(rs, binary.LittleEndian, &WAVE)
 	if err != nil {
 		return nil, err
 	}
@@ -52,11 +54,11 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 	}
 
 	var fmt riffHeader
-	err = binary.Read(rs, binary.LittleEndian, fmt)
+	err = binary.Read(rs, binary.LittleEndian, &fmt)
 	if err != nil {
 		return nil, err
 	}
-	if string(fmt.fourcc[:]) != `fmt ` {
+	if string(fmt.Fourcc[:]) != `fmt ` {
 		return nil, Malformed
 	}
 
@@ -65,23 +67,23 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = binary.Read(rs, binary.LittleEndian, r.fmtchunk)
+	err = binary.Read(rs, binary.LittleEndian, &r.fmtchunk)
 	if err != nil {
 		return nil, err
 	}
 	// Cut unpopulated data.
-	if fmt.cksize == 16 || fmt.cksize == 18 {
+	if fmt.Cksize == 16 || fmt.Cksize == 18 {
 		r.fmtchunk.CbSize = 0
 		r.fmtchunk.WValidBitsPerSample = 0
 		r.fmtchunk.DwChannelMask = 0
 		r.fmtchunk.SubFormat = [16]byte{}
-	} else if fmt.cksize != 40 {
+	} else if fmt.Cksize != 40 {
 		// Only allowed sizes for fmt chunk are 16, 18 and 40 bytes.
 		return nil, Malformed
 	}
 
 	// Skip fmt chunk correctly.
-	_, err = rs.Seek(pre+int64(fmt.cksize), io.SeekStart)
+	_, err = rs.Seek(pre+int64(fmt.Cksize), io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
@@ -90,14 +92,14 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 		return nil, UnsupportedFormat
 	}
 	if wavfmt == FormatFloat {
-		if !(r.WBitsPerSample == 32 || r.WBitsPerSample == 64) {
+		if !(r.fmtchunk.WBitsPerSample == 32 || r.fmtchunk.WBitsPerSample == 64) {
 			return nil, Malformed
 		}
 	}
 
 	for {
 		var data riffHeader
-		err = binary.Read(rs, binary.LittleEndian, data)
+		err = binary.Read(rs, binary.LittleEndian, &data)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -111,15 +113,15 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 
 		q := Cue{
 			Seek:   seek,
-			FourCC: data.fourcc,
-			Size:   data.cksize,
+			FourCC: data.Fourcc,
+			Size:   data.Cksize,
 		}
 		r.Headermap = append(r.Headermap, q)
-		if string(data.fourcc[:]) == `data` {
+		if string(data.Fourcc[:]) == `data` {
 			r.data = q
 		}
 
-		_, err = rs.Seek(int64(data.cksize), io.SeekCurrent)
+		_, err = rs.Seek(int64(data.Cksize), io.SeekCurrent)
 		if err != nil {
 			if r.data.Seek != 0 && err == io.EOF {
 				// Malformed, but workable.
@@ -141,28 +143,28 @@ var _ dspio.SignalReader = &Reader{}
 
 // NchRead returns the number of channels in a WAV file.
 func (r *Reader) NchRead() int {
-	return int(r.NChannels)
+	return int(r.fmtchunk.NChannels)
 }
 
 // SignalRead reads a non-overlapped multichannel grain of size len(buf[0]) from the input.
 func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
-	blen := len(buf[0]) * int(r.NChannels) * int(r.NBlockAlign)
+	blen := len(buf[0]) * int(r.fmtchunk.NChannels) * int(r.fmtchunk.NBlockAlign)
 	if len(r.readbuf) < blen {
 		r.readbuf = make([]byte, blen)
 	}
 	r.readbuf = r.readbuf[:blen]
 
-	nbs, berr := r.rs.Read(r.readbuf)
-	n = nbs / int(r.NChannels) / int(r.NBlockAlign)
-	if berr != nil {
+	nbs, err := r.rs.Read(r.readbuf)
+	n = nbs / int(r.fmtchunk.NChannels) / int(r.fmtchunk.NBlockAlign)
+	if err != nil {
 		return n, err
 	}
 
-	switch r.WFormatTag {
+	switch r.fmtchunk.WFormatTag {
 	case FormatPCM:
-		decodeInteger(r, int(r.WBitsPerSample), r.readbuf, buf)
+		decodeInteger(r, int(r.fmtchunk.WBitsPerSample), r.readbuf, buf)
 	case FormatFloat:
-		switch r.WBitsPerSample {
+		switch r.fmtchunk.WBitsPerSample {
 		case 32:
 			decodeFloat[float32](r, r.readbuf, buf)
 		case 64:
@@ -175,10 +177,13 @@ func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 }
 
 func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
+	var sasa [8]byte
 	var sa uint64
 	for i := range buf {
-		for ch := range int(r.NChannels) {
-			binary.Decode(bbuf[i+ch*int(r.NChannels):][:int(r.NBlockAlign)], binary.LittleEndian, sa)
+		for ch := range int(r.fmtchunk.NChannels) {
+			copy(sasa[:], bbuf[i+ch*int(r.fmtchunk.NChannels):][:int(r.fmtchunk.NBlockAlign)/int(r.fmtchunk.NChannels)])
+			binary.Decode(sasa[:], binary.LittleEndian, &sa)
+			sa &= uint64(1<<nbits - 1)
 			buf[ch][i] = float64(sa)/math.Pow(2, float64(nbits)-1) - 1
 		}
 	}
@@ -187,8 +192,9 @@ func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
 func decodeFloat[T constraints.Float](r *Reader, bbuf []byte, buf [][]float64) {
 	var sa T
 	for i := range buf {
-		for ch := range int(r.NChannels) {
-			binary.Decode(bbuf[i+ch*int(r.NChannels):][:int(r.NBlockAlign)], binary.LittleEndian, sa)
+		for ch := range int(r.fmtchunk.NChannels) {
+			binary.Decode(bbuf[i+ch*int(r.fmtchunk.NChannels):][:int(r.fmtchunk.NBlockAlign)/int(r.fmtchunk.NChannels)],
+				binary.LittleEndian, &sa)
 			buf[ch][i] = float64(sa)
 		}
 	}

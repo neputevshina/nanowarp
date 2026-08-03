@@ -17,7 +17,7 @@ const (
 )
 
 type Properties struct {
-	Samples    int    // Amount of multichannel samples in file
+	Samples    int    // Length of file in number of multichannel samples
 	Bytes      int    // Length of file in bytes per its RIFF header
 	Samplerate int    // Samples per second
 	Nch        int    // Number of channels
@@ -47,6 +47,6 @@ type Cue struct {
 }
 
 type riffHeader struct {
-	fourcc [4]byte
-	cksize uint32
+	Fourcc [4]byte
+	Cksize uint32
 }
