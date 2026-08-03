@@ -3,7 +3,6 @@ package wav
 import (
 	"encoding/binary"
 	"io"
-	"math"
 
 	"github.com/neputevshina/nanowarp/dspio"
 	"golang.org/x/exp/constraints"
@@ -13,9 +12,10 @@ type Reader struct {
 	readbuf []byte
 	rs      io.ReadSeeker
 
-	data     Cue // Start of sample data in bytes
-	riff     riffHeader
-	fmtchunk fmtchunk
+	data       Cue // Start of sample data in bytes
+	riff       riffHeader
+	bytespersa int // Bytes per each single-channel sample
+	fmtchunk   fmtchunk
 
 	// A list of all second-level RIFF headers identified in a file,
 	// except `WAVE` and `fmt `.
@@ -96,6 +96,10 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 			return nil, Malformed
 		}
 	}
+	r.bytespersa = int(r.fmtchunk.WBitsPerSample >> 3)
+	if r.fmtchunk.WBitsPerSample&7 > 0 {
+		r.bytespersa++
+	}
 
 	for {
 		var data riffHeader
@@ -148,14 +152,14 @@ func (r *Reader) NchRead() int {
 
 // SignalRead reads a non-overlapped multichannel grain of size len(buf[0]) from the input.
 func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
-	blen := len(buf[0]) * int(r.fmtchunk.NChannels) * int(r.fmtchunk.NBlockAlign)
+	blen := len(buf[0]) * int(r.fmtchunk.NBlockAlign)
 	if len(r.readbuf) < blen {
 		r.readbuf = make([]byte, blen)
 	}
 	r.readbuf = r.readbuf[:blen]
 
 	nbs, err := r.rs.Read(r.readbuf)
-	n = nbs / int(r.fmtchunk.NChannels) / int(r.fmtchunk.NBlockAlign)
+	n = nbs / int(r.fmtchunk.NBlockAlign)
 	if err != nil {
 		return n, err
 	}
@@ -179,12 +183,15 @@ func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
 	var sasa [8]byte
 	var sa uint64
-	for i := range buf {
-		for ch := range int(r.fmtchunk.NChannels) {
-			copy(sasa[:], bbuf[i+ch*int(r.fmtchunk.NChannels):][:int(r.fmtchunk.NBlockAlign)/int(r.fmtchunk.NChannels)])
+	nch := int(r.fmtchunk.NChannels)
+	for i := range buf[0] {
+		for ch := range nch {
+			// println(i, (i*nch+ch)*int(r.fmtchunk.NBlockAlign), len(buf[0]))
+			copy(sasa[:], bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/int(nch):])
 			binary.Decode(sasa[:], binary.LittleEndian, &sa)
+			sa += 1 << (nbits - 1)
 			sa &= uint64(1<<nbits - 1)
-			buf[ch][i] = float64(sa)/math.Pow(2, float64(nbits)-1) - 1
+			buf[ch][i] = float64(sa)/float64(int(1)<<(nbits-1)) - 1
 		}
 	}
 }

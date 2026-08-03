@@ -110,4 +110,19 @@ func experiments(n int, inputfile *os.File, output string) {
 		}()
 		wg.Wait()
 	}
+	if n == 6 {
+		// Bypass
+		of, err := os.Create(output)
+		defer of.Close()
+		wsr, err := nwav.NewReader(inputfile)
+		if err != nil {
+			panic(err)
+		}
+		pps := wsr.Properties()
+		wsw, err := NewWavSignalWriter(err, of, pps.Samples, pps.Nch, pps.Samplerate)
+		if err != nil {
+			panic(err)
+		}
+		dspio.Copy(nil, wsr, wsw, nil)
+	}
 }
