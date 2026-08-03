@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"sync"
 
@@ -118,7 +119,10 @@ func experiments(n int, inputfile *os.File, output string) {
 		if err != nil {
 			panic(err)
 		}
-		println(wsr.InfoChunk())
+		m, _ := wsr.InfoChunk()
+		for k, v := range m {
+			fmt.Println(string(k[:]), v)
+		}
 
 		pps := wsr.Properties()
 		wsw, err := NewWavSignalWriter(err, of, pps.Samples, pps.Nch, pps.Samplerate)

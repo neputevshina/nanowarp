@@ -160,55 +160,6 @@ func (r *Reader) Rewind() (err error) {
 	return
 }
 
-// InfoChunk reads the INFO chunk from the file if there is one.
-// If chunk is not found, data is nil.
-//
-// InfoChunk assumes that there is none or only one INFO chunk in a file, but could be many chunks inside of it.
-//
-// If finished without error, it automatically rewinds r after reading the chunk.
-func (r *Reader) InfoChunk() (data map[[4]byte][]string, err error) {
-	siz := int64(0)
-	for _, m := range r.Headermap {
-		siz = int64(m.Size)
-		if string(m.FourCC[:]) == `LIST` {
-			_, err := r.rs.Seek(m.Seek, io.SeekStart)
-			if err != nil {
-				return nil, err
-			}
-
-			var sub [4]byte
-			err = binary.Read(r.rs, binary.LittleEndian, &sub)
-			if err != nil {
-				return nil, err
-			}
-			if string(sub[:]) == `INFO` {
-				goto found
-			}
-		}
-	}
-	return nil, r.Rewind()
-
-found:
-	data = make(map[[4]byte][]string)
-	for toll := int64(siz) - 4; toll > 0; {
-		var head riffHeader
-		err := binary.Read(r.rs, binary.LittleEndian, &head)
-		if err != nil {
-			return nil, err
-		}
-		toll -= 8
-		str := make([]byte, head.Cksize)
-		_, err = r.rs.Read(str)
-		if err != nil {
-			return nil, err
-		}
-		data[head.Fourcc] = append(data[head.Fourcc], string(str))
-		toll -= int64(head.Cksize)
-	}
-
-	return data, r.Rewind()
-}
-
 var _ dspio.SignalReader = &Reader{}
 
 // NchRead returns the number of channels in a WAV file.
@@ -272,7 +223,7 @@ func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
 	nch := int(r.fmtchunk.NChannels)
 	for i := range buf[0] {
 		for ch := range nch {
-			copy(sasa[:], bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/r.bytespersa:])
+			copy(sasa[:], bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/nch:])
 			// NOTE(neputevshina): This call is inlined.
 			binary.Decode(sasa[:], binary.LittleEndian, &sa)
 			sa += 1 << (nbits - 1)
@@ -284,12 +235,69 @@ func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
 
 func decodeFloat[T constraints.Float](r *Reader, bbuf []byte, buf [][]float64) {
 	var sa T
-	for i := range buf {
+	nch := int(r.fmtchunk.NChannels)
+	for i := range buf[0] {
 		for ch := range int(r.fmtchunk.NChannels) {
 			// NOTE(neputevshina): This call is inlined.
-			binary.Decode(bbuf[i+ch*int(r.fmtchunk.NChannels):][:int(r.fmtchunk.NBlockAlign)/int(r.fmtchunk.NChannels)],
+			binary.Decode(bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/nch:],
 				binary.LittleEndian, &sa)
 			buf[ch][i] = float64(sa)
 		}
 	}
+}
+
+func even[T constraints.Integer](x T) T {
+	return x + x%2
+}
+
+// InfoChunk reads the INFO chunk from the file if there is one.
+// If chunk is not found, data is nil.
+//
+// InfoChunk assumes that there is none or only one INFO chunk in a file, but could be many chunks inside of it.
+//
+// If finished without error, it automatically rewinds r after reading the chunk.
+//
+// More advanced user might consider reading ID3 tags from files.
+// Those can be read manually using chunk pointer information in r.Headermap.
+func (r *Reader) InfoChunk() (data map[[4]byte][]string, err error) {
+	siz := int64(0)
+	for _, m := range r.Headermap {
+		siz = int64(m.Size)
+		if string(m.FourCC[:]) == `LIST` {
+			_, err := r.rs.Seek(m.Seek, io.SeekStart)
+			if err != nil {
+				return nil, err
+			}
+
+			var sub [4]byte
+			err = binary.Read(r.rs, binary.LittleEndian, &sub)
+			if err != nil {
+				return nil, err
+			}
+			if string(sub[:]) == `INFO` {
+				goto found
+			}
+		}
+	}
+	return nil, r.Rewind()
+
+found:
+	data = make(map[[4]byte][]string)
+	for toll := int64(siz) - 4; toll > 0; {
+		var head riffHeader
+		err := binary.Read(r.rs, binary.LittleEndian, &head)
+		if err != nil {
+			return nil, err
+		}
+		toll -= 8
+		str := make([]byte, even(head.Cksize))
+		_, err = r.rs.Read(str)
+		if err != nil {
+			return nil, err
+		}
+		data[head.Fourcc] = append(data[head.Fourcc], string(str[:head.Cksize]))
+		toll -= int64(even(head.Cksize))
+	}
+
+	return data, r.Rewind()
 }
