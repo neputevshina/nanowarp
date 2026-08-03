@@ -5,9 +5,11 @@ import (
 	"io"
 
 	"github.com/neputevshina/nanowarp/dspio"
+	"github.com/zaf/g711"
 	"golang.org/x/exp/constraints"
 )
 
+// Reader is a reader object for WAV files.
 type Reader struct {
 	readbuf []byte
 	rs      io.ReadSeeker
@@ -22,6 +24,7 @@ type Reader struct {
 	Headermap []Cue
 }
 
+// Properties returns all relevant properties of a file.
 func (r *Reader) Properties() Properties {
 	return Properties{
 		Samples:    int(r.data.Size) / int(r.fmtchunk.NBlockAlign),
@@ -32,6 +35,7 @@ func (r *Reader) Properties() Properties {
 	}
 }
 
+// NewReader creates a new Reader.
 func NewReader(rs io.ReadSeeker) (*Reader, error) {
 	r := Reader{}
 	r.rs = rs
@@ -165,6 +169,10 @@ func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	}
 
 	switch r.fmtchunk.WFormatTag {
+	case FormatALaw:
+		decodeCompanded(r, r.readbuf, buf, 0)
+	case FormatMuLaw:
+		decodeCompanded(r, r.readbuf, buf, 1)
 	case FormatPCM:
 		decodeInteger(r, int(r.fmtchunk.WBitsPerSample), r.readbuf, buf)
 	case FormatFloat:
@@ -178,6 +186,19 @@ func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 		}
 	}
 	return n, nil
+}
+
+func decodeCompanded(r *Reader, bbuf []byte, buf [][]float64, law int) {
+	var sa byte
+	nch := int(r.fmtchunk.NChannels)
+	for i := range buf[0] {
+		for ch := range nch {
+			sl := bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/r.bytespersa:]
+			binary.Decode(sl, binary.LittleEndian, &sa)
+			dec := []func(byte) int16{g711.DecodeAlawFrame, g711.DecodeUlawFrame}[law]
+			buf[ch][i] = float64(dec(sa)) / float64(1<<15)
+		}
+	}
 }
 
 func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {

@@ -19,9 +19,9 @@ const (
 type Properties struct {
 	Samples    int    // Length of file in number of multichannel samples
 	Bytes      int    // Length of file in bytes per its RIFF header
-	Samplerate int    // Samples per second
+	Samplerate int    // Number of samples per second
 	Nch        int    // Number of channels
-	Format     Format // Format of samples
+	Format     Format // Format of numbers in file
 }
 
 type fmtchunk struct {
