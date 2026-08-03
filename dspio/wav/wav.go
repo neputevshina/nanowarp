@@ -8,14 +8,15 @@ var UnsupportedFormat = errors.New(`file is a WAV, but not in linear PCM or IEEE
 
 type Format uint16
 
+// Recognized and supported formats:
 const (
-	FormatPCM        Format = 0x0001
-	FormatFloat             = 0x0003
-	FormatALaw              = 0x0006
-	FormatMuLaw             = 0x0007
-	FormatExtensible        = 0xFFFE
+	FormatPCM   Format = 0x0001
+	FormatFloat        = 0x0003
+	FormatALaw         = 0x0006
+	FormatMuLaw        = 0x0007
 )
 
+// Properties contains all relevant WAV file properties.
 type Properties struct {
 	Samples    int    // Length of file in number of multichannel samples
 	Bytes      int    // Length of file in bytes per its RIFF header

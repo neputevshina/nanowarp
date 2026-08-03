@@ -221,6 +221,8 @@ var _ SignalWriter = &GrainWriter{}
 
 // GrainSeeker allows to read a grain of fixed size (filling the buffer) from the input
 // at the given offset from the start of the input.
+// TODO GrainSeek(prr error, offset int64) ([][]float64, error)
+// Eliminates copying, since some internal buffering will always occur.
 type GrainSeeker interface {
 	NchRead() int
 	GrainSeek(prr error, offset int64, buf [][]float64) error
@@ -230,6 +232,12 @@ type GrainSeeker interface {
 	// like in FFT, or with the phase ramp signal, directly corresponding
 	// to the index of read sample, like in grain synthesis or
 	// time scale modification.
+}
+
+// GrainReadSeeker implements both SignalReader and GrainSeeker
+type GrainReadSeeker interface {
+	SignalReader
+	GrainSeeker
 }
 
 func MonotonicGrainSeeker(r SignalReader) GrainSeeker {
@@ -270,7 +278,6 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	intmp := max(0, int(offset-m.start))
 	// println(m.level, m.start, m.ended)
 	// println(offset, intmp, len(m.tmp[0][intmp:]), len(buf[0]))
-	println(offset)
 	if m.first {
 		m.first = false
 		refill = true
@@ -304,6 +311,10 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 	for ch := range nch {
 		copy(buf[ch][-min(0, offset):], m.tmp[ch][max(0, int(offset-m.start)):])
 	}
+
+	// waveform.Dump(nil, buf[0])
+	// waveform.Dump(nil, buf[1])
+	// os.Exit(1)
 
 	return nil
 }

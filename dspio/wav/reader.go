@@ -19,8 +19,7 @@ type Reader struct {
 	bytespersa int // Bytes per each single-channel sample
 	fmtchunk   fmtchunk
 
-	// A list of all second-level RIFF headers identified in a file,
-	// except `WAVE` and `fmt `.
+	// List of all second-level RIFF headers identified in a file.
 	Headermap []Section
 }
 
@@ -71,6 +70,13 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
+	q := Section{
+		Seek:   pre,
+		FourCC: fmt.Fourcc,
+		Size:   fmt.Cksize,
+	}
+	r.Headermap = append(r.Headermap, q)
+
 	err = binary.Read(rs, binary.LittleEndian, &r.fmtchunk)
 	if err != nil {
 		return nil, err
@@ -155,6 +161,8 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 }
 
 // Rewind seeks the file to the start of sample data.
+//
+// If you need the seek index itself, search for `data` section in r.Headermap.
 func (r *Reader) Rewind() (err error) {
 	_, err = r.rs.Seek(r.data.Seek, io.SeekStart)
 	return

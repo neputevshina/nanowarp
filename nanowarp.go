@@ -167,8 +167,6 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 		phasor = c
 	}
 
-	println(phasor)
-
 	secondread := wsr()
 
 	// d, err := dspio.ReadAll(nil, secondread)

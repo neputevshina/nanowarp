@@ -7,7 +7,7 @@ this repo with a Go version.
 Includes modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
 float WAV support export. © 2013–2025 youpy.
 
-Current state: algorithm done. No streaming, pitching and user-facing API exists yet.
+Current state: finished, documenting and preparing for first release.
 
 Root package is Nanowarp library, cmd/nanowarp is CLI.
 
@@ -71,8 +71,11 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
-- We need a `dspio` WAV SignalReader/Writer written from scratch. 
+- We need a `dspio` WAV SignalReader/Writer written from scratch.
   **DO NOT USE youpy/wav IN YOUR PROJECTS, IT SILENTLY QUANTIZES FLOAT32 SAMPLES TO INT!!!**
+  - Reader is done and is in dspio/wav
+- Proposition: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
+  Plain GrainReader and RegularToOfflineGrainWriter  can be paired.
 - We need a regression testing GitHub CI.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
@@ -96,7 +99,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - BUG: When shrinking, Nanowarp outputs silence after output length × stretch factor numbef of samples.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
-- No streaming support. All processing is in-memory with obvious RAM costs.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
 - Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms due to extreme stretching of magnitude spectrum.
