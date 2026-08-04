@@ -1,4 +1,4 @@
-package wav
+package wavio
 
 import (
 	"encoding/binary"

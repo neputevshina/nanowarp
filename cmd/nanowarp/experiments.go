@@ -7,7 +7,7 @@ import (
 
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/dspio"
-	nwav "github.com/neputevshina/nanowarp/dspio/wav"
+	"github.com/neputevshina/nanowarp/dspio/wavio"
 	"github.com/neputevshina/nanowarp/waveform"
 )
 
@@ -87,7 +87,7 @@ func experiments(n int, inputfile *os.File, output string) {
 		// Center-dilated novelty curve
 		of, err := os.Create(output)
 		defer of.Close()
-		wsr, err := nwav.NewReader(inputfile)
+		wsr, err := wavio.NewReader(inputfile)
 		if err != nil {
 			panic(err)
 		}
@@ -115,7 +115,7 @@ func experiments(n int, inputfile *os.File, output string) {
 		// Bypass
 		of, err := os.Create(output)
 		defer of.Close()
-		wsr, err := nwav.NewReader(inputfile)
+		wsr, err := wavio.NewReader(inputfile)
 		if err != nil {
 			panic(err)
 		}
