@@ -87,7 +87,7 @@ func experiments(n int, inputfile *os.File, output string) {
 		// Center-dilated novelty curve
 		of, err := os.Create(output)
 		defer of.Close()
-		wsr, err := wavio.NewReader(inputfile)
+		wsr, err := wavio.NewDecoder(inputfile)
 		if err != nil {
 			panic(err)
 		}
@@ -115,7 +115,7 @@ func experiments(n int, inputfile *os.File, output string) {
 		// Bypass
 		of, err := os.Create(output)
 		defer of.Close()
-		wsr, err := wavio.NewReader(inputfile)
+		wsr, err := wavio.NewDecoder(inputfile)
 		if err != nil {
 			panic(err)
 		}

@@ -9,8 +9,8 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-// Reader is a reader object for WAV files.
-type Reader struct {
+// Decoder is a reader object for WAV files.
+type Decoder struct {
 	readbuf []byte
 	rs      io.ReadSeeker
 
@@ -24,7 +24,7 @@ type Reader struct {
 }
 
 // Properties returns all relevant properties of a file.
-func (r *Reader) Properties() Properties {
+func (r *Decoder) Properties() Properties {
 	return Properties{
 		Samples:    int(r.data.Size) / int(r.fmtchunk.NBlockAlign),
 		Bytes:      int(r.riff.Cksize) + 8, // Count RIFFxxxx 8-byte header too
@@ -34,9 +34,9 @@ func (r *Reader) Properties() Properties {
 	}
 }
 
-// NewReader creates a new Reader.
-func NewReader(rs io.ReadSeeker) (*Reader, error) {
-	r := Reader{}
+// NewDecoder creates a new Reader.
+func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
+	r := Decoder{}
 	r.rs = rs
 
 	err := binary.Read(rs, binary.LittleEndian, &r.riff)
@@ -163,20 +163,20 @@ func NewReader(rs io.ReadSeeker) (*Reader, error) {
 // Rewind seeks the file to the start of sample data.
 //
 // If you need the seek index itself, search for `data` section in r.Headermap.
-func (r *Reader) Rewind() (err error) {
+func (r *Decoder) Rewind() (err error) {
 	_, err = r.rs.Seek(r.data.Seek, io.SeekStart)
 	return
 }
 
-var _ dspio.SignalReader = &Reader{}
+var _ dspio.SignalReader = &Decoder{}
 
 // NchRead returns the number of channels in a WAV file.
-func (r *Reader) NchRead() int {
+func (r *Decoder) NchRead() int {
 	return int(r.fmtchunk.NChannels)
 }
 
 // SignalRead reads a non-overlapped multichannel grain of size len(buf[0]) from the input.
-func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
+func (r *Decoder) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	blen := len(buf[0]) * int(r.fmtchunk.NBlockAlign)
 	if len(r.readbuf) < blen {
 		r.readbuf = make([]byte, blen)
@@ -209,7 +209,7 @@ func (r *Reader) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	return n, nil
 }
 
-func decodeCompanded(r *Reader, bbuf []byte, buf [][]float64, ulaw bool) {
+func decodeCompanded(r *Decoder, bbuf []byte, buf [][]float64, ulaw bool) {
 	var sa byte
 	nch := int(r.fmtchunk.NChannels)
 	for i := range buf[0] {
@@ -225,7 +225,7 @@ func decodeCompanded(r *Reader, bbuf []byte, buf [][]float64, ulaw bool) {
 	}
 }
 
-func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
+func decodeInteger(r *Decoder, nbits int, bbuf []byte, buf [][]float64) {
 	var sasa [8]byte
 	var sa uint64
 	nch := int(r.fmtchunk.NChannels)
@@ -241,7 +241,7 @@ func decodeInteger(r *Reader, nbits int, bbuf []byte, buf [][]float64) {
 	}
 }
 
-func decodeFloat[T constraints.Float](r *Reader, bbuf []byte, buf [][]float64) {
+func decodeFloat[T constraints.Float](r *Decoder, bbuf []byte, buf [][]float64) {
 	var sa T
 	nch := int(r.fmtchunk.NChannels)
 	for i := range buf[0] {
@@ -254,10 +254,6 @@ func decodeFloat[T constraints.Float](r *Reader, bbuf []byte, buf [][]float64) {
 	}
 }
 
-func even[T constraints.Integer](x T) T {
-	return x + x%2
-}
-
 // InfoChunk reads the INFO chunk from the file if there is one.
 // If chunk is not found, data is nil.
 //
@@ -267,7 +263,7 @@ func even[T constraints.Integer](x T) T {
 //
 // More advanced user might consider reading ID3 tags from files.
 // Those can be read manually using chunk pointer information in r.Headermap.
-func (r *Reader) InfoChunk() (data map[[4]byte][]string, err error) {
+func (r *Decoder) InfoChunk() (data map[[4]byte][]string, err error) {
 	siz := int64(0)
 	for _, m := range r.Headermap {
 		siz = int64(m.Size)
@@ -308,4 +304,8 @@ found:
 	}
 
 	return data, r.Rewind()
+}
+
+func even[T constraints.Integer](x T) T {
+	return x + x%2
 }
