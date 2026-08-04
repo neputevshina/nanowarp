@@ -203,7 +203,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 			tsc = j / fivesec
 		}
 
-		err = in.GrainSeek(err, int64(i-n.nbuf/2), lead)
+		lead, err = in.GrainSeek(err, int64(i-n.nbuf/2), n.nbuf)
 		if err != nil && err != io.EOF {
 			return err
 		}
