@@ -19,6 +19,7 @@ import (
 
 	"github.com/neputevshina/nanowarp"
 	"github.com/neputevshina/nanowarp/dspio"
+	"github.com/neputevshina/nanowarp/dspio/wavio"
 	"github.com/neputevshina/nanowarp/oscope"
 )
 
@@ -126,7 +127,7 @@ func main() {
 		panic(err)
 	}
 
-	wsr, err := NewWavSignalReader(nil, file)
+	wsr, err := wavio.NewDecoder(file)
 	if err != nil {
 		// Try to call ffmpeg, we've probably got an MP3.
 		// FIXME Bodge error type check
@@ -170,7 +171,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			wsr, err = NewWavSignalReader(nil, file)
+			wsr, err = wavio.NewDecoder(file)
 			if err != nil {
 				panic(err)
 			}
@@ -179,12 +180,7 @@ func main() {
 		}
 	}
 
-	inputLength := 0.
-	_, err = wsr.Duration() // Populate wsr.Size field
-	if err != nil {
-		panic(err)
-	}
-	inputLength = float64(wsr.Size) / float64(wsr.BlockAlign)
+	inputLength := float64(wsr.Properties().Samples)
 	// TODO This wav package is a piece of shit. Write own.
 
 	if *experiment != 0 {
@@ -259,7 +255,7 @@ func main() {
 			InfluenceRadius: *ifr,
 		},
 	}
-	mnw := nanowarp.New(int(wsr.SampleRate), opts)
+	mnw := nanowarp.New(wsr.Properties().Samplerate, opts)
 
 	end := int(bps[len(bps)-1].J)
 
@@ -278,43 +274,18 @@ func main() {
 		panic(err)
 	}
 
-	wsw, err := NewWavSignalWriter(err, outfile, end, 2, int(wsr.SampleRate))
+	wsw, err := NewWavSignalWriter(err, outfile, end, 2, wsr.Properties().Samplerate)
 	if err != nil {
 		panic(err)
 	}
 
-	first := true
 	wsrf := func() dspio.SignalReader {
-		if first {
-			first = false
-			return wsr
-		}
-		_, err := file.Seek(0, io.SeekStart)
-		wsr, err = NewWavSignalReader(err, file)
-		if err != nil {
+		if err := wsr.Rewind(); err != nil {
 			panic(err)
 		}
 		return wsr
 	}
 	mnw.Process(int(inputLength), wsrf, wsw, phasor)
-
-	// wr := wav.NewWriter(outfile, uint32(len(lout)), 2, wavfmt.SampleRate, 32, true)
-
-	// nbuf := 2048
-	// buf := make([]wav.Sample, 0, nbuf)
-	// for i := 0; i < len(lout); i += nbuf {
-	// 	buf = buf[:0]
-	// 	for j := i; j < min(i+nbuf, len(lout)); j++ {
-	// 		lsa, rsa := lout[j], rout[j]
-	// 		buf = append(buf, wav.Sample{Values: [2]int{
-	// 			int(math.Float32bits(float32(lsa))),
-	// 			int(math.Float32bits(float32(rsa)))}})
-	// 	}
-	// 	err := wr.WriteSamples(buf)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// }
 
 	oscope.Dump(nil, "./pics")
 }
