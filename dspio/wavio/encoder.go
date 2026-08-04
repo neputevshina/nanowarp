@@ -16,7 +16,10 @@ type Encoder struct {
 
 // NewEncoder creates a new IEEE 32-bit float WAV file encoder with specified sample rate and
 // number of channels and writes the WAV header to file.
-func NewEncoder(file io.WriteSeeker, samplerate int, channels int) (*Encoder, error) {
+//
+// Format must be [FormatFloat] and bits must be 32.
+// In future, other formats may be supported.
+func NewEncoder(file io.WriteSeeker, samplerate int, channels int, format Format, bits int) (*Encoder, error) {
 	panic(`unimplemented`)
 	// e := Encoder{
 	// 	wr:  file,
