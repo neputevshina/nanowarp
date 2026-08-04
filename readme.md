@@ -71,6 +71,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
+- Use pflag instead of flag.
 - We need a `dspio` WAV SignalReader/Writer written from scratch.
   **DO NOT USE youpy/wav IN YOUR PROJECTS, IT SILENTLY QUANTIZES FLOAT32 SAMPLES TO INT!!!**
   - Reader is done and is in dspio/wav
@@ -89,7 +90,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Discrete partial phase derivatives may perform better than reassignment.
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
   - Reverse-engineer FabFilter Pro-L 2 “Dynamic” mode using technique from [Tokyo Dawn Labs](https://t.me/tokyodawnlabsru/547).
-    Dynamic, because from my and [Zvukar Bombit](https://www.youtube.com/@zvukarbombit) experience, it's the best sounding 
+    Dynamic, because from my and [Zvukar Bombit](https://youtu.be/r14L24TFSBY?t=1007) experience, it's the best sounding 
     mode in most cases. Use it by default for FLAC exports instead of clipping.
   - Take 64-bit dither from one of Airwindows plugins. Acknowledge Chris properly.
 - cmd/nanowarp: allow cuts in timemap, force phase reset on each cut.

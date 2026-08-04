@@ -3,6 +3,7 @@ package wavio
 import (
 	"encoding/binary"
 	"io"
+	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
 	"github.com/zaf/g711"
@@ -11,8 +12,9 @@ import (
 
 // Decoder is a reader object for WAV files.
 type Decoder struct {
-	readbuf []byte
-	rs      io.ReadSeeker
+	readbuf        []byte
+	seekbuf, knife [][]float64
+	rs             io.ReadSeeker
 
 	data       Section // Start of sample data in bytes
 	riff       riffHeader
@@ -207,6 +209,30 @@ func (r *Decoder) SignalRead(prr error, buf [][]float64) (n int, err error) {
 		}
 	}
 	return n, nil
+}
+
+var _ dspio.GrainSeeker = &Decoder{}
+
+// GrainSeek reads a grain of size from file at specified offset in samples.
+//
+// If size is 0, GrainSeek sets the seek position in a file so sample with index 0 of next SignalRead
+// will be at offset.
+//
+// TODO Internal buffering.
+func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, error) {
+	for ch := range r.seekbuf {
+		r.seekbuf[ch] = slices.Grow(r.seekbuf[ch][:0], size)[:size]
+	}
+	byteseek := r.data.Seek + min(max(0, offset)*int64(r.fmtchunk.NBlockAlign), int64(r.data.Size))
+	_, err := r.rs.Seek(byteseek, io.SeekStart)
+	for ch := range r.knife {
+		r.knife[ch] = r.seekbuf[ch][max(int64(size), -max(0, -offset)):]
+	}
+	_, err = r.SignalRead(err, r.knife)
+	if err != nil {
+		return nil, err
+	}
+	return r.knife, err
 }
 
 func decodeCompanded(r *Decoder, bbuf []byte, buf [][]float64, ulaw bool) {
