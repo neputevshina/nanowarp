@@ -2,9 +2,11 @@ package wavio
 
 import "errors"
 
-var NotAWav = errors.New(`not a WAV file`)
-var Malformed = errors.New(`malformed WAV file`)
-var UnsupportedFormat = errors.New(`file is a WAV, but not in linear PCM or IEEE float format`)
+var ErrNotAWav = errors.New(`not a WAV file`)
+var ErrMalformed = errors.New(`malformed WAV file`)
+var ErrUnsupportedFormat = errors.New(`file is a WAV, but not in linear PCM or IEEE float format`)
+
+var ErrOverflow = errors.New(`total number of bytes written is greater than 4 GiB`)
 
 type Format uint16
 

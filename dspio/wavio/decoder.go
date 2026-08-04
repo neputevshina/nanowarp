@@ -46,7 +46,7 @@ func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
 		return nil, err
 	}
 	if string(r.riff.Fourcc[:]) != `RIFF` {
-		return nil, NotAWav
+		return nil, ErrNotAWav
 	}
 
 	var WAVE [4]byte
@@ -55,7 +55,7 @@ func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
 		return nil, err
 	}
 	if string(WAVE[:]) != `WAVE` {
-		return nil, NotAWav
+		return nil, ErrNotAWav
 	}
 
 	var fmt riffHeader
@@ -64,7 +64,7 @@ func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
 		return nil, err
 	}
 	if string(fmt.Fourcc[:]) != `fmt ` {
-		return nil, Malformed
+		return nil, ErrMalformed
 	}
 
 	// Get seek before fmt chunk.
@@ -91,7 +91,7 @@ func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
 		r.fmtchunk.SubFormat = [16]byte{}
 	} else if fmt.Cksize != 40 {
 		// Only allowed sizes for fmt chunk are 16, 18 and 40 bytes.
-		return nil, Malformed
+		return nil, ErrMalformed
 	}
 
 	// Skip fmt chunk correctly.
@@ -103,16 +103,16 @@ func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
 	wavfmt := Format(r.fmtchunk.WFormatTag)
 	if !(wavfmt == FormatPCM || wavfmt == FormatFloat ||
 		wavfmt == FormatALaw || wavfmt == FormatMuLaw) {
-		return nil, UnsupportedFormat
+		return nil, ErrUnsupportedFormat
 	}
 	if wavfmt == FormatFloat {
 		if !(r.fmtchunk.WBitsPerSample == 32 || r.fmtchunk.WBitsPerSample == 64) {
-			return nil, Malformed
+			return nil, ErrMalformed
 		}
 	}
 	if wavfmt == FormatALaw || wavfmt == FormatMuLaw {
 		if r.fmtchunk.WBitsPerSample != 8 {
-			return nil, Malformed
+			return nil, ErrMalformed
 		}
 	}
 	r.bytespersa = int(r.fmtchunk.WBitsPerSample >> 3)
@@ -177,7 +177,7 @@ func (r *Decoder) NchRead() int {
 	return int(r.fmtchunk.NChannels)
 }
 
-// SignalRead reads a non-overlapped multichannel grain of size len(buf[0]) from the input.
+// SignalRead reads a non-overlapping multichannel grain of size len(buf[0]) from the input.
 func (r *Decoder) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	blen := len(buf[0]) * int(r.fmtchunk.NBlockAlign)
 	if len(r.readbuf) < blen {
