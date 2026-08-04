@@ -97,83 +97,6 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process6half(in [][]float64, out *dspio.GrainWriter, phasor *Curve) {
-	get := func() [][]float64 { return make2[float64](len(in), n.nfft) }
-	nch := len(in)
-	progress := n.root.opts.Progress
-
-	lead := get()
-	grain := get()
-	crop := make([][]float64, nch)
-	futurecrop := make([][]float64, nch)
-
-	lastone := 0
-	fivesec := n.root.fs * 5
-	tsc := 0
-	if progress != nil {
-		progress <- Bp(0, 0)
-	}
-	var err error
-	for j := -n.nbuf / 2; j < int(phasor.end.J)-1+n.nbuf/2; j += n.hop {
-		bounds := func(i int) int { return clamp(0, int(phasor.end.J), i) }
-		cut := func(s []float64, i int) []float64 { return s[bounds(i-n.nbuf/2):bounds(i+n.nbuf/2)] }
-		i := int(phasor.ReverseSample(float64(j)))
-		c := 1 / phasor.Dy(float64(j))
-
-		if progress != nil && j/fivesec > tsc {
-			progress <- Bp(float64(i), float64(j))
-			tsc = j / fivesec
-		}
-
-		for ch := range nch {
-			cr := cut(in[ch], i)
-			if i < n.nbuf/2 {
-				copy(lead[ch][max(0, n.nbuf/2-i):], cr)
-				crop[ch] = lead[ch]
-			} else {
-				crop[ch] = cr
-			}
-		}
-
-		// waveform.Dump(nil, crop[0])
-
-		q := n.root.opts.Resets
-		normal, diff, _ := n.advance(crop, futurecrop, c, q >= -1 && c == 1, q == -1)
-		n.synthesize(grain, normal, diff)
-
-		d := j - lastone
-		if c == 1 {
-			lastone = j
-		}
-		for ch := range nch {
-			// Cut pre-echo in transient regions.
-			if c != 1 && d < n.nbuf/2 {
-				rr := grain[ch][max(0, n.nbuf/2-d-n.hop) : n.nbuf/2-d]
-				for i := range rr {
-					rr[i] *= float64(i) / float64(len(rr))
-				}
-				fill(grain[ch][:n.nbuf/2-d-n.hop], 0)
-			}
-
-			if n.root.opts.Onsets && c != 1 {
-				clear(grain[ch])
-			}
-		}
-		// waveform.Dump(nil, grain[0])
-		_, err = out.SignalWrite(nil, grain)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			panic(err)
-		}
-	}
-	if progress != nil {
-		progress <- Bp(phasor.end.I, phasor.end.J)
-		close(progress)
-	}
-}
-
 func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Curve) error {
 	nch := in.NchRead()
 	get := func() [][]float64 { return make2[float64](nch, n.nbuf) }
@@ -187,9 +110,9 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 	fivesec := n.root.fs * 5
 	tsc := 0
 	if progress != nil {
-		progress <- Bp(0, 0)
+		progress <- Progress{Bp(0, 0), `Warping`}
 		defer func() {
-			progress <- Bp(phasor.end.I, phasor.end.J)
+			progress <- Progress{Bp(phasor.end.I, phasor.end.J), `Warping`}
 			close(progress)
 		}()
 	}
@@ -199,7 +122,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 		c := 1 / phasor.Dy(float64(j))
 
 		if progress != nil && j/fivesec > tsc {
-			progress <- Bp(float64(i), float64(j))
+			progress <- Progress{Bp(float64(i), float64(j)), `Warping`}
 			tsc = j / fivesec
 		}
 

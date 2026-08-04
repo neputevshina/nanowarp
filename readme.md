@@ -71,6 +71,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
+- **Onset detection and phasor generation can be performed while warping**.
 - Use pflag instead of flag.
 - We need a `dspio` WAV SignalReader/Writer written from scratch.
   **DO NOT USE youpy/wav IN YOUR PROJECTS, IT SILENTLY QUANTIZES FLOAT32 SAMPLES TO INT!!!**

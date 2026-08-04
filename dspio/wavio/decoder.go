@@ -10,7 +10,7 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-// Decoder is a reader object for WAV files.
+// Decoder is a WAV file decoder object.
 type Decoder struct {
 	readbuf        []byte
 	seekbuf, knife [][]float64

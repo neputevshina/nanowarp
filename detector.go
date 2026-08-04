@@ -60,36 +60,6 @@ func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 	return
 }
 
-func (n *detector) process2(lin, rin, ons, ons1 []float64, stretch float64) (onsons []Onset) {
-	onsons = make([]Onset, 0, 1000)
-
-	t := make([]float64, n.nfft)
-	for i := 0; i < len(lin); i += n.hop {
-		c := n.cdodf(lin[i:min(len(lin), i+n.nbuf)], rin[i:min(len(lin), i+n.nbuf)])
-
-		fill(t, c)
-		mul(t, n.a.Wr)
-		add(ons[i:min(len(lin), i+n.nbuf)], t)
-	}
-
-	step := even(int(float64(n.m.maxN) / stretch))
-	n.m.Reset(step)
-	for i := range ons {
-		// Center-windowed dilation
-		ons1[max(0, i-step/2)], _ = n.m.Filt(ons[i], bang{})
-	}
-
-	for i := range ons1 {
-		if ons[i] == ons1[i] {
-			onsons = append(onsons, Onset{I: float64(i), Power: ons[i]})
-		}
-	}
-
-	onsons = append(onsons, Onset{I: float64(len(ons)), Power: 0})
-
-	return
-}
-
 func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
 	fmt.Fprintln(os.Stderr, `(*detector).NoveltyCurveProcess`)
 
@@ -167,8 +137,8 @@ func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 		for i := range gs[0][step/2:] {
 			// Center-windowed dilation
 			//
-			// If process2 was reading ahead like here, the result of that process
-			// would be identical to this.
+			// If process2 (commit 712856d7 and before) was reading ahead like here,
+			// the result of that process would be identical to this.
 			gs[1][i], _ = n.m.Filt(gs[0][i+step/2], bang{})
 			if gs[1][i] == gs[0][i] && ons != nil {
 				ons <- Onset{I: float64(track + i), Power: gs[1][i]}

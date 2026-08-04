@@ -1,9 +1,7 @@
 package nanowarp
 
 import (
-	"fmt"
 	"math"
-	"os"
 	"slices"
 	"sync"
 
@@ -33,13 +31,12 @@ type Options struct {
 
 	// Enable phase resets.
 	//  -2: Don't perform transient separation, output raw PVDR without phase resets.
-	//	Still resets the phase if derivative of input timemap is 1.
-	//	Useful if timemap is generated using external onset detector.
-	//  -1: Extract transients and reset the phase when not stretching.
-	//	Introduces clicky artifacts but cleanest for transient-heavy material.
-	//	Best numerical stability because of full-frame resets.
-	//  0:  Same as -1, but detects and bypasses tonal components.
-	//	No artifacts, but noticeable slight loss in clarity.
+	//  -1: Use original phase when not stretching.
+	//      Introduces clicky artifacts but cleanest for transient-heavy material.
+	//      Best numerical stability because of resets.
+	//  0:  When not stretching, advance phase for harmonic components,
+	//      use original phase otherwise.
+	//      Very little to no artifacts, but noticeable slight loss in clarity.
 	Resets int
 
 	// Channel for receiving processing progress.
@@ -48,9 +45,15 @@ type Options struct {
 	// pair for every 5 seconds of output and at the start and end of processing.
 	//
 	// Nanowarp will close the channel after the end of processing.
-	Progress chan<- Breakpoint
+	Progress chan<- Progress
 
 	Hyperparams
+}
+
+// Progress is a message containing the progress of algorithm.
+type Progress struct {
+	Breakpoint
+	Process string
 }
 
 type Hyperparams struct {
@@ -123,8 +126,6 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 }
 
 func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.SignalWriter, phasor *Curve) {
-	fmt.Fprintln(os.Stderr, "(*Nanowarp).Process: DELETEME")
-
 	firstread := wsr()
 	if n.opts.Resets > -2 {
 		poolstretch := 1.

@@ -37,11 +37,12 @@ Currently adjusts time stretch without changing the the pitch.`)
 var onsets = flag.Bool("onsets", false, "Output displaced onsets only.")
 var resets = flag.Int("resets", 0, `Time and phase resets:
 -2: Don't perform transient separation, output raw PVDR without phase resets.
--1: Extract transients and reset the phase when not stretching.
+-1: Use original phase when not stretching.
     Introduces clicky artifacts but cleanest for transient-heavy material.
     Best numerical stability because of resets.
-0:  Same as -1, but detects and bypasses tonal components.
-    No artifacts, but noticeable slight loss in clarity.`)
+0:  When not stretching, advance phase for harmonic components, 
+    use original phase otherwise.
+    Very little to no artifacts, but noticeable slight loss in clarity.`)
 var q = flag.Int("q", 0, `Quality:
 Set algorithm quality.
 -1: Use brute force approximation to PGHI. Less transparent, 20% faster.
@@ -240,9 +241,9 @@ func main() {
 	}
 
 	// Working.
-	var pch chan nanowarp.Breakpoint
+	var pch chan nanowarp.Progress
 	if *progress {
-		pch = make(chan nanowarp.Breakpoint)
+		pch = make(chan nanowarp.Progress)
 	}
 	opts := nanowarp.Options{
 		Onsets:   *onsets,
@@ -285,7 +286,7 @@ func main() {
 		}
 		return wsr
 	}
-	mnw.Process(int(inputLength), wsrf, wsw, phasor)
+	mnw.Process(wsr.Properties().Samples, wsrf, wsw, phasor)
 
 	oscope.Dump(nil, "./pics")
 }
