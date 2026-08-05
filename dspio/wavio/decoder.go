@@ -313,20 +313,20 @@ func (r *Decoder) InfoChunk() (data map[[4]byte][]string, err error) {
 
 found:
 	data = make(map[[4]byte][]string)
-	for toll := int64(siz) - 4; toll > 0; {
+	for c := int64(siz) - 4; c > 0; {
 		var head riffHeader
 		err := binary.Read(r.rs, binary.LittleEndian, &head)
 		if err != nil {
 			return nil, err
 		}
-		toll -= 8
+		c -= 8
 		str := make([]byte, even(head.Cksize))
 		_, err = r.rs.Read(str)
 		if err != nil {
 			return nil, err
 		}
 		data[head.Fourcc] = append(data[head.Fourcc], string(str[:head.Cksize]))
-		toll -= int64(even(head.Cksize))
+		c -= int64(even(head.Cksize))
 	}
 
 	return data, r.Rewind()

@@ -1,6 +1,8 @@
 package wavio
 
-import "errors"
+import (
+	"errors"
+)
 
 var ErrNotAWav = errors.New(`not a WAV file`)
 var ErrMalformed = errors.New(`malformed WAV file`)
@@ -28,16 +30,20 @@ type Properties struct {
 }
 
 type fmtchunk struct {
-	WFormatTag          Format
-	NChannels           uint16
-	NSamplesPerSec      uint32
-	NAvgBytesPerSec     uint32
-	NBlockAlign         uint16
-	WBitsPerSample      uint16
+	fmtshortchunk
 	CbSize              uint16
 	WValidBitsPerSample uint16
 	DwChannelMask       uint32
 	SubFormat           [16]byte
+}
+
+type fmtshortchunk struct {
+	WFormatTag      Format
+	NChannels       uint16
+	NSamplesPerSec  uint32
+	NAvgBytesPerSec uint32
+	NBlockAlign     uint16
+	WBitsPerSample  uint16
 }
 
 // Section is a pointer to a RIFF section in a file.

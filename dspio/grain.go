@@ -116,7 +116,7 @@ type GrainWriter struct {
 	slicebuss [][]float64
 	w         SignalWriter
 	offline   int
-	toll      int
+	c         int
 }
 
 // NewGrainWriter constructs an overlap-add grain writer.
@@ -146,9 +146,9 @@ func newGrainWriter(nfft, hop int, w SignalWriter, offline int) (g *GrainWriter)
 		offline:   offline}
 	switch offline {
 	case 1:
-		g.toll = -hop
+		g.c = -hop
 	case 2:
-		g.toll = -nfft - hop
+		g.c = -nfft - hop
 	}
 	for ch := range nch {
 		g.outbuss[ch] = make([]float64, nfft*3)
@@ -181,8 +181,8 @@ func (w *GrainWriter) SignalWrite(prr error, grain [][]float64) (n int, err erro
 	}
 
 	s := 0
-	if w.offline > 0 && w.toll < 0 {
-		w.toll += w.Hop
+	if w.offline > 0 && w.c < 0 {
+		w.c += w.Hop
 		s = w.Hop
 	} else {
 		for s < w.Hop {
