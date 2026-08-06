@@ -96,6 +96,7 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues
+- Only 48kHz and 44.1kHz sample rates stereo were tested.
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.

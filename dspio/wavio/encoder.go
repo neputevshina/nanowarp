@@ -90,7 +90,7 @@ func NewEncoder(file io.WriteSeeker, samplerate int, channels int, format Format
 	return
 }
 
-// WriteRiffChunk copies a RIFF chunk data from src until it encounters an EOF.
+// WriteRiffChunk copies RIFF chunk data from src until it encounters an EOF.
 // Resulting section size will be set to total number of bytes read from src.
 //
 // WriteRiffChunk can't be called after the first call to [Encoder.SignalWrite].

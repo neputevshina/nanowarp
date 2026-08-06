@@ -252,7 +252,6 @@ func decodeCompanded(r *Decoder, bbuf []byte, buf [][]float64, ulaw bool) {
 			} else {
 				buf[ch][i] = float64(alaw2lpcm[sa]) / float64(1<<15)
 			}
-
 		}
 	}
 }

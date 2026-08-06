@@ -103,19 +103,22 @@ func main() {
 	}
 
 	nooutname := false
-	generateOutName := func(dir, fn string) string {
+	generateOutSuffix := func() string {
 		pitchSuffix := ""
 		if *st != 0 {
 			pitchSuffix = fmt.Sprintf("%+.2fst", *st)
 		}
 
 		if *from > 1 {
-			return path.Join(path.Dir(dir), fmt.Sprintf("%g→%g%s-%s", *from, *to, pitchSuffix, path.Base(fn)))
+			return fmt.Sprintf("%g→%g%s", *from, *to, pitchSuffix)
 		} else if math.Abs(*st) > 0 {
-			return path.Join(path.Dir(dir), fmt.Sprintf("%s-%s", pitchSuffix, path.Base(fn)))
+			return fmt.Sprintf("%s", pitchSuffix)
 		} else {
-			return path.Join(path.Dir(dir), fmt.Sprintf("%.4fx%s-%s", *coeff, pitchSuffix, path.Base(fn)))
+			return fmt.Sprintf("%.4fx%s", *coeff, pitchSuffix)
 		}
+	}
+	generateOutName := func(dir, fn string) string {
+		return path.Join(path.Dir(dir), fmt.Sprintf("%s-%s", generateOutSuffix(), path.Base(fn)))
 	}
 	if *foutput == "" {
 		nooutname = true
@@ -250,6 +253,23 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	// Copy all sections from original to the output.
+	for _, hd := range wsr.Headermap {
+		if string(hd.FourCC[:]) == `fmt ` || string(hd.FourCC[:]) == `data` {
+			continue
+		}
+		_, err := file.Seek(hd.Seek, io.SeekStart)
+		if err != nil {
+			panic(err)
+		}
+		err = wsw.WriteRiffChunk(hd.FourCC, io.LimitReader(file, int64(hd.Size)))
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	wsr.Rewind()
 
 	// Warping.
 	var pch chan nanowarp.Progress
