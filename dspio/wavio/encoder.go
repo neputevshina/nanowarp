@@ -236,7 +236,6 @@ func (e *Encoder) Close() (err error) {
 	if err != nil {
 		return
 	}
-	println(e.riffc, e.datac)
 	err = binary.Write(e.wr, binary.LittleEndian, uint32(e.riffc))
 	if err != nil {
 		return

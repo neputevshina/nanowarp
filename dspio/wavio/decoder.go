@@ -159,6 +159,10 @@ func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	r.knife = make([][]float64, r.fmtchunk.NChannels)
+	r.seekbuf = make([][]float64, r.fmtchunk.NChannels)
+
 	return &r, nil
 }
 
@@ -223,10 +227,13 @@ func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, err
 	for ch := range r.seekbuf {
 		r.seekbuf[ch] = slices.Grow(r.seekbuf[ch][:0], size)[:size]
 	}
-	byteseek := r.data.Seek + min(max(0, offset)*int64(r.fmtchunk.NBlockAlign), int64(r.data.Size))
-	_, err := r.rs.Seek(byteseek, io.SeekStart)
+	byteseek := max(0, offset) * int64(r.fmtchunk.NBlockAlign)
+	if byteseek > int64(r.data.Size)+int64(size) {
+		return nil, io.EOF
+	}
+	_, err := r.rs.Seek(r.data.Seek+byteseek, io.SeekStart)
 	for ch := range r.knife {
-		r.knife[ch] = r.seekbuf[ch][max(int64(size), -max(0, -offset)):]
+		r.knife[ch] = r.seekbuf[ch][max(0, -offset):]
 	}
 	_, err = r.SignalRead(err, r.knife)
 	if err != nil {

@@ -9,8 +9,7 @@ import (
 )
 
 type Nanowarp struct {
-	fs          int
-	left, right []float64
+	fs, nch int
 
 	warper   *warper
 	detector *detector
@@ -89,7 +88,7 @@ type Hyperparams struct {
 	//
 	// Lower values — more tonal preservation and less transient clarity.
 	// Higher values — more transient preservation and more interrupts.
-	LongRidgeLength int `default:"6"`
+	LongRidgeLength int `default:"8"`
 
 	// Maximum radius of influence of each detected tonal trajectory.
 	// Limits vertical propagation of ridges' region of influence.
@@ -104,33 +103,38 @@ type Hyperparams struct {
 }
 
 // New creates a new time-scale modification process object.
-func New(samplerate int, opts Options) (n *Nanowarp) {
+func New(samplerate int, channels int, opts Options) (n *Nanowarp) {
 	structinit(&opts)
 	structinit(&opts.Hyperparams)
-	n = new(samplerate, &opts)
+	n = new(channels, samplerate, &opts)
 	n.opts = opts
 
 	return
 }
 
-func new(samplerate int, opts *Options) (n *Nanowarp) {
+func new(channels int, samplerate int, opts *Options) (n *Nanowarp) {
 	// TODO Fixed absolute bandwidth through zero-padding.
 	// Hint: nbuf is already there.
 	// TODO Find optimal bandwidths.
 	n = &Nanowarp{}
 	n.fs = samplerate
+	n.nch = channels
 	w := int(math.Ceil(float64(samplerate) / 48000))
 
 	n.warper = warperNew(4096*w, 2, 2, n)
-	n.detector = DetectorNew(1024*w, samplerate, opts.TransientMs, opts.PickingMs)
+	n.detector = detectorNew(1024*w, samplerate, opts.TransientMs, opts.PickingMs)
 
 	return
 }
 
-// TODO wsr -> dspio.GrainReadSeeker
-// TODO filelen is not needed, phasor can be generated on the fly.
-func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.SignalWriter, phasor *Curve) {
-	firstread := wsr()
+// Lengther returns the size of the underlying stream in amount
+// of multichannel samples.
+type Lengther interface {
+	Length() int
+}
+
+// Process pefrorms the time-scale modification of r and writes it to w.
+func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor *Curve) {
 	if n.opts.Resets > -2 {
 		poolstretch := 1.
 		stretch := phasor.Dx(phasor.elems[len(phasor.elems)-1].I)
@@ -144,7 +148,7 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 		onsc := make(chan Onset, 0)
 		go func() {
 			defer wg.Done()
-			err := n.detector.NoveltyCurveProcess(firstread, pi)
+			err := n.detector.noveltyCurveProcess(r, pi)
 			if err != nil {
 				panic(err)
 			}
@@ -152,24 +156,33 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 		}()
 		go func() {
 			defer wg.Done()
-			err := n.detector.DilatePeakSelectProcess(po, nil, poolstretch, onsc)
+			err := n.detector.dilatePeakSelectProcess(po, nil, poolstretch, onsc)
 			if err != nil {
 				panic(err)
 			}
 		}()
 		go func() {
+			filelen := 0.
+
+			l, ok := r.(Lengther)
+			if ok {
+				filelen = float64(l.Length())
+			}
+
 			defer wg.Done()
 			for o := range onsc {
 				if n.opts.Progress != nil {
+					if !ok {
+						filelen = o.I
+					}
 					n.opts.Progress <- Progress{
 						Current: o.I,
-						End:     float64(filelen),
+						End:     filelen,
 						Process: "Analysis",
 					}
 				}
 				sam = append(sam, o)
 			}
-			sam = append(sam, Onset{I: float64(filelen), Power: 0})
 		}()
 		wg.Wait()
 
@@ -179,10 +192,8 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 		phasor = c
 	}
 
-	secondread := wsr()
-	mgs := dspio.MonotonicGrainSeeker(secondread)
 	grw := dspio.NewRegularToOfflineGrainWriter(n.warper.nbuf, n.warper.hop, w)
-	n.warper.processFinal(mgs, grw, phasor)
+	n.warper.processFinal(r, grw, phasor)
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {

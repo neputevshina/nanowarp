@@ -123,6 +123,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 		}()
 	}
 	var err error
+	final := false
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
 		i := int(phasor.ReverseSample(float64(j)))
 		c := 1 / phasor.Dy(float64(j)) // Stretch, inverse of scan speed, which Dy is.
@@ -138,6 +139,9 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 		lead, err = in.GrainSeek(err, int64(i-n.nbuf/2), n.nbuf)
 		if err != nil && err != io.EOF {
 			return err
+		}
+		if err == io.EOF {
+			final = true
 		}
 
 		q := n.root.opts.Resets
@@ -162,13 +166,18 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 				clear(grain[ch])
 			}
 		}
-		// waveform.Dump(nil, grain[0])
 		_, err = out.SignalWrite(nil, grain)
 		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
 			return err
+		}
+		if final {
+			if progress != nil {
+				progress <- Progress{
+					Current: phasor.end.J,
+					End:     phasor.end.J,
+					Process: `Warping`}
+			}
+			break
 		}
 	}
 	return err

@@ -18,20 +18,19 @@ import (
 	"strconv"
 
 	"github.com/neputevshina/nanowarp"
-	"github.com/neputevshina/nanowarp/dspio"
 	"github.com/neputevshina/nanowarp/dspio/wavio"
 	"github.com/neputevshina/nanowarp/oscope"
 )
 
 var println = fmt.Println
 
-var progress = flag.Bool("p", false, "Display progress bar.")
+var progress = flag.Bool("p", true, "Display progress bar.")
 var cpuprofile = flag.String("cpuprofile", "", "Write cpu profile to `file`.")
 var finput = flag.String("i", "", "Input WAV (or anything else, if ffmpeg is present) `path`.")
 var foutput = flag.String("o", "", "Output WAV `path`.")
 var coeff = flag.Float64("t", 0, "Time stretch multiplier.")
 var from = flag.Float64("from", 1, "Source `BPM`.")
-var to = flag.Float64("to", 1, "Target `BPM`.")
+var to = flag.Float64("to", 1, "Target `BPM` or stretch factor if -from is not set.")
 var st = flag.Float64("st", 0, `Pitch shift in semitones.
 Currently adjusts time stretch without changing the the pitch.`)
 var onsets = flag.Bool("onsets", false, "Output displaced onsets only.")
@@ -181,7 +180,9 @@ func main() {
 		}
 	}
 
-	inputLength := float64(wsr.Properties().Samples)
+	props := wsr.Properties()
+
+	inputLength := float64(props.Samples)
 
 	if *experiment != 0 {
 		// experiments(*experiment, file, *foutput)
@@ -239,7 +240,18 @@ func main() {
 		panic(err)
 	}
 
-	// Working.
+	// Opening the output.
+	outfile, err := os.Create(*foutput)
+	if err != nil {
+		panic(err)
+	}
+
+	wsw, err := wavio.NewEncoder(outfile, wsr.Properties().Samplerate, props.Nch, wavio.FormatFloat, 32)
+	if err != nil {
+		panic(err)
+	}
+
+	// Warping.
 	var pch chan nanowarp.Progress
 	if *progress {
 		pch = make(chan nanowarp.Progress)
@@ -255,7 +267,7 @@ func main() {
 			InfluenceRadius: *ifr,
 		},
 	}
-	mnw := nanowarp.New(wsr.Properties().Samplerate, opts)
+	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)
 
 	if *progress {
 		pb := startProgress(os.Stderr)
@@ -267,25 +279,8 @@ func main() {
 			println()
 		}()
 	}
-	// Dumping the output.
-	outfile, err := os.Create(*foutput)
-	if err != nil {
-		panic(err)
-	}
 
-	// wsw, err := NewWavSignalWriter(err, outfile, end, 2, wsr.Properties().Samplerate)
-	wsw, err := wavio.NewEncoder(outfile, wsr.Properties().Samplerate, 2, wavio.FormatFloat, 32)
-	if err != nil {
-		panic(err)
-	}
-
-	wsrf := func() dspio.SignalReader {
-		if err := wsr.Rewind(); err != nil {
-			panic(err)
-		}
-		return wsr
-	}
-	mnw.Process(wsr.Properties().Samples, wsrf, wsw, phasor)
+	tsm.Process(&withlength{wsr}, wsw, phasor)
 
 	err = wsw.Close()
 	if err != nil {
@@ -298,3 +293,9 @@ func main() {
 
 	oscope.Dump(nil, "./pics")
 }
+
+type withlength struct {
+	*wavio.Decoder
+}
+
+func (w *withlength) Length() int { return w.Properties().Samples }

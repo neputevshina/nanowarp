@@ -1,11 +1,9 @@
 package nanowarp
 
 import (
-	"fmt"
 	"io"
 	"math"
 	"math/cmplx"
-	"os"
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
@@ -31,7 +29,7 @@ type dbufs struct {
 	L, R, PL, PPL, PR, PPR []complex128
 }
 
-func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
+func detectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 	corr := math.Ceil(float64(fs) / 48000)
 	nfft = nfft * int(corr)
 	nbuf := nfft
@@ -60,9 +58,7 @@ func DetectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 	return
 }
 
-func (n *detector) NoveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
-	fmt.Fprintln(os.Stderr, `(*detector).NoveltyCurveProcess`)
-
+func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWriter) (err error) {
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}
@@ -101,9 +97,7 @@ type Onset struct {
 	Power float64
 }
 
-func (n *detector) DilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan Onset) (err error) {
-	fmt.Fprintln(os.Stderr, `(*detector).DilatePeakSelectProcess`)
-
+func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan Onset) (err error) {
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}

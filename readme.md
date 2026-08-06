@@ -8,8 +8,6 @@ Current state: finished, documenting and preparing for first release.
 
 Root package is Nanowarp library, cmd/nanowarp is CLI.
 
-dspio/wavio is a better WAV file codec, not dependent on Nanowarp.
-
 ## nanowarp CLI: Installation and usage
 
 1. Install [Go](https://go.dev/)
@@ -70,10 +68,10 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
 
 ## Notes
+- cmd/nanowarp: If -from is 1 by default, then -t and -to is the same thing.
 - **Onset detection and phasor generation can be performed while warping**.
-- Use pflag instead of flag.
-- Proposition: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
-  Plain GrainReader and RegularToOfflineGrainWriter  can be paired.
+- Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
+  Plain GrainReader and RegularToOfflineGrainWriter can be paired.
 - We need a regression testing GitHub CI.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
@@ -98,9 +96,11 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues
+- BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
+  - Even slower now because of unbufferized wavio.Encoder.GrainSeek.
 - Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms due to extreme stretching of magnitude spectrum.
   Mitigated either by [SELEBI](https://arxiv.org/abs/2602.16421) or by factorization of stretch coefficient (hint from Elastiqué SDK docs).
