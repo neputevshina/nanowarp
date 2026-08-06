@@ -122,10 +122,12 @@ func new(channels int, samplerate int, opts *Options) (n *Nanowarp) {
 	n = &Nanowarp{}
 	n.fs = samplerate
 	n.nch = channels
-	w := int(math.Ceil(float64(samplerate) / 48000))
+	scale := func(x float64) int {
+		return int(math.Ceil(x * float64(samplerate) / 48000))
+	}
 
-	n.warper = warperNew(4096*w, 2, 2, n)
-	n.detector = detectorNew(1024*w, samplerate, opts.TransientMs, opts.PickingMs)
+	n.warper = warperNew(scale(4096), 2, channels, n)
+	n.detector = detectorNew(scale(1024), samplerate, channels, opts.PickingMs)
 
 	return
 }

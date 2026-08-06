@@ -14,6 +14,7 @@ import (
 type detector struct {
 	nfft  int
 	nbuf  int
+	nch   int
 	nbins int
 	hop   int
 	fs    int
@@ -24,14 +25,13 @@ type detector struct {
 	a dbufs
 }
 type dbufs struct {
-	S, Wf, Wr              []float64
-	N, A, B, X, Y          []float64 `size:"nbins"`
-	L, R, PL, PPL, PR, PPR []complex128
+	S, Wf, Wr     []float64
+	N, A, B, X, Y []float64 `size:"nbins"`
+	L, PL, PPL    [][]complex128
 }
 
-func detectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
-	corr := math.Ceil(float64(fs) / 48000)
-	nfft = nfft * int(corr)
+func detectorNew(nfft, fs, nch int, onsetevery int) (n *detector) {
+	nfft = nextpow2(nfft)
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
@@ -40,10 +40,11 @@ func detectorNew(nfft, fs int, maxTransient, onsetevery int) (n *detector) {
 		nfft:  nfft,
 		nbins: nbins,
 		nbuf:  nbuf,
+		nch:   nch,
 		hop:   nbuf / olap,
 		fs:    fs,
 	}
-	makeslices(&n.a, nbins, nfft, 0, 0)
+	makeslices(&n.a, nbins, nfft, nch, 0)
 
 	// Asymmetric window requires applying reversed copy of itself on synthesis stage.
 	niemitalo(n.a.Wf)
@@ -64,7 +65,7 @@ func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 	}
 	gr := dspio.NewOfflineGrainReader(n.nfft, n.hop, ar)
 	gw := dspio.NewOfflineOfflineGrainWriter(n.nfft, n.hop, aw)
-	gs := make([][]float64, 2)
+	gs := make([][]float64, n.nch)
 	for ch := range gs {
 		gs[ch] = make([]float64, n.nfft)
 	}
@@ -80,7 +81,7 @@ func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 			return err
 		}
 
-		c := n.cdodf(gs[0], gs[1])
+		c := n.cdodf(gs)
 
 		fill(fl, c)
 		mul(fl, n.a.Wr)
@@ -103,7 +104,7 @@ func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 	if aw != nil {
 		gw = dspio.NewOfflineOfflineGrainWriter(step, hop, aw)
 	}
-	gs := make([][]float64, 2)
+	gs := make([][]float64, n.nch)
 	for ch := range gs {
 		gs[ch] = make([]float64, step)
 	}
@@ -158,7 +159,7 @@ func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 // Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.
 //
 // https://www.audiolabs-erlangen.de/resources/MIR/FMP/C6/C6S1_NoveltyComplex.html
-func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
+func (n *detector) cdodf(ingrain [][]float64) (s float64) {
 	a := &n.a
 
 	enfft := func(x []complex128, w, grain []float64) {
@@ -168,8 +169,9 @@ func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 		n.fft.Coefficients(x, a.S)
 	}
 
-	enfft(a.L, a.Wf, lingrain)
-	enfft(a.R, a.Wf, ringrain)
+	for ch := range n.nch {
+		enfft(a.L[ch], a.Wf, ingrain[ch])
+	}
 
 	for w := range a.L {
 		// Cartesian form of CDODF.
@@ -177,17 +179,19 @@ func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 			m := cmplx.Abs(x - px*norm(px*cmplx.Conj(ppx)))
 			return m * boolfloat(cmplx.Abs(x) > cmplx.Abs(px))
 		}
-		a.N[w] = signalingBitsafe(max(
-			cnov(a.L[w], a.PL[w], a.PPL[w]),
-			cnov(a.R[w], a.PR[w], a.PPR[w])))
+		nov := 0.
+		for ch := range n.nch {
+			nov = max(nov, cnov(a.L[ch][w], a.PL[ch][w], a.PPL[ch][w]))
+		}
+		a.N[w] = signalingBitsafe(nov)
 	}
 
 	s = sum(a.N)
 
-	copy(a.PL, a.L)
-	copy(a.PR, a.R)
-	copy(a.PPL, a.PL)
-	copy(a.PPR, a.PR)
+	for ch := range n.nch {
+		copy(a.PL[ch], a.L[ch])
+		copy(a.PPL[ch], a.PL[ch])
+	}
 
 	return
 }
@@ -202,38 +206,38 @@ func (n *detector) cdodf(lingrain, ringrain []float64) (s float64) {
 // (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.
 //
 // https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
-func (n *detector) superflux(lingrain, ringrain []float64) (s float64) {
-	a := &n.a
+// func (n *detector) superflux(lingrain, ringrain []float64) (s float64) {
+// 	a := &n.a
 
-	enfft := func(x []complex128, w, grain []float64) {
-		clear(a.S)
-		copy(a.S, grain)
-		mul(a.S, w)
-		n.fft.Coefficients(x, a.S)
-	}
+// 	enfft := func(x []complex128, w, grain []float64) {
+// 		clear(a.S)
+// 		copy(a.S, grain)
+// 		mul(a.S, w)
+// 		n.fft.Coefficients(x, a.S)
+// 	}
 
-	enfft(a.L, a.Wf, lingrain)
-	enfft(a.R, a.Wf, ringrain)
+// 	enfft(a.L, a.Wf, lingrain)
+// 	enfft(a.R, a.Wf, ringrain)
 
-	for w := range a.L {
-		a.X[w] = cmplx.Abs(a.L[w]) + cmplx.Abs(a.R[w])
-		a.Y[w] = cmplx.Abs(a.PL[w]) + cmplx.Abs(a.PR[w])
-	}
+// 	for w := range a.L {
+// 		a.X[w] = cmplx.Abs(a.L[w]) + cmplx.Abs(a.R[w])
+// 		a.Y[w] = cmplx.Abs(a.PL[w]) + cmplx.Abs(a.PR[w])
+// 	}
 
-	_ = binfilt(a.X, a.A)
-	f := binfilt(a.Y, a.B)
+// 	_ = binfilt(a.X, a.A)
+// 	f := binfilt(a.Y, a.B)
 
-	for n := range f {
-		a.N[n] = max(0, a.A[n]-a.B[n])
-	}
+// 	for n := range f {
+// 		a.N[n] = max(0, a.A[n]-a.B[n])
+// 	}
 
-	s = sum(a.N)
+// 	s = sum(a.N)
 
-	copy(a.PL, a.L)
-	copy(a.PR, a.R)
+// 	copy(a.PL, a.L)
+// 	copy(a.PR, a.R)
 
-	return
-}
+// 	return
+// }
 
 func binfilt(mag, logram []float64) (n int) {
 	const scale = 24

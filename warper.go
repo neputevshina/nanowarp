@@ -17,7 +17,6 @@ type warper struct {
 	nfft  int     // DFT size, a power of 2
 	nbuf  int     // Effective window size, nbuf<nfft
 	hop   int     // Window output hop size
-	lah   int     // Non-causal PGHI lookahead in frames (hop sizes)
 	nbins int     // nfft/2+1, Number of DFT bins
 	olap  int     // nbuf/hop, Window ovelap
 	osamp float64 // nfft/nbuf, Zero-padding ratio
@@ -58,7 +57,7 @@ type wbufs struct {
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Only 2x oversampling works, no more, no less.
-	olap := 4 // Depends on window, see comment on blackmanHarrisClassic function.
+	olap := 4
 	nfft := nextpow2(nbuf * osamp)
 	n = &warper{
 		nfft:  nfft,
@@ -66,13 +65,13 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 		nbuf:  nbuf,
 		hop:   nbuf / olap,
 		olap:  olap,
-		osamp: float64(osamp),
+		osamp: float64(nfft) / float64(nbuf),
 		root:  nanowarp,
-		lah:   3 * olap,
 	}
 	a := &n.a
+	println(n.osamp, float64(n.nfft)/float64(n.hop))
 
-	makeslices(a, n.nbins, nfft, nch, n.lah)
+	makeslices(a, n.nbins, nfft, nch, 0)
 	n.arm = make([]bool, n.nbins)
 
 	s := func(w []float64) []float64 {
@@ -236,7 +235,7 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 	enfft(a.Xt, a.Wt, a.Mid)
 	for w := range a.X {
 		a.Fadv[w] = princarg(fadv(a.X[:n.nbins], a.Xt, stretch, w))
-		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft/n.hop), w)
+		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft)/float64(n.hop), w)
 	}
 
 	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
