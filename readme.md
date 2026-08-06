@@ -6,7 +6,7 @@ Root package is Nanowarp library, cmd/nanowarp is CLI.
 ## Installation
 
 ```
-go get github.com/neputevshina/nanowarp/cmd/nanowarp
+go get github.com/neputevshina/nanowarp
 ```
 
 ## nanowarp CLI: Installation and usage
