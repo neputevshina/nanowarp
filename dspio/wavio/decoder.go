@@ -221,7 +221,7 @@ var _ dspio.GrainSeeker = &Decoder{}
 // If size is 0, GrainSeek sets the seek position in a file so sample with index 0 of next SignalRead
 // will be at offset.
 //
-// TODO Internal buffering.
+// TODO: Internal buffering.
 func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, error) {
 	for ch := range r.seekbuf {
 		r.seekbuf[ch] = slices.Grow(r.seekbuf[ch][:0], size)[:size]

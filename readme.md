@@ -67,7 +67,16 @@ The algorithm does not depend on input signal level (there are no absolute thres
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
 
 ## Demos
-~~[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w)~~. Obsolete.
+**Disclamer: the following collection of files contains results based on copyrighted material, for which I own no rights.
+  Short snippets of processed copyrighted material to illustrate the quality of a research algorithm on
+  real-world material may be considered fair use.**
+
+[Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w). 
+
+### Quality report (including material not in set)
+- Cibo Matto — Sci-Fi Wasabi (mp3 320k): most transient detections are wrong.
+- Kelela — idea 1 (mp3 320k): slap delays on vocals are smudged. This is the worst case scenario for any 
+  time stretch algorithm. Elastique gives more clarity and presence.
 
 ## Notes
 - cmd/nanowarp: If -from is 1 by default, then -t and -to is the same thing.
@@ -94,7 +103,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 - cmd/nanowarp: Ableton Live Clip (.asd) to timemap converter.
 - cmd/nanowarp: allow external onset detectors. Already possible with right timemap, 
   algorithm does phase reset on any region with Dy = 1.
-- Cibo Matto — Sci-Fi Wasabi (mp3 320k): most transient detections are wrong.
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues

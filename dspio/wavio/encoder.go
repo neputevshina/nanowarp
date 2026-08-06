@@ -90,7 +90,7 @@ func NewEncoder(file io.WriteSeeker, samplerate int, channels int, format Format
 // WriteRiffChunk copies RIFF chunk data from src until it encounters an EOF.
 // Resulting section size will be set to total number of bytes read from src.
 //
-// WriteRiffChunk can't be called after the first call to [Encoder.SignalWrite].
+// WriteRiffChunk panics if called after the first call to [Encoder.SignalWrite].
 //
 // If total number of bytes written is greater than 4 GiB,
 // WriteRiffChunk returns [ErrOverflow].
@@ -155,7 +155,7 @@ func (e *Encoder) WriteRiffChunk(fourcc [4]byte, src io.Reader) error {
 // one section per each FourCC, concatenating each chunk of data with \n, because
 // having more than one subsection of each type in INFO is non-standard.
 //
-// WriteInfo can't be called after the first call to [Encoder.SignalWrite].
+// WriteInfo panics if called after the first call to [Encoder.SignalWrite].
 //
 // If total number of bytes written is greater than 4 GiB,
 // WriteInfo returns [ErrOverflow].
