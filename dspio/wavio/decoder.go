@@ -6,7 +6,6 @@ import (
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
-	"github.com/zaf/g711"
 	"golang.org/x/exp/constraints"
 )
 
@@ -249,9 +248,9 @@ func decodeCompanded(r *Decoder, bbuf []byte, buf [][]float64, ulaw bool) {
 		for ch := range nch {
 			sa = bbuf[(i*nch+ch)*int(r.fmtchunk.NBlockAlign)/r.bytespersa:][0]
 			if ulaw {
-				buf[ch][i] = float64(g711.DecodeUlawFrame(sa)) / float64(1<<15)
+				buf[ch][i] = float64(μlaw2lpcm[sa]) / float64(1<<15)
 			} else {
-				buf[ch][i] = float64(g711.DecodeAlawFrame(sa)) / float64(1<<15)
+				buf[ch][i] = float64(alaw2lpcm[sa]) / float64(1<<15)
 			}
 
 		}
