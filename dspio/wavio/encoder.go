@@ -12,9 +12,6 @@ import (
 // Encoder is a writer of a WAV file.
 //
 // The only supported format is IEEE float32.
-//
-// Encoder updates file size headers every 1 MiB written and at the start of
-// writing the sample data.
 type Encoder struct {
 	wr      io.WriteSeeker
 	fs, nch int

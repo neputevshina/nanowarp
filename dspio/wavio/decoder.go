@@ -11,6 +11,9 @@ import (
 
 // Decoder is a WAV file decoder object.
 type Decoder struct {
+	// List of all second-level RIFF headers identified in a file.
+	Headermap []Section
+
 	readbuf        []byte
 	seekbuf, knife [][]float64
 	rs             io.ReadSeeker
@@ -19,9 +22,6 @@ type Decoder struct {
 	riff       riffHeader
 	bytespersa int // Bytes per each single-channel sample
 	fmtchunk   fmtchunk
-
-	// List of all second-level RIFF headers identified in a file.
-	Headermap []Section
 }
 
 // Properties returns all relevant properties of a file.

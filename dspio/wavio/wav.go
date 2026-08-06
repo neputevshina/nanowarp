@@ -12,7 +12,7 @@ var ErrOverflow = errors.New(`total number of bytes written is greater than 4 Gi
 
 type Format uint16
 
-// Recognized and supported formats:
+// Recognized and supported formats
 const (
 	FormatPCM   Format = 0x0001
 	FormatFloat        = 0x0003

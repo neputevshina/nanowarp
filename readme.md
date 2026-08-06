@@ -1,12 +1,13 @@
 # Nanowarp
 Studio-grade audio time stretching algorithm.
 
-Reference implementation is going to be in Go, and a possible C implementation will share
-this repo with a Go version.
-
-Current state: finished, documenting and preparing for first release.
-
 Root package is Nanowarp library, cmd/nanowarp is CLI.
+
+## Installation
+
+```
+go get github.com/neputevshina/nanowarp/cmd/nanowarp
+```
 
 ## nanowarp CLI: Installation and usage
 
@@ -37,6 +38,7 @@ Consult
 nanowarp -help
 ```
 to get the list of available options.
+
 
 
 ## Implementation
@@ -121,3 +123,20 @@ Everything else was written without use of AI, if not explicitly stated otherwis
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
 3. [Duxbury, C., Bello, J. P., Davies, M., & Sandler, M. (2003, September). Complex domain onset detection for musical signals. In Proc. Digital Audio Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.](https://www.dafx.de/paper-archive/2003/pdfs/dafx81.pdf)
 4. [Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a real-time realization for a commercial music product.](https://thesis.unipd.it/bitstream/20.500.12608/16470/1/tesi.pdf)
+
+## Future: Use in C/C++ through Cgo
+
+TODO C-compatible code is not yet done. It will be in nanowarp/c subdirectory.
+
+For future compatibility with any possible Go code, you should create your own Go library, 
+and then compile it to a static C-compatible library using
+```
+go build -buildmode=c-archive
+```
+
+According to https://github.com/draffensperger/go-interlang/, `go build` will generate 
+a header with declarations for all exported functions and a compiled object file. Use
+the header and link the object, no extra system headers required.
+
+Don't use gccgo as it is obsolete.
+See also [documentation on Go interop with C](https://pkg.go.dev/cmd/cgo#hdr-C_references_to_Go).

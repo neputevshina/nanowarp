@@ -1,6 +1,5 @@
-// Please, don't use this package in your projects.
-//
-// It is NOT ready for real-time audio.
+// Experimental package dspio provides primitives and interfaces for basic and granular digital
+// signals I/O, including those for granular and overlap-add-based processing.
 package dspio
 
 // NOTES
