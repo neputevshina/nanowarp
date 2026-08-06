@@ -92,11 +92,6 @@ func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 	// This function is expected to exit when io.EOF is encountered.
 }
 
-type Onset struct {
-	I     float64
-	Power float64
-}
-
 func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan Onset) (err error) {
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
