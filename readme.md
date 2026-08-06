@@ -4,12 +4,11 @@ Studio-grade audio time stretching algorithm.
 Reference implementation is going to be in Go, and a possible C implementation will share
 this repo with a Go version.
 
-Includes modified version of github.com/youpy/go-wav (ISC license) with added 32-bit 
-float WAV support export. © 2013–2025 youpy.
-
 Current state: finished, documenting and preparing for first release.
 
 Root package is Nanowarp library, cmd/nanowarp is CLI.
+
+dspio/wavio is a better WAV file codec, not dependent on Nanowarp.
 
 ## nanowarp CLI: Installation and usage
 
@@ -73,9 +72,6 @@ and does not use any type of psychoacoustics methods (e.g. masking) except onset
 ## Notes
 - **Onset detection and phasor generation can be performed while warping**.
 - Use pflag instead of flag.
-- We need a `dspio` WAV SignalReader/Writer written from scratch.
-  **DO NOT USE youpy/wav IN YOUR PROJECTS, IT SILENTLY QUANTIZES FLOAT32 SAMPLES TO INT!!!**
-  - Reader is done and is in dspio/wav
 - Proposition: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
   Plain GrainReader and RegularToOfflineGrainWriter  can be paired.
 - We need a regression testing GitHub CI.

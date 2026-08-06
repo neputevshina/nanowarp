@@ -182,11 +182,10 @@ func main() {
 	}
 
 	inputLength := float64(wsr.Properties().Samples)
-	// TODO This wav package is a piece of shit. Write own.
 
 	if *experiment != 0 {
-		experiments(*experiment, file, *foutput)
-		return
+		// experiments(*experiment, file, *foutput)
+		panic(`no experiments today`)
 	}
 
 	// Phase ramp generation.
