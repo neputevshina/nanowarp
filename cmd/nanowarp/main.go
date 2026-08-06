@@ -51,6 +51,10 @@ Minimum amount of time between two consecutive transient detections.`)
 var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
 I.e. scale the pooling size with the stretch coefficient.
 Effective only for stretches, not shrinks, which are always scaled.`)
+var ri = flag.Int("ri", 8, `Minimum amount of time bins a trajectory must travel in total
+to be considered tonal.
+Lower values — more tonal preservation and less transient clarity.
+Higher values — more transient preservation and more interrupts.`)
 var ifr = flag.Int("if", 2, `Maximum radius of influence of each detected tonal trajectory.
 Phase never be reset at this number of bins around the ridge.
 Higher values compromise transient quality over tonal quality.`)
@@ -133,8 +137,7 @@ func main() {
 	wsr, err := wavio.NewDecoder(file)
 	if err != nil {
 		// Try to call ffmpeg, we've probably got an MP3.
-		// FIXME Bodge error type check
-		if err.Error() == `Given bytes is not a RIFF format` {
+		if err == wavio.ErrNotAWav {
 			_ = file.Close()
 
 			_, err = exec.LookPath(`ffmpeg`)
@@ -285,6 +288,7 @@ func main() {
 			PickingMs:       *poolms,
 			ScalePool:       *outpool,
 			InfluenceRadius: *ifr,
+			LongRidgeLength: *ri,
 		},
 	}
 	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)

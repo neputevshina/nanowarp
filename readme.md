@@ -140,3 +140,9 @@ the header and link the object, no extra system headers required.
 
 Don't use gccgo as it is obsolete.
 See also [documentation on Go interop with C](https://pkg.go.dev/cmd/cgo#hdr-C_references_to_Go).
+
+Any Go code can not be used in an audio plugin (e.g. VST), since every new copy of a plugin (or even
+any other plugin using Go code) will create it's own copy of a Go runtime, which is not supported.
+Go in plugins require a runtime that supports being dynamically linked a la .NET. 
+Having a bunch of go1.xx.x.dll in %WINDIR% would be very funny.
+

@@ -110,6 +110,7 @@ func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 
 	n.m.Reset(step)
 	track := 0
+	cooldown := 0
 	if ons != nil {
 		defer close(ons)
 	}
@@ -129,8 +130,9 @@ func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 			// If process2 (commit 712856d7 and before) was reading ahead like here,
 			// the result of that process would be identical to this.
 			gs[1][i], _ = n.m.Filt(gs[0][i+step/2], bang{})
-			if gs[1][i] == gs[0][i] && ons != nil {
+			if gs[1][i] == gs[0][i] && track+i-cooldown > step/2 && ons != nil {
 				ons <- Onset{I: float64(track + i), Power: gs[1][i]}
+				cooldown = track + i
 			}
 		}
 
