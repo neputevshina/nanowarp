@@ -258,13 +258,12 @@ func main() {
 	}
 	mnw := nanowarp.New(wsr.Properties().Samplerate, opts)
 
-	end := int(bps[len(bps)-1].J)
-
 	if *progress {
-		pb := startProgress(os.Stderr, end)
+		pb := startProgress(os.Stderr)
 		go func() {
 			for bp := range pch {
-				pb.Set(bp.J)
+				pb.Set(bp.Current, bp.End)
+				fmt.Print(" ", bp.Process)
 			}
 			println()
 		}()
@@ -275,7 +274,8 @@ func main() {
 		panic(err)
 	}
 
-	wsw, err := NewWavSignalWriter(err, outfile, end, 2, wsr.Properties().Samplerate)
+	// wsw, err := NewWavSignalWriter(err, outfile, end, 2, wsr.Properties().Samplerate)
+	wsw, err := wavio.NewEncoder(outfile, wsr.Properties().Samplerate, 2, wavio.FormatFloat, 32)
 	if err != nil {
 		panic(err)
 	}
@@ -287,6 +287,15 @@ func main() {
 		return wsr
 	}
 	mnw.Process(wsr.Properties().Samples, wsrf, wsw, phasor)
+
+	err = wsw.Close()
+	if err != nil {
+		panic(err)
+	}
+	err = file.Close()
+	if err != nil {
+		panic(err)
+	}
 
 	oscope.Dump(nil, "./pics")
 }

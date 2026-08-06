@@ -50,9 +50,10 @@ type Options struct {
 	Hyperparams
 }
 
-// Progress is a message containing the progress of algorithm.
+// Progress is a message containing the progress of an algorithm.
 type Progress struct {
-	Breakpoint
+	Current float64
+	End     float64
 	Process string
 }
 
@@ -88,7 +89,7 @@ type Hyperparams struct {
 	//
 	// Lower values — more tonal preservation and less transient clarity.
 	// Higher values — more transient preservation and more interrupts.
-	LongRidgeLength int `default:"8"`
+	LongRidgeLength int `default:"6"`
 
 	// Maximum radius of influence of each detected tonal trajectory.
 	// Limits vertical propagation of ridges' region of influence.
@@ -102,6 +103,7 @@ type Hyperparams struct {
 	InfluenceRadius int `default:"3"`
 }
 
+// New creates a new time-scale modification process object.
 func New(samplerate int, opts Options) (n *Nanowarp) {
 	structinit(&opts)
 	structinit(&opts.Hyperparams)
@@ -125,6 +127,8 @@ func new(samplerate int, opts *Options) (n *Nanowarp) {
 	return
 }
 
+// TODO wsr -> dspio.GrainReadSeeker
+// TODO filelen is not needed, phasor can be generated on the fly.
 func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.SignalWriter, phasor *Curve) {
 	firstread := wsr()
 	if n.opts.Resets > -2 {
@@ -156,6 +160,13 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 		go func() {
 			defer wg.Done()
 			for o := range onsc {
+				if n.opts.Progress != nil {
+					n.opts.Progress <- Progress{
+						Current: o.I,
+						End:     float64(filelen),
+						Process: "Analysis",
+					}
+				}
 				sam = append(sam, o)
 			}
 			sam = append(sam, Onset{I: float64(filelen), Power: 0})
@@ -169,16 +180,9 @@ func (n *Nanowarp) Process(filelen int, wsr func() dspio.SignalReader, w dspio.S
 	}
 
 	secondread := wsr()
-
-	// d, err := dspio.ReadAll(nil, secondread)
-	// if err != nil {
-	// 	panic(err)
-	// }
 	mgs := dspio.MonotonicGrainSeeker(secondread)
 	grw := dspio.NewRegularToOfflineGrainWriter(n.warper.nbuf, n.warper.hop, w)
 	n.warper.processFinal(mgs, grw, phasor)
-
-	// n.warper.process6half(d, grw, phasor)
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {

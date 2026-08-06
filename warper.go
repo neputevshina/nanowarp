@@ -110,19 +110,28 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 	fivesec := n.root.fs * 5
 	tsc := 0
 	if progress != nil {
-		progress <- Progress{Bp(0, 0), `Warping`}
+		progress <- Progress{
+			Current: 0,
+			End:     phasor.end.J,
+			Process: `Warping`}
 		defer func() {
-			progress <- Progress{Bp(phasor.end.I, phasor.end.J), `Warping`}
+			progress <- Progress{
+				Current: phasor.end.J,
+				End:     phasor.end.J,
+				Process: `Warping`}
 			close(progress)
 		}()
 	}
 	var err error
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
 		i := int(phasor.ReverseSample(float64(j)))
-		c := 1 / phasor.Dy(float64(j))
+		c := 1 / phasor.Dy(float64(j)) // Stretch, inverse of scan speed, which Dy is.
 
 		if progress != nil && j/fivesec > tsc {
-			progress <- Progress{Bp(float64(i), float64(j)), `Warping`}
+			progress <- Progress{
+				Current: float64(j),
+				End:     phasor.end.J,
+				Process: `Warping`}
 			tsc = j / fivesec
 		}
 

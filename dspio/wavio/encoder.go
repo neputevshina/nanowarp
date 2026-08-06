@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"slices"
+	"unsafe"
 
 	"github.com/neputevshina/nanowarp/dspio"
 )
@@ -39,11 +40,16 @@ func NewEncoder(file io.WriteSeeker, samplerate int, channels int, format Format
 		nch: channels,
 	}
 
+	if !(format == FormatFloat && bits == 32) {
+		panic(`incorrect format: only 32-bit float supported`)
+	}
+
+	// TODO
 	switch format {
-	// case FormatPCM: // TODO
-	// 	if bits < 1 && bits > 64 {
-	// 		panic(`incorrect PCM format: number of bits must be between 1 and 64`)
-	// 	}
+	case FormatPCM:
+		if bits < 1 && bits > 32 {
+			panic(`incorrect PCM format: number of bits must be between 1 and 32`)
+		}
 	case FormatFloat:
 		if !(bits == 32 || bits == 64) {
 			panic(`incorrect float format: number of bits must be either 32 or 64`)
@@ -58,7 +64,7 @@ func NewEncoder(file io.WriteSeeker, samplerate int, channels int, format Format
 		panic(`incorrect format: >4 GiB per second, which is impossible`)
 	}
 
-	// Last four bytes are uint32(10), the size of format chunk in little-endian.
+	// Last four bytes are uint32(10) in little-endian, the size of a format chunk.
 	prelude := []byte("RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00")
 	n, err := file.Write(prelude)
 	if err != nil {
@@ -79,6 +85,8 @@ func NewEncoder(file io.WriteSeeker, samplerate int, channels int, format Format
 	if err != nil {
 		return nil, err
 	}
+
+	e.riffc = int64(n) + int64(unsafe.Sizeof(fmt))
 	return
 }
 
@@ -142,6 +150,22 @@ func (e *Encoder) WriteRiffChunk(fourcc [4]byte, src io.Reader) error {
 	return err
 }
 
+// TODO
+//
+// WriteInfo writes LIST INFO section, storing the information about music
+// inside the file.
+// Despite it accepting a map from FourCC to multiple sections, it writes only
+// one section per each FourCC, concatenating each chunk of data with \n, because
+// having more than one subsection of each type in INFO is non-standard.
+//
+// WriteInfo can't be called after the first call to [Encoder.SignalWrite].
+//
+// If total number of bytes written is greater than 4 GiB,
+// WriteInfo returns [ErrOverflow].
+func (e *Encoder) WriteInfo(data map[[4]byte][]string) error {
+	panic(`unimplemented`)
+}
+
 var _ dspio.SignalWriter = &Encoder{}
 
 // NchWrite returns the number of channels this encoder will write.
@@ -173,7 +197,7 @@ func (e *Encoder) SignalWrite(prr error, buf [][]float64) (n int, err error) {
 
 	}
 
-	nb := len(buf) * len(buf[0]) * e.blockalign
+	nb := len(buf[0]) * e.blockalign
 	if e.riffc+int64(nb) > 1<<32 {
 		return 0, ErrOverflow
 	}
@@ -212,7 +236,8 @@ func (e *Encoder) Close() (err error) {
 	if err != nil {
 		return
 	}
-	err = binary.Write(e.wr, binary.LittleEndian, e.riffc)
+	println(e.riffc, e.datac)
+	err = binary.Write(e.wr, binary.LittleEndian, uint32(e.riffc))
 	if err != nil {
 		return
 	}
@@ -221,7 +246,7 @@ func (e *Encoder) Close() (err error) {
 	if err != nil {
 		return
 	}
-	err = binary.Write(e.wr, binary.LittleEndian, e.datac)
+	err = binary.Write(e.wr, binary.LittleEndian, uint32(e.datac))
 	if err != nil {
 		return
 	}

@@ -11,22 +11,22 @@ import (
 
 type Progress struct {
 	f            *os.File
-	Last, Prev   float64
+	Prev         float64
 	Start, Prevt time.Time
 }
 
 var semi = []rune(" ▏▎▍▌▋▊▉█")
 
-func startProgress(w *os.File, last int) *Progress {
-	return &Progress{f: w, Last: float64(last), Start: time.Now()}
+func startProgress(w *os.File) *Progress {
+	return &Progress{f: w, Start: time.Now()}
 }
 
-func (p *Progress) Set(nu float64) {
-	n := nu / p.Last
+func (p *Progress) Set(nu, last float64) {
+	n := nu / last
 	w, _, _ := term.GetSize(1) // Don't care about errors
 	ew := w / 2
 	fmt.Fprint(p.f, "\r")
-	for range ew {
+	for range w {
 		fmt.Fprint(p.f, " ")
 	}
 	i, f := math.Modf(n * float64(ew))
