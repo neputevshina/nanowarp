@@ -8,6 +8,7 @@ import (
 	"github.com/neputevshina/nanowarp/dspio"
 )
 
+// Nanowarp is a time-scale modification algorithm.
 type Nanowarp struct {
 	fs, nch int
 
@@ -19,6 +20,7 @@ type Nanowarp struct {
 	semitones float64
 }
 
+// Options contains configuration options for Nanowarp.
 type Options struct {
 	// Output scaled onsets only.
 	Onsets bool
@@ -56,6 +58,7 @@ type Progress struct {
 	Process string
 }
 
+// Hyperparams contains low-level configuration of Nanowarp algorithm.
 type Hyperparams struct {
 	// Diameter of transient in milliseconds.
 	// Amount of time around the detected transient, for which the signal
