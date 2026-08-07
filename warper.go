@@ -69,7 +69,6 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 		root:  nanowarp,
 	}
 	a := &n.a
-	println(n.osamp, float64(n.nfft)/float64(n.hop))
 
 	makeslices(a, n.nbins, nfft, nch, 0)
 	n.arm = make([]bool, n.nbins)
