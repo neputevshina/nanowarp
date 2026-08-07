@@ -499,6 +499,9 @@ func fadv(x, xt []complex128, stretch float64, w int) float64 {
 
 // tadv calculates the partial derivative of the phase with respect
 // to time using time-frequency reassignment.
+//
+// olap is nfft divided by original hop size, thus
+// accounting for FFT oversampling.
 func tadv(x, xd []complex128, olap float64, w int) float64 {
 	if cmplx.Abs(x[w]) < 1e-6 {
 		return 0

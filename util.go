@@ -22,7 +22,7 @@ func bitsafe(v float64) float64 {
 	return v
 }
 
-func signalingBitsafe(v float64) float64 {
+func bitsafeOrDie(v float64) float64 {
 	if v != v {
 		panic(`NaN detected`)
 	}

@@ -173,7 +173,7 @@ func (n *detector) cdodf(ingrain [][]float64) (s float64) {
 		enfft(a.L[ch], a.Wf, ingrain[ch])
 	}
 
-	for w := range a.L {
+	for w := range a.L[0] {
 		// Cartesian form of CDODF.
 		cnov := func(x, px, ppx complex128) float64 {
 			m := cmplx.Abs(x - px*norm(px*cmplx.Conj(ppx)))
@@ -183,7 +183,7 @@ func (n *detector) cdodf(ingrain [][]float64) (s float64) {
 		for ch := range n.nch {
 			nov = max(nov, cnov(a.L[ch][w], a.PL[ch][w], a.PPL[ch][w]))
 		}
-		a.N[w] = signalingBitsafe(nov)
+		a.N[w] = bitsafeOrDie(nov)
 	}
 
 	s = sum(a.N)
