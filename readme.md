@@ -39,8 +39,6 @@ nanowarp -help
 ```
 to get the list of available options.
 
-
-
 ## Implementation
 
 Nanowarp is a phase gradient heap integration (PGHI) phase vocoder (aka PVDR)[1] where partial derivatives 
@@ -65,6 +63,9 @@ respective side channels after stretching back[4].
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
+
+The algorithm is calibrated for 48000 Hz, stereo. It supports any sample rate and number of channels, 
+but currently sounds best on audio data with aforementioned parameters.
 
 ## Demos
 **Disclamer: the following collection of files contains results based on copyrighted material, for which I own no rights.
