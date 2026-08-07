@@ -252,7 +252,7 @@ func main() {
 		panic(err)
 	}
 
-	wsw, err := wavio.NewEncoder(outfile, wsr.Properties().Samplerate, props.Nch, wavio.FormatFloat, 32)
+	wsw, err := wavio.NewEncoder(outfile, props.Samplerate, props.Nch, wavio.FormatFloat, 32)
 	if err != nil {
 		panic(err)
 	}

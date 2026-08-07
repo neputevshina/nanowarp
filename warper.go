@@ -158,7 +158,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 				for i := range rr {
 					rr[i] *= float64(i) / float64(len(rr))
 				}
-				fill(grain[ch][:n.nbuf/2-d-n.hop], 0)
+				fill(grain[ch][:max(0, n.nbuf/2-d-n.hop)], 0)
 			}
 
 			if n.root.opts.Onsets && c != 1 {

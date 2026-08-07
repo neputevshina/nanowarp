@@ -104,7 +104,7 @@ func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 	if aw != nil {
 		gw = dspio.NewOfflineOfflineGrainWriter(step, hop, aw)
 	}
-	gs := make([][]float64, n.nch)
+	gs := make([][]float64, 2)
 	for ch := range gs {
 		gs[ch] = make([]float64, step)
 	}
