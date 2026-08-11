@@ -80,6 +80,8 @@ but currently sounds best on audio data with aforementioned parameters.
   time stretch algorithm. Elastique gives more clarity and presence.
 
 ## Notes
+- A new onset detector is needed. This one works very bad.
+- Momentary phase resets are ineffective. At least if resetting at each transient ridge for the current frame.
 - cmd/nanowarp: If -from is 1 by default, then -t and -to is the same thing.
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
