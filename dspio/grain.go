@@ -225,11 +225,9 @@ var _ SignalWriter = &GrainWriter{}
 // GrainSeeker maintains its internal buffer and returns the slice of it.
 //
 // TODO Standardize internal buffer size.
-//
-// TODO Take input buffer again, because slices are overwriting themselves.
 type GrainSeeker interface {
 	NchRead() int
-	GrainSeek(prr error, offset int64, buf [][]float64) error
+	GrainSeek(prr error, offset int64, size int) ([][]float64, error)
 	// Why not (buf [][]float64, newoffset int64, err error)?
 	//
 	// Grain reading is either always done with some constant overlap
@@ -265,13 +263,12 @@ type monotonicGrainSeeker struct {
 
 func (s *monotonicGrainSeeker) NchRead() int { return s.r.NchRead() }
 
-func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float64) (err error) {
+func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, size int) (buf [][]float64, err error) {
 	nch := m.r.NchRead()
 
 	if prr != nil {
-		return prr
+		return nil, prr
 	}
-	size := len(buf[0])
 
 	if size > len(m.tmp[0]) {
 		for ch := range m.tmp {
@@ -310,12 +307,12 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 			}
 			n, err := m.r.SignalRead(nil, m.knife)
 			if n == 0 {
-				return io.ErrNoProgress
+				return nil, io.ErrNoProgress
 			}
 			if err == io.EOF {
 				m.ended = m.level + int64(n)
 			} else if err != nil {
-				return err
+				return nil, err
 			}
 		} else if offset >= m.ended {
 			err = io.EOF
@@ -327,17 +324,11 @@ func (m *monotonicGrainSeeker) GrainSeek(prr error, offset int64, buf [][]float6
 		for ch := range nch {
 			copy(m.lead[ch][-min(0, offset):], m.tmp[ch][max(0, int(offset-m.start)):])
 		}
-		for ch := range nch {
-			copy(buf[ch], m.lead[ch])
-		}
-		return nil
+		return m.lead, nil
 	} else {
 		for ch := range nch {
 			m.knife[ch] = m.tmp[ch][max(0, int(offset-m.start)):]
 		}
-		for ch := range nch {
-			copy(buf[ch], m.knife[ch])
-		}
-		return nil
+		return m.knife, nil
 	}
 }

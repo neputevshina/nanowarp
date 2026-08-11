@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
-	"github.com/neputevshina/nanowarp/oscope"
 	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/dsp/fourier"
 	"gonum.org/v1/gonum/floats"
@@ -27,14 +26,14 @@ type warper struct {
 	fft *fourier.FFT
 
 	// PGHI-related
-	arm                []bool    // Done mask
-	heap               hp        // Heap
-	dumbarrows         [][2]int  // Integration directions for next frame (unused)
-	arrows             [][2]int  // Current integration directions
-	trace              []float64 // Ridge accumulator
-	ftrace             []float64 // Filtered trace
-	ridges, dumbridges []uint    // Extracted ridges
-	resetnow           []bool    // Forced per-bin resets
+	arm      []bool    // Done mask
+	heap     hp        // Heap
+	arrows   [][2]int  // Integration directions for next frame
+	parrows  [][2]int  // Current integration directions
+	trace    []float64 // Ridge accumulator
+	ftrace   []float64 // Filtered trace
+	ridges   []uint    // Extracted ridges
+	resetnow []bool    // Forced per-bin resets
 
 	// PGPI-related
 	reverse       [][]int      // Reverse index
@@ -46,14 +45,14 @@ type warper struct {
 }
 
 type wbufs struct {
-	S, Mid, Tmid    []float64      // Scratch buffers
-	F, M, P         []float64      `size:"nbins"` // Magnitudes: future, current and previous
-	Ph              []float64      `size:"nbins"` // Current phase
-	Past            []float64      // Phase accumulator
-	Fadv, Tadv      []float64      // Partial derivatives
-	W, Wr, Wd, Wt   []float64      // Window functions: analysis, synthesis (dual), derivative of W, time-weighted W
-	X, Y, T, Xd, Xt []complex128   // Complex spectra
-	C, Co           [][]complex128 // Channel differences, original channels
+	S, Mid        []float64      // Scratch buffers
+	F, M, P       []float64      `size:"nbins"` // Magnitudes: future, current and previous
+	Ph            []float64      `size:"nbins"` // Current phase
+	Past          []float64      // Phase accumulator
+	Fadv, Tadv    []float64      // Partial derivatives
+	W, Wr, Wd, Wt []float64      // Window functions: analysis, synthesis (dual), derivative of W, time-weighted W
+	X, Y, Xd, Xt  []complex128   // Complex spectra
+	C, Co         [][]complex128 // Channel differences, original channels
 }
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -87,13 +86,11 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.heap = make(hp, n.nbins)
 	n.fft = fourier.NewFFT(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
-	n.arrows = make([][2]int, 0, n.nbins)
-	n.dumbarrows = slices.Clone(n.arrows)
+	n.parrows = make([][2]int, 0, n.nbins)
+	n.arrows = slices.Clone(n.parrows)
 	n.ridges = make([]uint, n.nbins)
-	n.dumbridges = make([]uint, n.nbins)
 	n.trace = make([]float64, n.nbins)
 	n.ftrace = make([]float64, n.nbins)
-	n.resetnow = make([]bool, n.nbins)
 
 	return
 }
@@ -105,7 +102,7 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 
 	lead := get()
 	grain := get()
-	futurecrop := get()
+	futurecrop := make([][]float64, nch)
 
 	lastone := 0
 	fivesec := n.root.fs * 5
@@ -125,7 +122,6 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 	}
 	var err error
 	final := false
-	first := true
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
 		i := int(phasor.ReverseSample(float64(j)))
 		c := 1 / phasor.Dy(float64(j)) // Stretch, inverse of scan speed, which Dy is.
@@ -138,24 +134,12 @@ func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phas
 			tsc = j / fivesec
 		}
 
-		if first {
-			err = in.GrainSeek(err, int64(i-n.nbuf/2), lead)
-			if err != nil && err != io.EOF {
-				return err
-			}
-			first = false
-		}
-		for ch := range nch {
-			copy(lead[ch], futurecrop[ch])
-		}
-
-		err = in.GrainSeek(err, int64(i-n.nbuf/2+n.hop), futurecrop)
+		lead, err = in.GrainSeek(err, int64(i-n.nbuf/2), n.nbuf)
 		if err != nil && err != io.EOF {
 			return err
 		}
 		if err == io.EOF {
 			final = true
-			futurecrop = lead
 		}
 
 		q := n.root.opts.Resets
@@ -210,55 +194,20 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 	}
 
 	clear(a.Mid)
-	clear(a.Tmid)
 	for ch := range ingrain {
 		add(a.Mid, ingrain[ch])
-		add(a.Tmid, futuregrain[ch])
 		enfft(a.C[ch], a.W, ingrain[ch])
 		copy(a.Co[ch], a.C[ch])
 	}
 	enfft(a.X, a.W, a.Mid)
-	enfft(a.T, a.W, a.Tmid)
 
-	// Scan ridges with lookahead.
-	// FIXME Optimize.
 	cmplxs.Abs(a.M, a.X)
-	cmplxs.Abs(a.F, a.T)
-	var arrows [][2]int
+	var arr [][2]int
 	if n.root.opts.Quality == -1 {
-		arrows = n.bruteforcearrows(a.P, a.M, n.arrows, n.dumbridges)
-		_ = n.bruteforcearrows(a.M, a.F, n.dumbarrows, n.ridges)
+		arr = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
 	} else {
-		arrows = n.pghiarrows(a.P, a.M, n.arrows, n.dumbridges)
-		_ = n.pghiarrows(a.M, a.F, n.dumbarrows, n.ridges)
+		arr = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
 	}
-
-	trace := n.trackridges(n.ftrace, n.trace, n.ridges, n.resetnow, hp.HighRidgeHeight, hp.InfluenceRadius)
-
-	// ue := make([]float64, n.nbins)
-	// uo := make([]float64, n.nbins)
-	// for i := range ue {
-	// 	ue[i] = float64((n.dumbridges[i] & 0b111000) >> 3)
-	// 	uo[i] = float64((n.ridges[i] & 0b111000) >> 3)
-	// }
-	oscope.Enable = true
-	oscope.Oscope(slices.Clone(n.resetnow), oscope.Name(`resets`))
-	// oscope.Oscope(ue, oscope.Name(`ue`))
-	// oscope.Oscope(uo, oscope.Name(`uo`))
-	// uhe := func(e []float64) []float64 {
-	// 	e = slices.Clone(e)
-	// 	// mi := slices.Min(e)
-	// 	ma := slices.Max(e)
-	// 	for i := range e {
-	// 		// e[i] = (e[i] - mi) / (ma - mi)
-	// 		e[i] /= ma
-	// 		e[i] = bitsafe(math.Log(e[i]))
-	// 	}
-	// 	return e
-	// }
-	// oscope.Oscope(uhe(a.P), oscope.Name(`P`))
-	// oscope.Oscope(uhe(a.M), oscope.Name(`M`))
-	// oscope.Oscope(uhe(a.F), oscope.Name(`F`))
 
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.
@@ -288,27 +237,18 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft)/float64(n.hop), w)
 	}
 
-	// Force reset before propagation... (1)
-	for w := range n.nbins {
-		if n.resetnow[w] {
-			a.Ph[w] = cmplx.Phase(a.X[w])
-		}
-	}
+	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
 
-	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
+	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	// Bypass short ridges on phase reset.
 	c := float64(hp.LongRidgeLength) * stretch
 	for w := range a.Y {
-		if n.resetnow[w] { // ...and after propagation (1)
-			goto skip
-		}
 		if !reset || !allreset && trace[w] > c {
 			// Receive normals from the current phase, if not resetting.
 			a.Y[w] = cmplx.Rect(1, a.Ph[w])
 			continue
 		}
-	skip:
 		a.Ph[w] = cmplx.Phase(a.X[w])
 		a.Y[w] = 1
 		for ch := range nch {
@@ -347,8 +287,7 @@ const (
 	ridgemask = right | down | up
 )
 
-func (n *warper) trackridges(out, trace []float64, ridges []uint, resetnow []bool, HighRidgeHeight, InfluenceRadius int) []float64 {
-	clear(resetnow)
+func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeight, InfluenceRadius int) []float64 {
 	for w, v := range ridges {
 		p := boolfloat(bits.OnesCount(v&(ridgemask<<3)) >= 2)
 		trace[w] = trace[w]*p + p
@@ -364,7 +303,6 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, resetnow []boo
 			// Reset the track on a PGHI-detected transient.
 			if i-l >= HighRidgeHeight {
 				v = 0
-				fill(resetnow[l:i], true)
 			}
 			fill(trace[l:i], v)
 		}
@@ -372,16 +310,9 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, resetnow []boo
 			l = -1
 		}
 	}
-	// Finish the last vertical ridge
 	if l > 0 {
 		fill(trace[l:], slices.Max(trace[l:]))
 	}
-	// Force reset on new trajectories.
-	// for w := range trace {
-	// 	if trace[w] == 1 {
-	// 		resetnow[w] = true
-	// 	}
-	// }
 	// Propagate each trace to its native (per PGHI directions) region of influence,
 	// limited by InfluenceRadius hyperparameter.
 	clear(out)

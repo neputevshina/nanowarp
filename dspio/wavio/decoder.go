@@ -222,24 +222,23 @@ var _ dspio.GrainSeeker = &Decoder{}
 // will be at offset.
 //
 // TODO: Internal buffering.
-func (r *Decoder) GrainSeek(prr error, offset int64, buf [][]float64) error {
-	size := len(buf[0])
+func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, error) {
 	for ch := range r.seekbuf {
 		r.seekbuf[ch] = slices.Grow(r.seekbuf[ch][:0], size)[:size]
 	}
 	byteseek := max(0, offset) * int64(r.fmtchunk.NBlockAlign)
 	if byteseek > int64(r.data.Size)+int64(size) {
-		return io.EOF
+		return nil, io.EOF
 	}
 	_, err := r.rs.Seek(r.data.Seek+byteseek, io.SeekStart)
 	for ch := range r.knife {
 		r.knife[ch] = r.seekbuf[ch][max(0, -offset):]
 	}
 	_, err = r.SignalRead(err, r.knife)
-	for ch := range r.seekbuf {
-		copy(buf[ch], r.knife[ch])
+	if err != nil {
+		return nil, err
 	}
-	return err
+	return r.knife, err
 }
 
 func decodeCompanded(r *Decoder, bbuf []byte, buf [][]float64, ulaw bool) {
