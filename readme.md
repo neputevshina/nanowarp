@@ -80,6 +80,7 @@ but currently sounds best on audio data with aforementioned parameters.
   time stretch algorithm. Elastique gives more clarity and presence.
 
 ## Notes
+- A new onset detector is needed. This one works very bad.
 - cmd/nanowarp: If -from is 1 by default, then -t and -to is the same thing.
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
@@ -107,15 +108,14 @@ but currently sounds best on audio data with aforementioned parameters.
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues
-- Only 48kHz and 44.1kHz sample rates stereo were tested.
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
-  - Even slower now because of unbufferized wavio.Encoder.GrainSeek.
+  - Even slower now because of unbufferred wavio.Encoder.GrainSeek.
 - Triple echo in time on extreme (>4x) stretches. 
   The bane of all PVDR-based algorithms due to extreme stretching of magnitude spectrum.
-  Mitigated either by [SELEBI](https://arxiv.org/abs/2602.16421) or by factorization of stretch coefficient (hint from Elastiqué SDK docs).
+  Mitigated either by [SELEBI (preprint)](https://arxiv.org/abs/2602.16421) or by factorization of stretch coefficient (hint from Elastiqué SDK docs).
   From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`.
   If `e-1` is negative, shrink by `2**(1-e)` instead.
 - Triple echo in frequency on high-frequency content. Can be seen on 2x stretched log sweep.

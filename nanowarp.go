@@ -84,7 +84,7 @@ type Hyperparams struct {
 	//
 	// Lower values — more vibrato will be detected as transients.
 	// On 1 only steady sinusoidal trajectories will be considered tonal.
-	HighRidgeHeight int `default:"5"`
+	HighRidgeHeight int `default:"11"`
 
 	// Minimum amount of time bins a trajectory must travel in total
 	// to be considered tonal.

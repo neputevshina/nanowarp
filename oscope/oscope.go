@@ -114,6 +114,8 @@ func Dump(err error, topath string) error {
 			err = dumpTexture[int](nil, w, w.data, outf)
 		case []uint8:
 			err = dumpTexture[uint8](nil, w, w.data, outf)
+		case []bool:
+			err = dumpBoolTexture(nil, w, w.data, outf)
 		}
 		if err != nil {
 			return err
@@ -169,6 +171,30 @@ func dumpTexture[T constraints.Integer | constraints.Float](err error, w *watch,
 		for y := range height {
 			v := float64(data[x].(S)[y])*scale + offset
 			img.SetGray(x, y, color.Gray{Y: uint8(max(0, min(255, v+0.5)))})
+		}
+	}
+
+	file, err := os.Create(topath)
+	if err != nil {
+		return err
+	}
+	return png.Encode(file, img)
+}
+
+func dumpBoolTexture(err error, w *watch, data []any, topath string) error {
+	type S = []bool
+
+	height := len(data[0].(S))
+	width := len(data)
+
+	img := image.NewGray(image.Rect(0, 0, width, height))
+	for x := range width {
+		for y := range height {
+			v := byte(0)
+			if data[x].(S)[y] {
+				v = 255
+			}
+			img.SetGray(x, y, color.Gray{Y: v})
 		}
 	}
 
