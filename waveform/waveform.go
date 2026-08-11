@@ -24,8 +24,8 @@ import (
 var Lookup = []rune(` 🬀🬁🬂🬃🬄🬅🬆🬇🬈🬉🬊🬋🬌🬍🬎🬏🬐🬑🬒🬓▌🬔🬕🬖🬗🬘🬙🬚🬛🬜🬝🬞🬟🬠🬡🬢🬣🬤🬥🬦🬧▐🬨🬩🬪🬫🬬🬭🬮🬯🬰🬱🬲🬳🬴🬵🬶🬷🬸🬹🬺🬻█`) // U+1FB00-U+1FB3B is a lie.
 
 // Dump prints the waveform of the audio to Stderr.
-func Dump(prr error, b []float64) error {
-	return DumpWriter(prr, os.Stderr, b)
+func Dump(b []float64) error {
+	return DumpWriter(nil, os.Stderr, b)
 }
 
 // DumpWrited prints the waveform of the audio to out.

@@ -155,8 +155,8 @@ func TestGopipeSignal(t *testing.T) {
 
 			for i := range got[0] {
 				if int(got[0][i])-int(want[0][i]) != 0 {
-					e := waveform.Dump(nil, got[0])
-					e = waveform.Dump(e, want[0])
+					waveform.Dump(got[0])
+					waveform.Dump(want[0])
 					erc <- errors.New(fmt.Sprint(`mismatch at`, i, `, want`, want[0][i], `got`, got[0][i]))
 					return
 				}

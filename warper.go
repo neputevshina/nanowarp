@@ -13,6 +13,8 @@ import (
 	"gonum.org/v1/gonum/floats"
 )
 
+const warperOverlap = 4
+
 type warper struct {
 	nfft  int     // DFT size, a power of 2
 	nbuf  int     // Effective window size, nbuf<nfft
@@ -57,14 +59,13 @@ type wbufs struct {
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	// FIXME Only 2x oversampling works, no more, no less.
-	olap := 4
 	nfft := nextpow2(nbuf * osamp)
 	n = &warper{
 		nfft:  nfft,
 		nbins: nfft/2 + 1,
 		nbuf:  nbuf,
-		hop:   nbuf / olap,
-		olap:  olap,
+		hop:   nbuf / warperOverlap,
+		olap:  warperOverlap,
 		osamp: float64(nfft) / float64(nbuf),
 		root:  nanowarp,
 	}
