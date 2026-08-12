@@ -203,12 +203,14 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 	enfft(a.X, a.W, a.Mid)
 
 	cmplxs.Abs(a.M, a.X)
-	var arr [][2]int
+	var arrows [][2]int
 	if n.root.opts.Quality == -1 {
-		arr = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+		arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
 	} else {
-		arr = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
 	}
+
+	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.
@@ -238,9 +240,7 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft)/float64(n.hop), w)
 	}
 
-	n.pghiintegrate(arr, a.Fadv, a.Tadv, a.Ph, a.Past)
-
-	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
+	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
 
 	// Bypass short ridges on phase reset.
 	c := float64(hp.LongRidgeLength) * stretch

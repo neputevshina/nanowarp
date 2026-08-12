@@ -222,6 +222,7 @@ var _ dspio.GrainSeeker = &Decoder{}
 // will be at offset.
 //
 // TODO: Internal buffering.
+// TODO: Copy from experimental branch.
 func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, error) {
 	for ch := range r.seekbuf {
 		r.seekbuf[ch] = slices.Grow(r.seekbuf[ch][:0], size)[:size]
@@ -237,6 +238,9 @@ func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, err
 	_, err = r.SignalRead(err, r.knife)
 	if err != nil {
 		return nil, err
+	}
+	for ch := range r.knife {
+		r.knife[ch] = r.knife[ch][:max(0, min(int64(len(r.knife[0])), int64(r.Properties().Samples)-offset))]
 	}
 	return r.knife, err
 }
