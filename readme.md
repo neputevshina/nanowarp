@@ -80,6 +80,7 @@ but currently sounds best on audio data with aforementioned parameters.
   time stretch algorithm. Elastique gives more clarity and presence.
 
 ## Notes
+- TODO: Input NaN detection and removal.
 - A new onset detector is needed. This one works very bad.
 - Momentary phase resets are ineffective. At least if resetting at each transient ridge for the current frame.
 - cmd/nanowarp: If -from is 1 by default, then -t and -to is the same thing.
@@ -109,7 +110,7 @@ but currently sounds best on audio data with aforementioned parameters.
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues
-- Only 48kHz and 44.1kHz sample rates stereo were tested.
+- Aliasing of bass ⪅150 Hz
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
