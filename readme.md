@@ -17,6 +17,7 @@ go get github.com/neputevshina/nanowarp
 ```
 go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
 ```
+Please note that `@latest` installs the last tagged version (e.g. v0.5.4), not the latest commit in master.
 4. Use it
 ```
 nanowarp -p -i inputfile.wav -t <stretch> [-o outputfile.wav]
@@ -61,9 +62,9 @@ Like in original implementation of PVDR, FFT is oversampled by factor of 2 with 
 Stereo coherence is obtained through stretching mono and adding complex phase difference of 
 respective side channels after stretching back[4].
 
-Transient triplication, characteristic to all PVDRs (like original implementation), is mitigated for large 
-stretch coefficients (> 3) by limiting the horizontal displacement (partial derivative of phase by time) 
-to half analysis hop size.
+Transient triplication, characteristic to all PVDRs (like original implementation), is mitigated 
+by removing the all bins where horizontal displacement (partial derivative of phase by time) is greater than
+half analysis hop size.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
