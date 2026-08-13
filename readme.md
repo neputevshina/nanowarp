@@ -61,6 +61,9 @@ Like in original implementation of PVDR, FFT is oversampled by factor of 2 with 
 Stereo coherence is obtained through stretching mono and adding complex phase difference of 
 respective side channels after stretching back[4].
 
+Transient triplication, characteristic to all PVDRs (like original implementation), is mitigated
+by limiting the horizontal displacement (partial derivative of phase by time) to half analysis hop size.
+
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
 
@@ -110,18 +113,11 @@ but currently sounds best on audio data with aforementioned parameters.
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
 ## Known issues
-- Aliasing of bass ⪅150 Hz
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
   - Even slower now because of unbufferized wavio.Encoder.GrainSeek.
-- Triple echo in time on extreme (>4x) stretches. 
-  The bane of all PVDR-based algorithms due to extreme stretching of magnitude spectrum.
-  Mitigated either by [SELEBI](https://arxiv.org/abs/2602.16421) or by factorization of stretch coefficient (hint from Elastiqué SDK docs).
-  From `f, e := math.Frexp(stretch)`, stretch by two `e-1` times, and finish with `f*2`.
-  If `e-1` is negative, shrink by `2**(1-e)` instead.
-- Triple echo in frequency on high-frequency content. Can be seen on 2x stretched log sweep.
 
 ## AI use disclosure
 `rankfilt.go` was initially translated from C++ by free ChatGPT.

@@ -203,14 +203,6 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 	enfft(a.X, a.W, a.Mid)
 
 	cmplxs.Abs(a.M, a.X)
-	var arrows [][2]int
-	if n.root.opts.Quality == -1 {
-		arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
-	} else {
-		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
-	}
-
-	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	// Encode stereo phase differences and stretch mid only, keep original magnitudes.
 	// NB: Phase difference in polar coordinates is complex division in cartesian.
@@ -225,6 +217,15 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 			a.C[ch][w] = safediv(a.C[ch][w], a.Y[w])
 		}
 	}
+
+	var arrows [][2]int
+	if n.root.opts.Quality == -1 {
+		arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+	} else {
+		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+	}
+
+	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	// Calculate partial derivatives of the phase.
 	//
@@ -246,6 +247,12 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 	c := float64(hp.LongRidgeLength) * stretch
 	for w := range a.Y {
 		if !reset || !allreset && trace[w] > c {
+			// Limit the horizontal partial derivative displacement.
+			// This suppresses the transient triplication.
+			if abs(real(a.Xt[w]/a.X[w])) >= float64(n.hop)/2 {
+				a.Y[w] = 0
+				continue
+			}
 			// Receive normals from the current phase, if not resetting.
 			a.Y[w] = cmplx.Rect(1, a.Ph[w])
 			continue
