@@ -249,7 +249,7 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 		if !reset || !allreset && trace[w] > c {
 			// Limit the horizontal partial derivative displacement.
 			// This suppresses the transient triplication.
-			if abs(real(a.Xt[w]/a.X[w])) >= float64(n.hop)/2 {
+			if stretch > 3 && abs(real(a.Xt[w]/a.X[w])) >= float64(n.hop)/2 {
 				a.Y[w] = 0
 				continue
 			}
