@@ -21,7 +21,7 @@ Please note that `@latest` installs the last tagged version (e.g. v0.5.4), not t
 
 4. Use it
 ```
-nanowarp -i inputfile.wav -t <stretch> [-o outputfile.wav]
+nanowarp -i inputfile.wav -to <stretch> [-o outputfile.wav]
 ```
 or
 ```
@@ -64,8 +64,8 @@ Stereo coherence is obtained through stretching mono and adding complex phase di
 respective side channels after stretching back[4].
 
 Transient triplication, characteristic to all PVDRs (like original implementation), is mitigated 
-by removing the all bins where horizontal displacement (partial derivative of phase by time) is greater than
-half analysis hop size.
+by removing all bins where absolute horizontal displacement (of partial derivative of phase by time) 
+is greater than half analysis hop size.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.

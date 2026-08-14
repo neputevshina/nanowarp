@@ -28,7 +28,6 @@ var progress = flag.Bool("p", true, "Display progress bar.")
 var cpuprofile = flag.String("cpuprofile", "", "Write cpu profile to `file`.")
 var finput = flag.String("i", "", "Input WAV (or anything else, if ffmpeg is present) `path`.")
 var foutput = flag.String("o", "", "Output WAV `path`.")
-var coeff = flag.Float64("t", 0, "Time stretch multiplier.")
 var from = flag.Float64("from", 1, "Source `BPM`.")
 var to = flag.Float64("to", 1, "Target `BPM` or stretch factor if -from is not set.")
 var st = flag.Float64("st", 0, `Pitch shift in semitones.
@@ -67,6 +66,10 @@ Time map must be functional. Output index of any breakpoint can't be
 less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
+var notriple = flag.Bool("notriplefix", false, `Disable local group delay limiting
+Disables fix for ridge triplication in time, which is obvious on
+extreme (>4x) stretches. Makes no effect for shrinks.
+On small coefficients result may sound more “full” and less “plastic”.`)
 
 func init() {
 	flag.Usage = func() {
@@ -79,9 +82,76 @@ Audio time stretching algorithm
 © 2025-2026 neputevshina
 https://github.com/neputevshina/nanowarp
 
-Usage:
+Basic usage:
+  -i path
+	Input WAV (or anything else, if ffmpeg is present) path.
+  -o path
+	Output WAV path. If empty will be generated from input path.
+  -from BPM
+	Source BPM. (default 1)
+  -to BPM
+	Target BPM or stretch factor if -from is 1. (default 1)
+  -st float
+	Pitch shift in semitones.
+	Currently adjusts time stretch without changing the the pitch.
+  -timemap string
+	Path to timemap file in rubberband program format.
+	Each line is a pair of two integers, separated by space.
+	First integer is an input sample index, second is an output sample index.
+	Unlike rubberband, specifying total duration is not needed, but last pair
+	must be a pair of input sample index and a last output sample index.
+	Time map must be functional. Output index of any breakpoint can't be
+	less than that of any previous breakpoint.
+
+Quality and behavior:
+  -q int
+	Set algorithm quality.
+	-1: Use brute force approximation to PGHI. Less transparent, 20% faster.
+	0:  Use PGHI.
+  -resets int
+	Time and phase resets:
+	-2: Don't perform transient separation, output raw PVDR without phase resets.
+	-1: Use original phase when not stretching.
+	    Introduces clicky artifacts but cleanest for transient-heavy material.
+	    Best numerical stability because of resets.
+	0:  When not stretching, advance phase for harmonic components,
+	    use original phase otherwise.
+	    Very little to no artifacts, but noticeable slight loss in clarity.
+  -outpool
+	If true, measure pooling size in output time, not in input time.
+	I.e. scale the pooling size with the stretch coefficient.
+	Effective only for stretches, not shrinks, which are always scaled.  
+  -poolms int
+	Time of onset detection bucket in milliseconds.
+	Minimum amount of time between two consecutive transient detections. (default 250)
+  -ri int
+	Minimum amount of time bins a trajectory must travel in total
+	to be considered tonal.
+	Lower values — more tonal preservation and less transient clarity.
+	Higher values — more transient preservation and more interrupts. (default 8)
+  -if int
+	Maximum radius of influence of each detected tonal trajectory.
+	Phase never be reset at this number of bins around the ridge.
+	Higher values compromise transient quality over tonal quality. (default 2)
+  -notriplefix
+	Disable local group delay limiting.
+	Disables fix for ridge triplication in time, which is obvious on
+	extreme (>4x) stretches. Makes no effect for shrinks.
+	On small coefficients result may sound more “full” and less “plastic”.
+
+Utility:
+  -p    Display progress bar. (default true)
+
+Debug:
+  -cpuprofile file
+	Write cpu profile to file.
+  -onsets
+	Output displaced onsets only.
+  -experiment number
+	DON'T USE: run a numbered experiment instead of nanowarp.
+  -flac string
+	Not implemented. Output FLAC encoded file.
 `)
-		flag.PrintDefaults()
 	}
 	flag.Parse()
 }
@@ -118,7 +188,7 @@ func main() {
 		} else if math.Abs(*st) > 0 {
 			return fmt.Sprintf("%s", pitchSuffix)
 		} else {
-			return fmt.Sprintf("%.4fx%s", *coeff, pitchSuffix)
+			return fmt.Sprintf("%.4fx%s", *to, pitchSuffix)
 		}
 	}
 	generateOutName := func(dir, fn string) string {
@@ -229,14 +299,14 @@ func main() {
 			bps = append(bps, nanowarp.Bp(float64(i), float64(j)))
 		}
 	} else {
-		if *coeff <= 0 && (*from > 1 && *to > 1 || math.Abs(*st) > 0) {
-			*coeff = *from / *to * math.Pow(2, *st/12)
+		if *from > 1 || math.Abs(*st) > 0 {
+			*to = *from / *to * math.Pow(2, *st/12)
 		}
-		if *coeff <= 0 {
+		if *to <= 0 {
 			flag.Usage()
 			os.Exit(1)
 		}
-		bps = []nanowarp.Breakpoint{nanowarp.Bp(0, 0), nanowarp.Bp(inputLength, inputLength**coeff)}
+		bps = []nanowarp.Breakpoint{nanowarp.Bp(0, 0), nanowarp.Bp(inputLength, inputLength**to)}
 	}
 	slices.SortFunc(bps, func(a, b nanowarp.Breakpoint) int {
 		return int((a.I - b.I) / math.Abs(a.I-b.I))
@@ -285,22 +355,26 @@ func main() {
 		Resets:   *resets,
 		Progress: pch,
 		Hyperparams: nanowarp.Hyperparams{
-			PickingMs:       *poolms,
-			ScalePool:       *outpool,
-			InfluenceRadius: *ifr,
-			LongRidgeLength: *ri,
+			PickingMs:         *poolms,
+			ScalePool:         *outpool,
+			InfluenceRadius:   *ifr,
+			LongRidgeLength:   *ri,
+			NoTriplicationFix: *notriple,
 		},
 	}
 	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)
 
+	var exit chan struct{}
 	if *progress {
+		exit = make(chan struct{}, 0)
 		pb := startProgress(os.Stderr)
 		go func() {
 			for bp := range pch {
 				pb.Set(bp.Current, bp.End)
-				fmt.Print(" ", bp.Process)
+				fmt.Fprint(os.Stderr, " ", bp.Process)
 			}
-			println()
+			fmt.Fprintln(os.Stderr)
+			exit <- struct{}{}
 		}()
 	}
 
@@ -315,6 +389,9 @@ func main() {
 		panic(err)
 	}
 
+	if exit != nil {
+		<-exit
+	}
 	oscope.Dump(nil, "./pics")
 }
 

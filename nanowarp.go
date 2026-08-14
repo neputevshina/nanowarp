@@ -103,6 +103,14 @@ type Hyperparams struct {
 	//
 	// Higher values compromise transient quality over tonal quality.
 	InfluenceRadius int `default:"3"`
+
+	// Disable limiting of local group delay.
+	//
+	// Disables fix for ridge triplication in time, which is obvious on
+	// extreme (>4x) stretches. Makes no effect for shrinks.
+	//
+	// On small coefficients result may sound more “full” and less “plastic”.
+	NoTriplicationFix bool
 }
 
 // New creates a new time-scale modification process object.
@@ -199,7 +207,7 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 	}
 
 	grw := dspio.NewRegularToOfflineGrainWriter(n.warper.nbuf, n.warper.hop, w)
-	n.warper.processFinal(r, grw, phasor)
+	n.warper.process(r, grw, phasor)
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {

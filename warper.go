@@ -96,7 +96,7 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) processFinal(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Curve) error {
+func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Curve) error {
 	nch := in.NchRead()
 	get := func() [][]float64 { return make2[float64](nch, n.nbuf) }
 	progress := n.root.opts.Progress
@@ -249,7 +249,8 @@ func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, rese
 		if !reset || !allreset && trace[w] > c {
 			// Limit the horizontal partial derivative displacement.
 			// This suppresses the transient triplication.
-			if stretch > 3 && abs(real(a.Xt[w]/a.X[w])) >= float64(n.hop)/2 {
+			notriple := n.root.opts.NoTriplicationFix
+			if !notriple && abs(real(a.Xt[w]/a.X[w])) >= float64(n.hop)/2 {
 				a.Y[w] = 0
 				continue
 			}
