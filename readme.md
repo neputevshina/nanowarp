@@ -88,20 +88,20 @@ but currently sounds best on audio data with aforementioned parameters.
 ## Notes
 - TODO: Input NaN detection and removal.
 - A new onset detector is needed. This one works very bad.
-- Momentary phase resets are ineffective. At least if resetting at each transient ridge for the current frame.
-- cmd/nanowarp: If -from is 1 by default, then -t and -to is the same thing.
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
   Plain GrainReader and RegularToOfflineGrainWriter can be paired.
 - We need a regression testing GitHub CI.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
 - Formant shifting must be implemented after streaming.
-- Phase could be reset on PGHI-detected transients.
-- Phase could be reset at the start of each PGHI-detected tonal trajectory 
-  (when trace\[w\] == 1).
-- Analysis lookahead will help in correct ridge detection.
-- We may limit amount of reset-continued ridges to, say, loudest 10-20 using 
-  existing arrow data.
+- Momentary phase resets 
+  - Are ineffective. At least if resetting at each transient ridge for the current frame.
+  - Analysis lookahead will help in correct ridge detection.
+  - Phase could be reset on PGHI-detected transients.
+  - Phase could be reset at the start of each PGHI-detected tonal trajectory 
+    (when trace\[w\] == 1).
+  - We may limit amount of reset-continued ridges to, say, loudest 10-20 using 
+    existing arrow data.
 - Differentiation of major (full) and minor (with continued partials) phase resets.
 - Discrete partial phase derivatives may perform better than reassignment.
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
