@@ -134,10 +134,10 @@ Quality and behavior:
 	Phase never be reset at this number of bins around the ridge.
 	Higher values compromise transient quality over tonal quality. (default 2)
   -notriplefix
-	Disable local group delay limiting.
+	Disable local group delay limiting for large stretches.
+	Always enabled for coefficients less than 2.
 	Disables fix for ridge triplication in time, which is obvious on
 	extreme (>4x) stretches. Makes no effect for shrinks.
-	On small coefficients result may sound more “full” and less “plastic”.
 
 Utility:
   -p    Display progress bar. (default true)
@@ -228,7 +228,7 @@ func main() {
 			// ex := path.Join(path.Dir(s), path.Base(s2)) + `.wav`
 			ex := path.Join(os.TempDir(), path.Base(s2)) + `.wav`
 
-			cmd := exec.Command(`ffmpeg`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
+			cmd := exec.Command(`ffmpeg`, `-hide_banner`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
 			cmd.Stderr = os.Stderr
 			cmd.Stdout = os.Stdout
 			err = cmd.Run()

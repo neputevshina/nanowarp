@@ -107,9 +107,7 @@ type Hyperparams struct {
 	// Disable limiting of local group delay.
 	//
 	// Disables fix for ridge triplication in time, which is obvious on
-	// extreme (>4x) stretches. Makes no effect for shrinks.
-	//
-	// On small coefficients result may sound more “full” and less “plastic”.
+	// extreme (>4x) stretches. Makes no effect for coefficients less than 2.
 	NoTriplicationFix bool
 }
 
@@ -147,7 +145,7 @@ type Lengther interface {
 	Length() int
 }
 
-// Process pefrorms the time-scale modification of r and writes it to w.
+// Process pefrorms the time-scale modification of r and writes the result to w.
 func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor *Curve) {
 	if n.opts.Resets > -2 {
 		poolstretch := 1.
@@ -241,44 +239,3 @@ func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {
 		})
 	}
 }
-
-/*
-nw.Push(left []float32, right []float32) (nl, nr int)
-nw.Push64(left []float64, right []float64) (nl, nr int)
-nw.PushStereo(buf [][2]float32) (n int)
-nw.PushStereo64(buf [][2]float64) (n int)
-
-nw.Pull(left []float32, right []float32) (nl, nr int)
-nw.Pull64(left []float64, right []float64) (nl, nr int)
-nw.PullStereo(buf [][2]float32) (n int)
-nw.PullStereo64(buf [][2]float64) (n int)
-
-nw.Ready() bool
-nw.SetTime(stretch float64)
-nw.SetPitch(semitones float64)
-New() *Nanowarp
-*/
-
-// func (n *Nanowarp) Push64(l []float64, r []float64) (nl, nr int) {
-// 	c := n.nmustcollect()
-// 	diffa := func(a, b *[]float64) {
-// 		d := len(*a) - c
-// 		if d < 0 {
-// 			*a = append(*a, (*b)[:min(len(*b), -d)]...)
-// 		}
-// 	}
-// 	diffa(&n.left, &l)
-// 	diffa(&n.right, &r)
-// 	return 0, 0
-// }
-
-// func (n *Nanowarp) Ready() bool {
-// 	if len(n.left) != len(n.right) {
-// 		panic(`nanowarp: unreachable, stereo buffer length mismatch`)
-// 	}
-// 	return len(n.left) == n.nmustcollect()
-// }
-
-// func (n *Nanowarp) Pull64(left []float64, right []float64) (nl, nr int) {
-// 	return 0, 0
-// }

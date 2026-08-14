@@ -246,9 +246,9 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	c := float64(hp.LongRidgeLength) * stretch
 	for w := range a.Y {
 		if !reset || !allreset && trace[w] > c {
+			notriple := n.root.opts.NoTriplicationFix || stretch <= 2
 			// Limit the horizontal partial derivative displacement.
 			// This suppresses the transient triplication.
-			notriple := n.root.opts.NoTriplicationFix
 			if !notriple && abs(real(a.Xt[w]/a.X[w])) >= float64(n.hop)/2 {
 				a.Y[w] = 0
 				continue
