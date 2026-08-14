@@ -103,7 +103,6 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 
 	lead := get()
 	grain := get()
-	futurecrop := make([][]float64, nch)
 
 	lastone := 0
 	fivesec := n.root.fs * 5
@@ -144,7 +143,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 		}
 
 		q := n.root.opts.Resets
-		normal, diff, _ := n.advance(lead, futurecrop, c, q >= -1 && c == 1, q == -1)
+		normal, diff, _ := n.advance(lead, c, q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
 
 		d := j - lastone
@@ -158,7 +157,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 				for i := range rr {
 					rr[i] *= float64(i) / float64(len(rr))
 				}
-				fill(grain[ch][:max(0, n.nbuf/2-d-n.hop)], 0)
+				fill(grain[ch][:max(0, n.nbuf/2-d)], 0)
 			}
 
 			if n.root.opts.Onsets && c != 1 {
@@ -183,7 +182,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain, futuregrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
+func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
 	hp := n.root.opts.Hyperparams
 	nch := len(ingrain)
