@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -316,11 +317,23 @@ func main() {
 		panic(err)
 	}
 
-	// Opening the output.
-	outfile, err := os.Create(*foutput)
+	// Open the temporary output and delete it if interrupted.
+	outfile, err := os.CreateTemp(path.Dir(*foutput), "nanowarp_*.wav")
+	untmp := func() {
+		_ = outfile.Close()
+		_ = os.Remove(outfile.Name())
+	}
+	defer untmp()
 	if err != nil {
 		panic(err)
 	}
+	irq := make(chan os.Signal, 1)
+	signal.Notify(irq, os.Interrupt, os.Kill)
+	go func() {
+		<-irq
+		untmp()
+		os.Exit(0)
+	}()
 
 	wsw, err := wavio.NewEncoder(outfile, props.Samplerate, props.Nch, wavio.FormatFloat, 32)
 	if err != nil {
@@ -391,6 +404,12 @@ func main() {
 
 	if exit != nil {
 		<-exit
+	}
+
+	// Moving the temporary output to real one.
+	err = os.Rename(outfile.Name(), *foutput)
+	if err != nil {
+		panic(err)
 	}
 	oscope.Dump(nil, "./pics")
 }

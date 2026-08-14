@@ -87,7 +87,7 @@ but currently sounds best on audio data with aforementioned parameters.
 
 ## Notes
 - TODO: Input NaN detection and removal.
-- A new onset detector is needed. This one works very bad.
+- A new onset detector is needed. This one is not that good.
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
   Plain GrainReader and RegularToOfflineGrainWriter can be paired.
