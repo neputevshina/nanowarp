@@ -188,10 +188,9 @@ func (n *detector) cdodf(ingrain [][]float64) (s float64) {
 
 	s = sum(a.N)
 
-	// NOTE(neputevshina): it is broken, but this way it detects onsets better somehow.
 	for ch := range n.nch {
-		copy(a.PL[ch], a.L[ch])
 		copy(a.PPL[ch], a.PL[ch])
+		copy(a.PL[ch], a.L[ch])
 	}
 
 	return
