@@ -91,7 +91,7 @@ type Hyperparams struct {
 	//
 	// Lower values — more tonal preservation and less transient clarity.
 	// Higher values — more transient preservation and more interrupts.
-	LongRidgeLength int `default:"8"`
+	LongRidgeLength int `default:"7"`
 
 	// Maximum radius of influence of each detected tonal trajectory.
 	// Limits vertical propagation of ridges' region of influence.
@@ -109,6 +109,16 @@ type Hyperparams struct {
 	// Disables fix for ridge triplication in time, which is obvious on
 	// extreme (>4x) stretches. Makes no effect for coefficients less than 2.
 	NoTriplicationFix bool
+
+	// // Base window size in samples at 48000 Hz. The true value is corrected for input sample rate.
+	// //
+	// // Discriminates between bass and pulsation.
+	// // Lower values give more clarity at the cost of increasing lowest possible note.
+	// // The correct value tends to correspond to quarter of the frequency
+	// // of the lowest fundamental in the signal.
+	// //
+	// // Default value is calibrated for 5 Hz.
+	// BaseNFFT int `default:"3200"`
 }
 
 // New creates a new time-scale modification process object.
@@ -130,10 +140,11 @@ func new(channels int, samplerate int, opts *Options) (n *Nanowarp) {
 	n.nch = channels
 	scale := func(x float64) int {
 		e := int(math.Ceil(x * float64(samplerate) / 48000))
-		return e + (warperOverlap-e%warperOverlap)%warperOverlap // Quantize by warper overlap.
+		e = e + (warperOverlap-e%warperOverlap)%warperOverlap // Quantize by warper overlap.
+		return e
 	}
 
-	n.warper = warperNew(scale(4096), 2, channels, n)
+	n.warper = warperNew(scale(3200), 2, channels, n)
 	n.detector = detectorNew(scale(1024), samplerate, channels, opts.PickingMs)
 
 	return

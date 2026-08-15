@@ -86,6 +86,7 @@ but currently sounds best on audio data with aforementioned parameters.
   time stretch algorithm. Elastique gives more clarity and presence.
 
 ## Notes
+- TODO: Calibrate warper's base nfft and partial derivative formulas.
 - TODO: Input NaN detection and removal.
 - A new onset detector is needed. This one is not that good.
 - **Onset detection and phasor generation can be performed while warping**.

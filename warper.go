@@ -235,8 +235,8 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 	for w := range a.X {
-		a.Fadv[w] = princarg(fadv(a.X[:n.nbins], a.Xt, stretch, w))
-		a.Tadv[w] = tadv(a.X[:n.nbins], a.Xd, float64(n.nfft)/float64(n.hop), w)
+		a.Fadv[w] = princarg(fadv(a.X, a.Xt, stretch, n.osamp, w))
+		a.Tadv[w] = tadv(a.X, a.Xd, float64(n.nfft)/float64(n.hop)/2, w)
 	}
 
 	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
@@ -495,22 +495,30 @@ func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) 
 
 // fadv calculates the partial derivative of the phase with respect
 // to frequency using time-frequency reassignment.
-func fadv(x, xt []complex128, stretch float64, w int) float64 {
+//
+// Also known as LGD (local group delay) or “horizontal bin displacement”.
+//
+// osamp is the oversampling ratio and related to shift of the effective window
+// relative to the center of full oversampled window.
+// Inspired by https://ltfat.org/notes/ltfatnote042.pdf.
+func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	if cmplx.Abs(x[w]) == 0 {
 		return 0
 	}
 	// NOTE Try len(x)-1 instead. Sounds worse on my $4 speakers.
-	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/2
+	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/osamp
 }
 
 // tadv calculates the partial derivative of the phase with respect
 // to time using time-frequency reassignment.
 //
-// olap is nfft divided by original hop size, thus
-// accounting for FFT oversampling.
-func tadv(x, xd []complex128, olap float64, w int) float64 {
+// Also known as CIF (channelized instantaneous frequency) or
+// “vertical bin displacement”.
+//
+// scale is the correction factor.
+func tadv(x, xd []complex128, scale float64, w int) float64 {
 	if cmplx.Abs(x[w]) < 1e-6 {
 		return 0
 	}
-	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / (olap / 2)
+	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / scale
 }
