@@ -130,7 +130,7 @@ func new(channels int, samplerate int, opts *Options) (n *Nanowarp) {
 	n.nch = channels
 	scale := func(x float64) int {
 		e := int(math.Ceil(x * float64(samplerate) / 48000))
-		return e - e%warperOverlap + warperOverlap // Quantize by warper overlap.
+		return e + (warperOverlap-e%warperOverlap)%warperOverlap // Quantize by warper overlap.
 	}
 
 	n.warper = warperNew(scale(4096), 2, channels, n)

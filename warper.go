@@ -58,8 +58,8 @@ type wbufs struct {
 }
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
-	// FIXME Only 2x oversampling works, no more, no less.
 	nfft := nextpow2(nbuf * osamp)
+	println(nbuf, osamp, nch, nfft)
 	n = &warper{
 		nfft:  nfft,
 		nbins: nfft/2 + 1,
