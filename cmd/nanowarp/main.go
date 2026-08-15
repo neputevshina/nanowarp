@@ -71,6 +71,7 @@ var notriple = flag.Bool("notriplefix", false, `Disable local group delay limiti
 Disables fix for ridge triplication in time, which is obvious on
 extreme (>4x) stretches. Makes no effect for shrinks.
 On small coefficients result may sound more “full” and less “plastic”.`)
+var nfft = flag.Int("nfft", 3200, "Base window size at 48000 Hz sample rate.")
 
 func init() {
 	flag.Usage = func() {
@@ -118,22 +119,34 @@ Quality and behavior:
 	0:  When not stretching, advance phase for harmonic components,
 	    use original phase otherwise.
 	    Very little to no artifacts, but noticeable slight loss in clarity.
+  -nfft int
+	Base window size in samples at 48000 Hz. Discriminates between bass and pulsation.
+	Lower values give more clarity at the cost of increasing lowest possible note.
+	The correct value tends to correspond to half of the frequency
+	of the lowest fundamental in the signal.
+	Try values in range 3000–4096.
+	Values greater than 4096 will oversample the FFT 4 or more times,
+	increasing run time __without__ increase in quality. 
+	Default is 3200.
   -outpool
 	If true, measure pooling size in output time, not in input time.
 	I.e. scale the pooling size with the stretch coefficient.
 	Effective only for stretches, not shrinks, which are always scaled.  
   -poolms int
 	Time of onset detection bucket in milliseconds.
-	Minimum amount of time between two consecutive transient detections. (default 250)
+	Minimum amount of time between two consecutive transient detections. 
+	Default is 250.
   -ri int
 	Minimum amount of time bins a trajectory must travel in total
 	to be considered tonal.
 	Lower values — more tonal preservation and less transient clarity.
-	Higher values — more transient preservation and more interrupts. (default 8)
+	Higher values — more transient preservation and more interrupts.
+	Default is 7.
   -if int
 	Maximum radius of influence of each detected tonal trajectory.
 	Phase never be reset at this number of bins around the ridge.
-	Higher values compromise transient quality over tonal quality. (default 2)
+	Higher values compromise transient quality over tonal quality.
+	Default is 2.
   -notriplefix
 	Disable local group delay limiting for large stretches.
 	Always enabled for coefficients less than 2.
@@ -373,6 +386,7 @@ func main() {
 			InfluenceRadius:   *ifr,
 			LongRidgeLength:   *ri,
 			NoTriplicationFix: *notriple,
+			BaseNFFT:          *nfft,
 		},
 	}
 	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)

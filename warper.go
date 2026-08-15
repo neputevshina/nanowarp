@@ -16,12 +16,13 @@ import (
 const warperOverlap = 4
 
 type warper struct {
-	nfft  int     // DFT size, a power of 2
-	nbuf  int     // Effective window size, nbuf<nfft
-	hop   int     // Window output hop size
-	nbins int     // nfft/2+1, Number of DFT bins
-	olap  int     // nbuf/hop, Window ovelap
-	osamp float64 // nfft/nbuf, Zero-padding ratio
+	nfft   int     // DFT size, a power of 2
+	nbuf   int     // Effective window size, nbuf<nfft
+	hop    int     // Window output hop size
+	nbins  int     // nfft/2+1, Number of DFT bins
+	olap   int     // nbuf/hop, Window ovelap
+	osamp  float64 // nfft/nbuf, Zero-padding ratio
+	gosamp float64 // Given osamp
 
 	root *Nanowarp
 
@@ -60,13 +61,14 @@ type wbufs struct {
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	nfft := nextpow2(nbuf * osamp)
 	n = &warper{
-		nfft:  nfft,
-		nbins: nfft/2 + 1,
-		nbuf:  nbuf,
-		hop:   nbuf / warperOverlap,
-		olap:  warperOverlap,
-		osamp: float64(nfft) / float64(nbuf),
-		root:  nanowarp,
+		nfft:   nfft,
+		nbins:  nfft/2 + 1,
+		nbuf:   nbuf,
+		hop:    nbuf / warperOverlap,
+		olap:   warperOverlap,
+		osamp:  float64(nfft) / float64(nbuf),
+		gosamp: float64(osamp),
+		root:   nanowarp,
 	}
 	a := &n.a
 

@@ -110,15 +110,17 @@ type Hyperparams struct {
 	// extreme (>4x) stretches. Makes no effect for coefficients less than 2.
 	NoTriplicationFix bool
 
-	// // Base window size in samples at 48000 Hz. The true value is corrected for input sample rate.
-	// //
-	// // Discriminates between bass and pulsation.
-	// // Lower values give more clarity at the cost of increasing lowest possible note.
-	// // The correct value tends to correspond to quarter of the frequency
-	// // of the lowest fundamental in the signal.
-	// //
-	// // Default value is calibrated for 5 Hz.
-	// BaseNFFT int `default:"3200"`
+	// Base window size in samples at 48000 Hz. The true value is corrected for input sample rate.
+	//
+	// Discriminates between bass and pulsation.
+	// Lower values give more clarity at the cost of increasing lowest possible note.
+	// The correct value tends to correspond to half of the frequency
+	// of the lowest fundamental in the signal.
+	//
+	// Try values in range 3000–4096.
+	// Values greater than 4096 will oversample the FFT 4 or more times,
+	// increasing run time __without__ increase in quality.
+	BaseNFFT int `default:"3600"`
 }
 
 // New creates a new time-scale modification process object.
@@ -144,7 +146,7 @@ func new(channels int, samplerate int, opts *Options) (n *Nanowarp) {
 		return e
 	}
 
-	n.warper = warperNew(scale(3200), 2, channels, n)
+	n.warper = warperNew(scale(float64(opts.BaseNFFT)), 2, channels, n)
 	n.detector = detectorNew(scale(1024), samplerate, channels, opts.PickingMs)
 
 	return
