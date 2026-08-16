@@ -161,11 +161,6 @@ type Lengther interface {
 // Process pefrorms the time-scale modification of r and writes the result to w.
 func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor *Curve) {
 	if n.opts.Resets > -2 {
-		poolstretch := 1.
-		stretch := phasor.Dx(phasor.elems[len(phasor.elems)-1].I)
-		if n.opts.ScalePool || stretch < 1 {
-			poolstretch = stretch
-		}
 		po, pi := dspio.GoPipe(2)
 		wg := sync.WaitGroup{}
 		wg.Add(3)
@@ -181,7 +176,7 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 		}()
 		go func() {
 			defer wg.Done()
-			err := n.detector.dilatePeakSelectProcess(po, nil, poolstretch, onsc)
+			err := n.detector.dilatePeakSelectProcess(po, nil, onsc)
 			if err != nil {
 				panic(err)
 			}

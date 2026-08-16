@@ -93,7 +93,7 @@ func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 	// This function is expected to exit when io.EOF is encountered.
 }
 
-func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, stretch float64, ons chan Onset) (err error) {
+func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.SignalWriter, ons chan Onset) (err error) {
 	if gr, ok := ar.(*dspio.GrainReader); ok && gr.Hop != gr.N() {
 		panic(`onsetFunctionWriter: non-overlapping reader required`)
 	}
@@ -150,50 +150,6 @@ func (n *detector) dilatePeakSelectProcess(ar dspio.SignalReader, aw dspio.Signa
 		}
 	}
 	// This function is expected to exit when io.EOF is encountered.
-}
-
-// cdodf calculates complex-domain onset detection function for a given stereo grain.
-//
-// See Duxbury, C., Bello, J. P., Davies, M., & Sandler, M. (2003, September).
-// Complex domain onset detection for musical signals. In Proc. Digital Audio
-// Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.
-//
-// https://www.audiolabs-erlangen.de/resources/MIR/FMP/C6/C6S1_NoveltyComplex.html
-func (n *detector) cdodf(ingrain [][]float64) (s float64) {
-	a := &n.a
-
-	enfft := func(x []complex128, w, grain []float64) {
-		clear(a.S)
-		copy(a.S, grain)
-		mul(a.S, w)
-		n.fft.Coefficients(x, a.S)
-	}
-
-	for ch := range n.nch {
-		enfft(a.L[ch], a.Wf, ingrain[ch])
-	}
-
-	for w := range a.L[0] {
-		// Cartesian form of CDODF.
-		cnov := func(x, px, ppx complex128) float64 {
-			m := cmplx.Abs(x - px*norm(px*cmplx.Conj(ppx)))
-			return m * boolfloat(cmplx.Abs(x) > cmplx.Abs(px))
-		}
-		nov := 0.
-		for ch := range n.nch {
-			nov = max(nov, cnov(a.L[ch][w], a.PL[ch][w], a.PPL[ch][w]))
-		}
-		a.N[w] = bitsafeOrDie(nov)
-	}
-
-	s = sum(a.N)
-
-	for ch := range n.nch {
-		copy(a.PPL[ch], a.PL[ch])
-		copy(a.PL[ch], a.L[ch])
-	}
-
-	return
 }
 
 // superflux calculates an approximation of Superflux onset detection function for a

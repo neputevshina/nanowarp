@@ -47,8 +47,8 @@ Nanowarp is a phase gradient heap integration (PGHI) phase vocoder (aka PVDR)[1]
 of phase are obtained through time-frequency reassignment[2]. This way accurate phase-time 
 advance can be obtained using only one windowed grain instead of two for simplicity.
 
-A phase ramp for the entire output signal is generated. Onsets are detected using rectified 
-complex-domain novelty function[3]. If onset is detected, phase ramp will have a derivative (scan speed) of 
+A phase ramp for the entire output signal is generated. Onsets are detected using a variant 
+of Superflux method[3]. If onset is detected, phase ramp will have a derivative (scan speed) of 
 1 in a region around detected onset. Starting points of these sample regions are scaled by the 
 stretch size, and points between regions are linearly interpolated.
 
@@ -133,7 +133,7 @@ Everything else was written without use of AI, if not explicitly stated otherwis
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
  see also https://github.com/ltfat/pvdoneright and https://github.com/y-fujii/mini_pvdr
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
-3. [Duxbury, C., Bello, J. P., Davies, M., & Sandler, M. (2003, September). Complex domain onset detection for musical signals. In Proc. Digital Audio Effects Workshop (DAFx) (Vol. 1, pp. 6-9). London: Queen Mary University.](https://www.dafx.de/paper-archive/2003/pdfs/dafx81.pdf)
+3. [DBöck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.](https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf)
 4. [Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a real-time realization for a commercial music product.](https://thesis.unipd.it/bitstream/20.500.12608/16470/1/tesi.pdf)
 
 ## Future: Use in C/C++ through Cgo
