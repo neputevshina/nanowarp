@@ -247,7 +247,7 @@ func binfilt(mag, logram []float64) int {
 		l := int(bend(float64(i)-1, float64(len(mag)), scale, 1))
 		r := int(math.Ceil(bend(float64(i)+1, float64(len(mag)), scale, 1)))
 		logram[i] = slices.Max(mag[l:min(len(mag)-1, r)])
-		logram[i] *= float64(l) / float64(len(mag))
+		// logram[i] *= float64(l) / float64(len(mag))
 	}
 	return scale
 }
@@ -258,7 +258,7 @@ func binget(mag, logram []float64) int {
 		l := int(bend(float64(i)-1, float64(len(mag)), scale, 1))
 		r := min(len(mag)-1, int(math.Ceil(bend(float64(i)+1, float64(len(mag)), scale, 1))))
 		logram[i] = sum(mag[l:r]) / float64(r-l)
-		logram[i] *= float64(l) / float64(len(mag))
+		// logram[i] *= float64(l) / float64(len(mag))
 	}
 	return scale
 }
