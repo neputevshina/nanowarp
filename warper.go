@@ -105,7 +105,6 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 	lead := get()
 	grain := get()
 
-	lastone := 0
 	fivesec := n.root.fs * 5
 	tsc := 0
 	if progress != nil {
@@ -147,24 +146,12 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 		normal, diff, _ := n.advance(lead, c, q >= -1 && c == 1, q == -1)
 		n.synthesize(grain, normal, diff)
 
-		d := j - lastone
-		if c == 1 {
-			lastone = j
-		}
-		for ch := range nch {
-			// Cut pre-echo in transient regions.
-			if c != 1 && d < n.nbuf/2 {
-				rr := grain[ch][clamp(0, len(grain[0]), n.nbuf/2-d-n.hop):min(len(grain[0]), n.nbuf/2-d)]
-				for i := range rr {
-					rr[i] *= float64(i) / float64(len(rr))
-				}
-				fill(grain[ch][:max(0, n.nbuf/2-d)], 0)
-			}
-
-			if n.root.opts.Onsets && c != 1 {
+		if n.root.opts.Onsets && c != 1 {
+			for ch := range nch {
 				clear(grain[ch])
 			}
 		}
+
 		_, err = out.SignalWrite(nil, grain)
 		if err != nil {
 			return err
@@ -410,7 +397,7 @@ func (n *warper) pghiarrows(M, F []float64, arrows [][2]int, ridges []uint) [][2
 
 // bruteforcearrows calculates integration directions from local magnitude maxima.
 //
-// It is faster than PGHI, but less accurate.
+// It is ≈5 times faster than PGHI, but less accurate.
 func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint) [][2]int {
 	fill(n.arm, true)
 	for w := range M {
@@ -450,13 +437,6 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 			n.arm[w] = false
 		}
 	}
-
-	// t := make([]float64, n.nbins)
-	// for w := range arrows {
-	// 	t[w] = float64(bits.OnesCount(n.ridges[w] & 0b111000))
-	// }
-	// oscope.Enable = true
-	// oscope.Oscope(t, oscope.Name(`asdf`))
 
 	// Repair ordering: start from rights, then do downs, then do ups reversed.
 	do := func(arrows [][2]int, what, save int) int {
