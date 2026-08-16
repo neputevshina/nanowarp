@@ -137,7 +137,7 @@ func dumpWaveform[T constraints.Integer | constraints.Float](err error, w *watch
 
 	img := image.NewGray(image.Rect(0, 0, width, int(height)))
 	for x := range width {
-		y := float64(data[x].(T))*scale + offset
+		y := 1 - (float64(data[x].(T))*scale + offset)
 		img.SetGray(x, int(math.Floor(y)), color.Gray{Y: 255})
 	}
 

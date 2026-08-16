@@ -71,7 +71,7 @@ var notriple = flag.Bool("notriplefix", false, `Disable local group delay limiti
 Disables fix for ridge triplication in time, which is obvious on
 extreme (>4x) stretches. Makes no effect for shrinks.
 On small coefficients result may sound more “full” and less “plastic”.`)
-var nfft = flag.Int("nfft", 3200, "Base window size at 48000 Hz sample rate.")
+var nfft = flag.Int("nfft", 3600, "Base window size at 48000 Hz sample rate.")
 
 func init() {
 	flag.Usage = func() {
@@ -127,7 +127,7 @@ Quality and behavior:
 	Try values in range 3000–4096.
 	Values greater than 4096 will oversample the FFT 4 or more times,
 	increasing run time __without__ increase in quality. 
-	Default is 3200.
+	Default is 3600.
   -outpool
 	If true, measure pooling size in output time, not in input time.
 	I.e. scale the pooling size with the stretch coefficient.

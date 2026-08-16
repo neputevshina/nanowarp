@@ -174,7 +174,7 @@ func structinit(a any) {
 	}
 }
 
-// nextpow2 returns the minimum power of two greater than i.
+// nextpow2 returns the minimum power of two greater than or equal to i.
 func nextpow2(i int) int {
 	return int(math.Floor(math.Pow(2, math.Ceil(math.Log2(float64(i))))))
 }
@@ -267,4 +267,18 @@ func atodb(a float64) float64 {
 // dbtoa converts a value in decibels full scale (dBFS) to amplitude.
 func dbtoa(db float64) float64 {
 	return math.Pow(10, db/20)
+}
+
+func bend(x float64, outsize float64, insize float64, start float64) float64 {
+	exp := math.Exp
+	log := math.Log
+	return start * exp(x*log(outsize/start)/insize)
+}
+
+func unbend(x float64, outsize float64, insize float64, start float64) float64 {
+	log := math.Log
+	if x < start {
+		return 0
+	}
+	return insize * log(x/start) / log(outsize/start)
 }

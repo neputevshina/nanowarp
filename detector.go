@@ -81,7 +81,7 @@ func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 			return err
 		}
 
-		c := n.cdodf(gs)
+		c := n.superflux(gs)
 
 		fill(fl, c)
 		mul(fl, n.a.Wr)
@@ -197,55 +197,68 @@ func (n *detector) cdodf(ingrain [][]float64) (s float64) {
 }
 
 // superflux calculates an approximation of Superflux onset detection function for a
-// given stereo grain.
-//
-// Not finished.
+// given grain.
 //
 // See Böck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression
 // for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects
 // (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.
 //
 // https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf
-// func (n *detector) superflux(lingrain, ringrain []float64) (s float64) {
-// 	a := &n.a
+func (n *detector) superflux(ingrain [][]float64) (s float64) {
+	a := &n.a
 
-// 	enfft := func(x []complex128, w, grain []float64) {
-// 		clear(a.S)
-// 		copy(a.S, grain)
-// 		mul(a.S, w)
-// 		n.fft.Coefficients(x, a.S)
-// 	}
-
-// 	enfft(a.L, a.Wf, lingrain)
-// 	enfft(a.R, a.Wf, ringrain)
-
-// 	for w := range a.L {
-// 		a.X[w] = cmplx.Abs(a.L[w]) + cmplx.Abs(a.R[w])
-// 		a.Y[w] = cmplx.Abs(a.PL[w]) + cmplx.Abs(a.PR[w])
-// 	}
-
-// 	_ = binfilt(a.X, a.A)
-// 	f := binfilt(a.Y, a.B)
-
-// 	for n := range f {
-// 		a.N[n] = max(0, a.A[n]-a.B[n])
-// 	}
-
-// 	s = sum(a.N)
-
-// 	copy(a.PL, a.L)
-// 	copy(a.PR, a.R)
-
-// 	return
-// }
-
-func binfilt(mag, logram []float64) (n int) {
-	const scale = 24
-	n = int(math.Log2(float64(len(mag)))) * scale
-	for i := range n {
-		fi := func(i int) float64 { return float64(i) / scale }
-		logram[i] = slices.Max(mag[int(math.Pow(2, fi(i))):int(math.Ceil(math.Pow(2, fi(i+1))))])
-		logram[i] *= float64(i)
+	enfft := func(x []complex128, w, grain []float64) {
+		clear(a.S)
+		copy(a.S, grain)
+		mul(a.S, w)
+		n.fft.Coefficients(x, a.S)
 	}
-	return
+
+	for ch := range n.nch {
+		enfft(a.L[ch], a.Wf, ingrain[ch])
+	}
+
+	for w := range a.L[0] {
+		a.X[w] = 0
+		a.Y[w] = 0
+		for ch := range n.nch {
+			a.X[w] += cmplx.Abs(a.L[ch][w])
+			a.Y[w] += cmplx.Abs(a.PL[ch][w])
+		}
+	}
+
+	_ = binget(a.X, a.A)
+	f := binfilt(a.Y, a.B)
+
+	for n := range f {
+		a.N[n] = max(0, a.A[n]-a.B[n])
+	}
+
+	for ch := range n.nch {
+		copy(a.PL[ch], a.L[ch])
+	}
+
+	return sum(a.N)
+}
+
+func binfilt(mag, logram []float64) int {
+	const scale = 128
+	for i := range scale {
+		l := int(bend(float64(i)-1, float64(len(mag)), scale, 1))
+		r := int(math.Ceil(bend(float64(i)+1, float64(len(mag)), scale, 1)))
+		logram[i] = slices.Max(mag[l:min(len(mag)-1, r)])
+		logram[i] *= float64(l) / float64(len(mag))
+	}
+	return scale
+}
+
+func binget(mag, logram []float64) int {
+	const scale = 128
+	for i := range scale {
+		l := int(bend(float64(i)-1, float64(len(mag)), scale, 1))
+		r := min(len(mag)-1, int(math.Ceil(bend(float64(i)+1, float64(len(mag)), scale, 1))))
+		logram[i] = sum(mag[l:r]) / float64(r-l)
+		logram[i] *= float64(l) / float64(len(mag))
+	}
+	return scale
 }
