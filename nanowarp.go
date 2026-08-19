@@ -104,11 +104,13 @@ type Hyperparams struct {
 	// Higher values compromise transient quality over tonal quality.
 	InfluenceRadius int `default:"3"`
 
-	// Disable limiting of local group delay.
+	// Behavior of limiting of local group delay.
+	// Fixes echo in time.
 	//
-	// Disables fix for ridge triplication in time, which is obvious on
-	// extreme (>4x) stretches. Makes no effect for coefficients less than 2.
-	NoTriplicationFix bool
+	// -1 fully disables it.
+	// 0 enables for coefficients greater than 2.
+	// 1 forces it.
+	TriplicationFix int
 
 	// Base window size in samples at 48000 Hz. The true value is corrected for input sample rate.
 	//

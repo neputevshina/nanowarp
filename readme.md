@@ -63,9 +63,9 @@ Like in original implementation of PVDR, FFT is oversampled by factor of 2 with 
 Stereo coherence is obtained through stretching mono and adding complex phase difference of 
 respective side channels after stretching back[4].
 
-Transient triplication, characteristic to all PVDRs (like original implementation), is mitigated 
-by removing all bins where absolute horizontal displacement (of partial derivative of phase by time) 
-is greater than half analysis hop size.
+Transient triplication, characteristic to all PVDRs, is mitigated by removing all bins where 
+absolute horizontal displacement (partial derivative of phase by time) is greater than 
+half analysis hop size. This mechanism is engaged only for stretch coefficients greater than 2.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
@@ -88,6 +88,7 @@ but currently sounds best on audio data with aforementioned parameters.
 ## Notes
 - TODO: Calibrate warper's base nfft and partial derivative formulas.
 - TODO: Input NaN detection and removal.
+- TODO: Extract dspio/wavio to an independent package.
 - A new onset detector is needed. This one is not that good.
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
@@ -106,9 +107,9 @@ but currently sounds best on audio data with aforementioned parameters.
 - Differentiation of major (full) and minor (with continued partials) phase resets.
 - Discrete partial phase derivatives may perform better than reassignment.
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
-  - Reverse-engineer FabFilter Pro-L 2 “Dynamic” mode using technique from [Tokyo Dawn Labs](https://t.me/tokyodawnlabsru/547).
-    Dynamic, because from my and [Zvukar Bombit](https://youtu.be/r14L24TFSBY?t=1007) experience, it's the best sounding 
-    mode in most cases. Use it by default for FLAC exports instead of clipping.
+  - Use a clone of FabFilter Pro-L 2 “Modern” mode by [Tokyo Dawn Labs](https://t.me/tokyodawnlabsru/547) for limiting.
+    Limit at 8x oversampling (requires a resampler).
+    Use it by default for FLAC exports instead of clipping.
   - Take 64-bit dither from one of Airwindows plugins. Acknowledge Chris properly.
 - cmd/nanowarp: allow cuts in timemap, force phase reset on each cut.
 - cmd/nanowarp: Ableton Live Clip (.asd) to timemap converter.
@@ -131,9 +132,11 @@ Everything else was written without use of AI, if not explicitly stated otherwis
 
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
- see also https://github.com/ltfat/pvdoneright and https://github.com/y-fujii/mini_pvdr
+
+See also https://github.com/ltfat/pvdoneright and https://github.com/y-fujii/mini_pvdr
+
 2. [Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms.](https://hal.science/hal-00414583/document)
-3. [DBöck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.](https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf)
+3. [Böck, S., & Widmer, G. (2013, September). Maximum filter vibrato suppression for onset detection. In Proc. of the 16th Int. Conf. on Digital Audio Effects (DAFx). Maynooth, Ireland (Sept 2013) (Vol. 7, p. 4). Citeseer.](https://www.cp.jku.at/research/papers/Boeck_Widmer_DAFx_2013.pdf)
 4. [Altoè, A. (2012). A transient-preserving audio time-stretching algorithm and a real-time realization for a commercial music product.](https://thesis.unipd.it/bitstream/20.500.12608/16470/1/tesi.pdf)
 
 ## Future: Use in C/C++ through Cgo

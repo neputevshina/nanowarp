@@ -67,10 +67,7 @@ Time map must be functional. Output index of any breakpoint can't be
 less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
-var notriple = flag.Bool("notriplefix", false, `Disable local group delay limiting
-Disables fix for ridge triplication in time, which is obvious on
-extreme (>4x) stretches. Makes no effect for shrinks.
-On small coefficients result may sound more “full” and less “plastic”.`)
+var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
 var nfft = flag.Int("nfft", 3600, "Base window size at 48000 Hz sample rate.")
 
 func init() {
@@ -147,11 +144,11 @@ Quality and behavior:
 	Phase never be reset at this number of bins around the ridge.
 	Higher values compromise transient quality over tonal quality.
 	Default is 2.
-  -notriplefix
-	Disable local group delay limiting for large stretches.
-	Always enabled for coefficients less than 2.
-	Disables fix for ridge triplication in time, which is obvious on
-	extreme (>4x) stretches. Makes no effect for shrinks.
+  -triplefix
+	Behavior of limiting of local group delay.
+	-1 disables fix for ridge triplication in time, which is obvious on
+	extreme (>4x) stretches. Makes no effect for coefficients less than 2.
+	1 forces it.
 
 Utility:
   -p    Display progress bar. (default true)
@@ -381,12 +378,12 @@ func main() {
 		Resets:   *resets,
 		Progress: pch,
 		Hyperparams: nanowarp.Hyperparams{
-			PickingMs:         *poolms,
-			ScalePool:         *outpool,
-			InfluenceRadius:   *ifr,
-			LongRidgeLength:   *ri,
-			NoTriplicationFix: *notriple,
-			BaseNFFT:          *nfft,
+			PickingMs:       *poolms,
+			ScalePool:       *outpool,
+			InfluenceRadius: *ifr,
+			LongRidgeLength: *ri,
+			TriplicationFix: *notriple,
+			BaseNFFT:        *nfft,
 		},
 	}
 	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)

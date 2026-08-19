@@ -61,7 +61,7 @@ func NewEncoder(file io.WriteSeeker, samplerate int, channels int, format Format
 		panic(`incorrect format: >4 GiB per second, which is impossible`)
 	}
 
-	// Last four bytes are uint32(10) in little-endian, the size of a format chunk.
+	// Last four bytes are uint32(0x10) in little-endian, the size of format chunk.
 	prelude := []byte("RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00")
 	n, err := file.Write(prelude)
 	if err != nil {

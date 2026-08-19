@@ -4,7 +4,7 @@ package wavio
 // © 2016 - 2024, Lefteris Zafiris <zaf@fastmail.com>, BSD 3-Clause License
 
 var (
-	// μ-law to LPCM conversion lookup table
+	// μ-law to linear PCM conversion lookup table
 	μlaw2lpcm = [256]int16{
 		-32124, -31100, -30076, -29052, -28028, -27004, -25980, -24956,
 		-23932, -22908, -21884, -20860, -19836, -18812, -17788, -16764,
@@ -40,7 +40,7 @@ var (
 		56, 48, 40, 32, 24, 16, 8, 0,
 	}
 
-	// A-law to LPCM conversion lookup table
+	// A-law to linear PCM conversion lookup table
 	alaw2lpcm = [256]int16{
 		-5504, -5248, -6016, -5760, -4480, -4224, -4992, -4736,
 		-7552, -7296, -8064, -7808, -6528, -6272, -7040, -6784,
