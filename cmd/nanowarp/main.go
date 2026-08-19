@@ -148,7 +148,8 @@ Quality and behavior:
 	Behavior of limiting of local group delay.
 	-1 disables fix for ridge triplication in time, which is obvious on
 	extreme (>4x) stretches. Makes no effect for coefficients less than 2.
-	1 forces it.
+	1 forces it. 
+	Default is 1.
 
 Utility:
   -p    Display progress bar. (default true)
