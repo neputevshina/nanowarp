@@ -4,9 +4,11 @@ import (
 	"io"
 	"math"
 	"math/cmplx"
+	"os"
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
+	"github.com/neputevshina/nanowarp/dspio/wavio"
 
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -70,6 +72,14 @@ func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 		gs[ch] = make([]float64, n.nfft)
 	}
 
+	f, err := os.Create("asdf.wav")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	e, _ := wavio.NewEncoder(f, int(float64(n.fs)/float64(n.hop)), 1, wavio.FormatFloat, 32)
+	defer e.Close()
+
 	fr := make([]float64, n.nbuf)
 	fl := make([]float64, n.nbuf)
 	for {
@@ -82,6 +92,7 @@ func (n *detector) noveltyCurveProcess(ar dspio.SignalReader, aw dspio.SignalWri
 		}
 
 		c := n.superflux(gs)
+		e.SignalWrite(nil, [][]float64{{c}})
 
 		fill(fl, c)
 		mul(fl, n.a.Wr)
@@ -187,7 +198,7 @@ func (n *detector) superflux(ingrain [][]float64) (s float64) {
 	f := binfilt(a.Y, a.B)
 
 	for n := range f {
-		a.N[n] = max(0, a.A[n]-a.B[n])
+		a.N[n] = bitsafe(max(0, a.A[n]/a.B[n]))
 	}
 
 	for ch := range n.nch {

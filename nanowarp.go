@@ -210,13 +210,13 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {
-	tsa := n.warper.hop * 2
+	tsa := n.warper.hop
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
 		b := onsets[k+1]
 		j, _ := old.Sample(b.I)
 		sa := old.Dx(j)
-		if b.I-a.I < float64(max(n.warper.nbuf, tsa))/sa {
+		if b.I-a.I < float64(tsa)/sa {
 			// Leave only louder one
 			if a.Power > b.Power {
 				onsets[k] = a
