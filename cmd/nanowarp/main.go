@@ -46,12 +46,12 @@ var q = flag.Int("q", 0, `Quality:
 Set algorithm quality.
 -1: Use brute force approximation to PGHI. Less transparent, 20% faster.
 0:  Use PGHI.`)
-var poolms = flag.Int("poolms", 250, `Time of onset detection bucket in milliseconds.
+var poolms = flag.Int("poolms", 200, `Time of onset detection bucket in milliseconds.
 Minimum amount of time between two consecutive transient detections.`)
 var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
 I.e. scale the pooling size with the stretch coefficient.
 Effective only for stretches, not shrinks, which are always scaled.`)
-var ri = flag.Int("ri", 7, `Minimum amount of time bins a trajectory must travel in total
+var ri = flag.Int("ri", 10, `Minimum amount of time bins a trajectory must travel in total
 to be considered tonal.
 Lower values — more tonal preservation and less transient clarity.
 Higher values — more transient preservation and more interrupts.`)
@@ -132,13 +132,13 @@ Quality and behavior:
   -poolms int
 	Time of onset detection bucket in milliseconds.
 	Minimum amount of time between two consecutive transient detections. 
-	Default is 250.
+	Default is 200.
   -ri int
 	Minimum amount of time bins a trajectory must travel in total
 	to be considered tonal.
 	Lower values — more tonal preservation and less transient clarity.
 	Higher values — more transient preservation and more interrupts.
-	Default is 7.
+	Default is 10.
   -if int
 	Maximum radius of influence of each detected tonal trajectory.
 	Phase never be reset at this number of bins around the ridge.
@@ -149,7 +149,7 @@ Quality and behavior:
 	-1 disables fix for ridge triplication in time, which is obvious on
 	extreme (>4x) stretches. Makes no effect for coefficients less than 2.
 	1 forces it. 
-	Default is 1.
+	Default is 0.
 
 Utility:
   -p    Display progress bar. (default true)
@@ -339,7 +339,7 @@ func main() {
 		panic(err)
 	}
 	irq := make(chan os.Signal, 1)
-	signal.Notify(irq, os.Interrupt, os.Kill)
+	signal.Notify(irq, os.Interrupt)
 	go func() {
 		<-irq
 		untmp()
@@ -391,7 +391,7 @@ func main() {
 
 	var exit chan struct{}
 	if *progress {
-		exit = make(chan struct{}, 0)
+		exit = make(chan struct{})
 		pb := startProgress(os.Stderr)
 		go func() {
 			for bp := range pch {

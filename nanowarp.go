@@ -60,18 +60,9 @@ type Progress struct {
 
 // Hyperparams contains low-level configuration of Nanowarp algorithm.
 type Hyperparams struct {
-	// Diameter of transient in milliseconds.
-	// Amount of time around the detected transient, for which the signal
-	// will be unscaled.
-	//
-	// Please note that if this value is less than synthesis hop size
-	// (1024 samples at 48 kHz sample rate, 21.3 ms),transient resets are
-	// not guaranteed.
-	TransientMs int `default:"30"`
-
 	// Size of transient picking filter in milliseconds.
 	// Minimum amount of time between two consecutive transient detections.
-	PickingMs int `default:"250"`
+	PickingMs int `default:"200"`
 
 	// If true, measure pooling size in output time, not in input time.
 	//
@@ -91,7 +82,7 @@ type Hyperparams struct {
 	//
 	// Lower values — more tonal preservation and less transient clarity.
 	// Higher values — more transient preservation and more interrupts.
-	LongRidgeLength int `default:"7"`
+	LongRidgeLength int `default:"10"`
 
 	// Maximum radius of influence of each detected tonal trajectory.
 	// Limits vertical propagation of ridges' region of influence.
@@ -167,7 +158,7 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 		wg := sync.WaitGroup{}
 		wg.Add(3)
 		sam := make([]Onset, 0)
-		onsc := make(chan Onset, 0)
+		onsc := make(chan Onset)
 		go func() {
 			defer wg.Done()
 			err := n.detector.noveltyCurveProcess(r, pi)
@@ -219,7 +210,7 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {
-	tsa := n.opts.TransientMs * n.fs / 1000
+	tsa := n.warper.hop * 2
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
 		b := onsets[k+1]

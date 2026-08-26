@@ -13,7 +13,7 @@ import (
 	"gonum.org/v1/gonum/floats"
 )
 
-const warperOverlap = 4
+const warperOverlap = 6
 
 type warper struct {
 	nfft   int     // DFT size, a power of 2
@@ -488,7 +488,8 @@ func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) 
 // fadv calculates the partial derivative of the phase with respect
 // to frequency using time-frequency reassignment.
 //
-// Also known as LGD (local group delay) or “horizontal bin displacement”.
+// Also known as CIF (channelized instantaneous frequency) or
+// “vertical bin displacement”.
 //
 // osamp is the oversampling ratio and related to shift of the effective window
 // relative to the center of full oversampled window.
@@ -500,15 +501,13 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	if cmplx.Abs(x[w]) == 0 {
 		return 0
 	}
-	// len(x)-1 is nfft/2.
-	return -real(xt[w]/x[w])/float64(len(x)-1)*math.Pi*stretch - math.Pi/osamp
+	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/osamp
 }
 
 // tadv calculates the partial derivative of the phase with respect
 // to time using time-frequency reassignment.
 //
-// Also known as CIF (channelized instantaneous frequency) or
-// “vertical bin displacement”.
+// Also known as LGD (local group delay) or “horizontal bin displacement”.
 //
 // scale is the correction factor.
 func tadv(x, xd []complex128, scale float64, w int) float64 {
