@@ -67,7 +67,7 @@ Time map must be functional. Output index of any breakpoint can't be
 less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
-var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
+var notriple = flag.Int("triplefix", 1, `Behavior of limiting of local group delay.`)
 var nfft = flag.Int("nfft", 3600, "Base window size at 48000 Hz sample rate.")
 
 func init() {
@@ -147,9 +147,10 @@ Quality and behavior:
   -triplefix
 	Behavior of limiting of local group delay.
 	-1 disables fix for ridge triplication in time, which is obvious on
-	extreme (>4x) stretches. Makes no effect for coefficients less than 2.
+	extreme (>4x) stretches. 
+	0 enables it for coefficients strictly greater than 2.
 	1 forces it. 
-	Default is 0.
+	Default is 1.
 
 Utility:
   -p    Display progress bar. (default true)

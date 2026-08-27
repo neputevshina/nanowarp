@@ -86,6 +86,10 @@ but currently sounds best on audio data with aforementioned parameters.
   time stretch algorithm. Elastique gives more clarity and presence.
 
 ## Notes
+- `-q -1` is not necessarily should be used for speedup. 
+  In many cases, faster and greedy approximation sounds better than default PGHI.
+  On hard electronica, such as Carpenter Brut, it is the only option.
+  Even on hiphop, such as Joji — Tick Tock, it sounds considerably better than -q 0.
 - TODO: Calibrate warper's base nfft and partial derivative formulas.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.

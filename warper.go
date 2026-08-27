@@ -247,7 +247,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 			}
 			// Limit the anti-causal horizontal partial derivative displacement.
 			// This suppresses the transient triplication.
-			if lim && real(a.Xt[w]/a.X[w]) >= float64(n.hop)/4 {
+			if lim && real(a.Xt[w]/a.X[w]) >= float64(n.hop)/stretch {
 				a.Y[w] = 0
 				continue
 			}
