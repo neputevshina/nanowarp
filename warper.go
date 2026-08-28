@@ -13,7 +13,7 @@ import (
 	"gonum.org/v1/gonum/floats"
 )
 
-const warperOverlap = 6
+const warperOverlap = 4
 
 type warper struct {
 	nfft   int     // DFT size, a power of 2
