@@ -51,7 +51,7 @@ Minimum amount of time between two consecutive transient detections.`)
 var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
 I.e. scale the pooling size with the stretch coefficient.
 Effective only for stretches, not shrinks, which are always scaled.`)
-var ri = flag.Int("ri", 10, `Minimum amount of time bins a trajectory must travel in total
+var ri = flag.Int("ri", 6, `Minimum amount of time bins a trajectory must travel in total
 to be considered tonal.
 Lower values — more tonal preservation and less transient clarity.
 Higher values — more transient preservation and more interrupts.`)
@@ -138,7 +138,7 @@ Quality and behavior:
 	to be considered tonal.
 	Lower values — more tonal preservation and less transient clarity.
 	Higher values — more transient preservation and more interrupts.
-	Default is 10.
+	Default is 6.
   -if int
 	Maximum radius of influence of each detected tonal trajectory.
 	Phase never be reset at this number of bins around the ridge.
