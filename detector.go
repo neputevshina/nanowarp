@@ -7,8 +7,7 @@ import (
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
-
-	"gonum.org/v1/gonum/dsp/fourier"
+	"github.com/neputevshina/nanowarp/pffft"
 )
 
 type detector struct {
@@ -20,7 +19,7 @@ type detector struct {
 	fs    int
 	m     *mediator[float64, bang]
 
-	fft *fourier.FFT
+	fft *pffft.PFFFT
 
 	a dbufs
 }
@@ -51,7 +50,7 @@ func detectorNew(nfft, fs, nch int, onsetevery int) (n *detector) {
 	copy(n.a.Wr, n.a.Wf)
 	slices.Reverse(n.a.Wr)
 
-	n.fft = fourier.NewFFT(nfft)
+	n.fft = pffft.New(nfft)
 
 	tsa := int(onsetevery) * n.fs / 1000
 	n.m = mediatorNew[float64, bang](tsa+1, tsa+1, 1)

@@ -27,14 +27,14 @@ func New(size int) *PFFFT {
 	f := &PFFFT{
 		setup: setup,
 		nfft:  size,
-		a:     (*C.float)(C.pffft_aligned_malloc(C.size_t(4 * (size*2 + 1)))),
-		b:     (*C.float)(C.pffft_aligned_malloc(C.size_t(4 * (size*2 + 1)))),
+		a:     (*C.float)(C.pffft_aligned_malloc(C.size_t(4 * size))),
+		b:     (*C.float)(C.pffft_aligned_malloc(C.size_t(4 * size))),
 	}
-	runtime.SetFinalizer(f, (*PFFFT).release)
+	runtime.SetFinalizer(f, (*PFFFT).kill)
 	return f
 }
 
-func (f *PFFFT) release() {
+func (f *PFFFT) kill() {
 	if f.setup != nil {
 		C.pffft_destroy_setup(f.setup)
 		C.pffft_aligned_free(unsafe.Pointer(f.a))
@@ -107,6 +107,5 @@ func (f *PFFFT) Sequence(dst []float64, coeff []complex128) []float64 {
 type Fourier interface {
 	Coefficients(dst []complex128, seq []float64) []complex128
 	Sequence(dst []float64, coeff []complex128) []float64
-	Reset(n int)
 	Len() int
 }

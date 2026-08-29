@@ -93,6 +93,7 @@ but currently sounds best on audio data with aforementioned parameters.
 - TODO: Calibrate warper's base nfft and partial derivative formulas.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
+  - Same with pffft bindings.
 - A new onset detector is needed. This one is not that good.
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
@@ -127,6 +128,7 @@ but currently sounds best on audio data with aforementioned parameters.
   Either port it or use through cgo.
 - Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
   - Even slower now because of unbufferized wavio.Encoder.GrainSeek.
+  - But faster because of PFFFT, still 30x overhead of Cgo is not optimal.
 
 ## AI use disclosure
 `rankfilt.go` was initially translated from C++ by free ChatGPT.

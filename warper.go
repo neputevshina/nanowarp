@@ -8,12 +8,12 @@ import (
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
+	"github.com/neputevshina/nanowarp/pffft"
 	"gonum.org/v1/gonum/cmplxs"
-	"gonum.org/v1/gonum/dsp/fourier"
 	"gonum.org/v1/gonum/floats"
 )
 
-const warperOverlap = 4
+const warperOverlap = 6
 
 type warper struct {
 	nfft   int     // DFT size, a power of 2
@@ -26,7 +26,7 @@ type warper struct {
 
 	root *Nanowarp
 
-	fft *fourier.FFT
+	fft *pffft.PFFFT
 
 	// PGHI-related
 	arm      []bool    // Done mask
@@ -86,7 +86,7 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	n.norm = float64(nfft) * float64(n.olap) * n.wgain
 
 	n.heap = make(hp, n.nbins)
-	n.fft = fourier.NewFFT(nfft)
+	n.fft = pffft.New(nfft)
 	n.heap = make(hp, 2*n.nbins) // 2 for future and past.
 	n.parrows = make([][2]int, 0, n.nbins)
 	n.arrows = slices.Clone(n.parrows)
