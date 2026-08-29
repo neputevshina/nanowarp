@@ -1,0 +1,112 @@
+// Package pffft provides a gonum/fourier compatible FFT backend using PFFFT.
+package pffft
+
+/*
+#cgo CFLAGS: -O3
+#cgo LDFLAGS: -lm
+#include "pffft.h"
+*/
+import "C"
+
+import (
+	"runtime"
+	"unsafe"
+)
+
+type PFFFT struct {
+	setup *C.PFFFT_Setup
+	nfft  int
+	a, b  *C.float
+}
+
+func New(size int) *PFFFT {
+	setup := C.pffft_new_setup(C.int(size), C.PFFFT_REAL)
+	if setup == nil {
+		panic("pffft: unsupported size")
+	}
+	f := &PFFFT{
+		setup: setup,
+		nfft:  size,
+		a:     (*C.float)(C.pffft_aligned_malloc(C.size_t(4 * (size*2 + 1)))),
+		b:     (*C.float)(C.pffft_aligned_malloc(C.size_t(4 * (size*2 + 1)))),
+	}
+	runtime.SetFinalizer(f, (*PFFFT).release)
+	return f
+}
+
+func (f *PFFFT) release() {
+	if f.setup != nil {
+		C.pffft_destroy_setup(f.setup)
+		C.pffft_aligned_free(unsafe.Pointer(f.a))
+		C.pffft_aligned_free(unsafe.Pointer(f.b))
+		f.setup = nil
+	}
+}
+
+func (f *PFFFT) Len() int { return f.nfft }
+
+func (f *PFFFT) Coefficients(dst []complex128, seq []float64) []complex128 {
+	defer runtime.KeepAlive(f)
+
+	nfft := f.nfft
+	if len(seq) != f.nfft {
+		panic(`pffft.PFFFT.Coefficients: length of seq must be equal to nfft`)
+	}
+	if dst == nil {
+		dst = make([]complex128, nfft/2+1)
+	}
+	if len(dst) != f.nfft/2+1 {
+		panic(`pffft.PFFFT.Coefficients: dst is not nil and it's length is not nfft/2+1`)
+	}
+	cseq := unsafe.Slice((*float32)(unsafe.Pointer(f.a)), nfft)
+	ccoeff := unsafe.Slice((*float32)(unsafe.Pointer(f.b)), nfft)
+	for i := range cseq {
+		cseq[i] = float32(seq[i])
+	}
+	C.pffft_transform_ordered(f.setup, f.a, f.b, nil, C.PFFFT_FORWARD)
+	for i := 0; i < nfft; i += 2 {
+		dst[i/2] = complex(float64(ccoeff[i]), float64(ccoeff[i+1]))
+	}
+	// Unpack bin 0 to DC and Nyquist.
+	dst[nfft/2] = complex(imag(dst[0]), 0)
+	dst[0] = complex(real(dst[0]), 0)
+	return dst
+}
+
+func (f *PFFFT) Sequence(dst []float64, coeff []complex128) []float64 {
+	defer runtime.KeepAlive(f)
+
+	nfft := f.nfft
+	if len(coeff) != f.nfft/2+1 {
+		panic(`pffft.PFFFT.Coefficients: length of coeff must be equal to nfft/2+1`)
+	}
+	if dst == nil {
+		dst = make([]float64, nfft)
+	}
+	if len(dst) != f.nfft {
+		panic(`pffft.PFFFT.Coefficients: dst is not nil and it's length is not nfft`)
+	}
+	cseq := unsafe.Slice((*float32)(unsafe.Pointer(f.a)), nfft)
+	ccoeff := unsafe.Slice((*float32)(unsafe.Pointer(f.b)), nfft)
+	// Pack DC and Nyquist to bin 0.
+	coeff[0] = complex(real(coeff[0]), real(coeff[nfft/2]))
+	for i := 0; i < nfft; i += 2 {
+		ccoeff[i+0] = float32(real(coeff[i/2]))
+		ccoeff[i+1] = float32(imag(coeff[i/2]))
+	}
+	C.pffft_transform_ordered(f.setup, f.b, f.a, nil, C.PFFFT_BACKWARD)
+	for i := range nfft {
+		dst[i] = float64(cseq[i])
+	}
+	return dst
+}
+
+// Fourier is an interface describing a generic real-valued Discrete Fourier Transform algorithm.
+//
+// It is based on gonum/fourier package.
+type Fourier interface {
+	Coefficients(dst []complex128, seq []float64) []complex128
+	Sequence(dst []float64, coeff []complex128) []float64
+	Reset(n int)
+	Len() int
+}

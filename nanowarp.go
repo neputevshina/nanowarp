@@ -82,7 +82,7 @@ type Hyperparams struct {
 	//
 	// Lower values — more tonal preservation and less transient clarity.
 	// Higher values — more transient preservation and more interrupts.
-	LongRidgeLength int `default:"6"`
+	LongRidgeLength int `default:"7"`
 
 	// Maximum radius of influence of each detected tonal trajectory.
 	// Limits vertical propagation of ridges' region of influence.
