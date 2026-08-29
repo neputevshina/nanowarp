@@ -126,9 +126,6 @@ but currently sounds best on audio data with aforementioned parameters.
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
-- Slow. ≈10 seconds of output per second on Ryzen 7 7700x.
-  - Even slower now because of unbufferized wavio.Encoder.GrainSeek.
-  - But faster because of PFFFT, still 30x overhead of Cgo is not optimal.
 
 ## AI use disclosure
 `rankfilt.go` was initially translated from C++ by free ChatGPT.
