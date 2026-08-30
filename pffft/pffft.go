@@ -119,6 +119,7 @@ func NearestNfft(n int) int {
 	q := int(C.pffft_simd_size())
 	n = ((n + q - 1) / q) * q
 	best := 0
+	q = 2 * q * q // pffft.c:1249
 
 	for p2 := 1; p2 <= n*10; p2 *= 2 {
 		for p3 := p2; p3 <= n*10; p3 *= 3 {

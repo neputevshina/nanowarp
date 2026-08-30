@@ -51,7 +51,7 @@ Minimum amount of time between two consecutive transient detections.`)
 var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
 I.e. scale the pooling size with the stretch coefficient.
 Effective only for stretches, not shrinks, which are always scaled.`)
-var ri = flag.Int("ri", 6, `Minimum amount of time bins a trajectory must travel in total
+var ri = flag.Int("ri", 8, `Minimum amount of time bins a trajectory must travel in total
 to be considered tonal.
 Lower values — more tonal preservation and less transient clarity.
 Higher values — more transient preservation and more interrupts.`)
@@ -67,7 +67,7 @@ Time map must be functional. Output index of any breakpoint can't be
 less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
-var notriple = flag.Int("triplefix", 1, `Behavior of limiting of local group delay.`)
+var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
 var nfft = flag.Int("nfft", 3600, "Base window size at 48000 Hz sample rate.")
 
 func init() {
@@ -138,7 +138,7 @@ Quality and behavior:
 	to be considered tonal.
 	Lower values — more tonal preservation and less transient clarity.
 	Higher values — more transient preservation and more interrupts.
-	Default is 6.
+	Default is 8.
   -if int
 	Maximum radius of influence of each detected tonal trajectory.
 	Phase never be reset at this number of bins around the ridge.
@@ -146,11 +146,11 @@ Quality and behavior:
 	Default is 2.
   -triplefix
 	Behavior of limiting of local group delay.
-	-1 disables fix for ridge triplication in time, which is obvious on
-	extreme (>4x) stretches. 
-	0 enables it for coefficients strictly greater than 2.
-	1 forces it. 
-	Default is 1.
+	-1 fully disables it.
+	0 same as 2 but for coefficients greater than 2.
+	1 forces limiting only for anti-causal displacement.
+	2 forces limiting for all displacement.
+	Default is 0.
 
 Utility:
   -p    Display progress bar. (default true)

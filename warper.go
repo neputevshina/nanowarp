@@ -142,8 +142,8 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 			final = true
 		}
 
-		q := n.root.opts.Resets
-		normal, diff, _ := n.advance(lead, c, q >= -1 && c == 1, q == -1)
+		resets := n.root.opts.Resets
+		normal, diff, _ := n.advance(lead, c, resets >= -1 && c == 1, resets == -1)
 		n.synthesize(grain, normal, diff)
 
 		if n.root.opts.Onsets && c != 1 {
@@ -170,7 +170,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
+func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
 	hp := n.root.opts.Hyperparams
 	nch := len(ingrain)
@@ -230,36 +230,44 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, allreset b
 
 	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
 
-	// Bypass short ridges on phase reset.
 	c := float64(hp.LongRidgeLength) * stretch
 	for w := range a.Y {
-		if !reset || !allreset && trace[w] > c {
-			lim := false
-			switch n.root.opts.TriplicationFix {
-			case 0:
-				lim = stretch > 2
-			case -1:
-				lim = false
-			case 1:
-				lim = true
-			default:
-				panic(`incorrect value for nanowarp.Options.TriplicationFix`)
+		// Reset if speed is 1, bypass short ridges.
+		if reset && !smoothreset && trace[w] <= c {
+			a.Ph[w] = cmplx.Phase(a.X[w])
+			a.Y[w] = 1
+			for ch := range nch {
+				a.C[ch][w] = a.Co[ch][w]
 			}
-			// Limit the anti-causal horizontal partial derivative displacement.
-			// This suppresses the transient triplication.
-			if lim && real(a.Xt[w]/a.X[w]) >= float64(n.hop)/stretch {
-				a.Y[w] = 0
-				continue
-			}
-			// Receive normals from the current phase, if not resetting.
-			a.Y[w] = cmplx.Rect(1, a.Ph[w])
 			continue
 		}
-		a.Ph[w] = cmplx.Phase(a.X[w])
-		a.Y[w] = 1
-		for ch := range nch {
-			a.C[ch][w] = a.Co[ch][w]
+
+		// Limit the horizontal bin displacement by limiting the partial derivative.
+		// This suppresses the transient triplication.
+		disp := 0.0
+		switch n.root.opts.TriplicationFix {
+		case -1:
+			disp = math.Inf(-1)
+		case 0:
+			if stretch > 2 {
+				disp = abs(real(a.Xt[w] / a.X[w]))
+			} else {
+				disp = math.Inf(-1)
+			}
+		case 1:
+			disp = real(a.Xt[w] / a.X[w]) // Anti-causal displacement only.
+		case 2:
+			disp = abs(real(a.Xt[w] / a.X[w])) // Both causal and anti-causal displacement.
+		default:
+			panic(`incorrect value for nanowarp.Options.TriplicationFix`)
 		}
+		if disp >= float64(n.hop)/stretch {
+			a.Y[w] = 0
+			continue
+		}
+
+		// Receive normals from the current phase, if not resetting.
+		a.Y[w] = cmplx.Rect(1, a.Ph[w])
 	}
 
 	copy(a.P, a.M)
@@ -418,7 +426,7 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 	arrows = arrows[:0]
 
 	// Draw arrows from top to bottom, adding each from direction of largest neighbor.
-	for w := n.nbins - 1; w >= 0; w-- {
+	for w := n.nbins - 1; w >= 1; w-- {
 		d := 0
 		top := 0.
 		if M[w] >= top {

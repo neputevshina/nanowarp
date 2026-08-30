@@ -83,7 +83,7 @@ type Hyperparams struct {
 	//
 	// Lower values — more tonal preservation and less transient clarity.
 	// Higher values — more transient preservation and more interrupts.
-	LongRidgeLength int `default:"7"`
+	LongRidgeLength int `default:"8"`
 
 	// Maximum radius of influence of each detected tonal trajectory.
 	// Limits vertical propagation of ridges' region of influence.
@@ -97,11 +97,13 @@ type Hyperparams struct {
 	InfluenceRadius int `default:"3"`
 
 	// Behavior of limiting of local group delay.
-	// Fixes echo in time.
+	// Fixes echo in time on large stretches and cleans up the sound on typical sizes.
+	// Will make the sound thinner, but for some material this is preferrable.
 	//
 	// -1 fully disables it.
-	// 0 enables for coefficients greater than 2.
-	// 1 forces it.
+	// 0 same as 2 but for coefficients greater than 2.
+	// 1 forces limiting only for anti-causal displacement.
+	// 2 forces limiting for all displacement.
 	TriplicationFix int
 
 	// Base window size in samples at 48000 Hz. The true value is corrected for input sample rate.
@@ -112,8 +114,6 @@ type Hyperparams struct {
 	// of the lowest fundamental in the signal.
 	//
 	// Try values in range 3000–4096.
-	// Values greater than 4096 will oversample the FFT 4 or more times,
-	// increasing run time __without__ increase in quality.
 	BaseNFFT int `default:"3600"`
 }
 
@@ -211,7 +211,7 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {
-	tsa := n.warper.hop
+	tsa := n.warper.hop * 2
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
 		b := onsets[k+1]
