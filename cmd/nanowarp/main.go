@@ -51,7 +51,7 @@ Minimum amount of time between two consecutive transient detections.`)
 var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
 I.e. scale the pooling size with the stretch coefficient.
 Effective only for stretches, not shrinks, which are always scaled.`)
-var ri = flag.Int("ri", 8, `Minimum amount of time bins a trajectory must travel in total
+var ri = flag.Int("ri", 5, `Minimum amount of time bins a trajectory must travel in total
 to be considered tonal.
 Lower values — more tonal preservation and less transient clarity.
 Higher values — more transient preservation and more interrupts.`)
@@ -68,7 +68,7 @@ less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
-var nfft = flag.Int("nfft", 3600, "Base window size at 48000 Hz sample rate.")
+var nfft = flag.Int("nfft", 4000, "Base window size at 48000 Hz sample rate.")
 
 func init() {
 	flag.Usage = func() {
@@ -123,9 +123,7 @@ Quality and behavior:
 	The correct value tends to correspond to half of the frequency
 	of the lowest fundamental in the signal.
 	Try values in range 3000–4096.
-	Values greater than 4096 will oversample the FFT 4 or more times,
-	increasing run time __without__ increase in quality. 
-	Default is 3600.
+	Default is 4000.
   -outpool
 	If true, measure pooling size in output time, not in input time.
 	I.e. scale the pooling size with the stretch coefficient.
@@ -139,7 +137,7 @@ Quality and behavior:
 	to be considered tonal.
 	Lower values — more tonal preservation and less transient clarity.
 	Higher values — more transient preservation and more interrupts.
-	Default is 8.
+	Default is 5.
   -if int
 	Maximum radius of influence of each detected tonal trajectory.
 	Phase never be reset at this number of bins around the ridge.
