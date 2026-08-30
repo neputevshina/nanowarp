@@ -28,7 +28,8 @@ type Options struct {
 	// Set algorithm quality.
 	//  -1: Use brute force approximation to PGHI. Less transparent, 5 times faster than priority queue
 	//      and up to 2 times faster runtime.
-	//  0:  Use PGHI.
+	//  0:  Use both brute force and PGHI adaptively.
+	//  1:  Use PGHI.
 	Quality int
 
 	// Enable phase resets.

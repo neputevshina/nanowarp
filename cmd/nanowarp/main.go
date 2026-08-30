@@ -105,8 +105,9 @@ Basic usage:
 Quality and behavior:
   -q int
 	Set algorithm quality.
-	-1: Use brute force approximation to PGHI. Less transparent, 20% faster.
-	0:  Use PGHI.
+	-1: Forcefully use brute force approximation to PGHI. Less transparent, 20% faster.
+	0:  Adaptive, uses both PGHI and brute force.
+	1:  Forcefully use PGHI.
   -resets int
 	Time and phase resets:
 	-2: Don't perform transient separation, output raw PVDR without phase resets.

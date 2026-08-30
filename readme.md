@@ -94,6 +94,8 @@ but currently sounds best on audio data with aforementioned parameters.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
   - Same with pffft bindings.
+- TODO: NSDGT and 95% spectral rolloff: use smaller nfft for signals with higher fundamental.
+  - Cross-breed with centroid to get transient-aware variable nfft.
 - A new onset detector is needed. This one is not that good.
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 

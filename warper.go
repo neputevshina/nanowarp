@@ -206,10 +206,22 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	}
 
 	var arrows [][2]int
-	if n.root.opts.Quality == -1 {
+	switch n.root.opts.Quality {
+	case -1:
 		arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
-	} else {
+	case 1:
 		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+	case 0:
+		// Calculate spectral kurtosis, use PGHI for less flat frames only.
+		what := a.M[:n.nbins]
+		centroid := spectralcentroid(what)
+		spread := spectralspread(what, centroid)
+		kurtosis := spectralkurtosis(what, centroid, spread)
+		if kurtosis < 3 {
+			arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+		} else {
+			arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+		}
 	}
 
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)

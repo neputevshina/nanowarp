@@ -282,3 +282,31 @@ func unbend(x float64, outsize float64, insize float64, start float64) float64 {
 	}
 	return insize * log(x/start) / log(outsize/start)
 }
+
+// Spectral descriptors.
+
+func spectralcentroid(src []float64) float64 {
+	a := 0.
+	for i := range src {
+		a += float64(i) * src[i]
+	}
+	return a / sum(src)
+}
+
+func spectralspread(src []float64, centroid float64) float64 {
+	a := 0.
+	for i := range src {
+		b := float64(i) - centroid
+		a += b * b * src[i]
+	}
+	return math.Sqrt(a / sum(src))
+}
+
+func spectralkurtosis(src []float64, centroid, spread float64) float64 {
+	a := 0.
+	for i := range src {
+		b := float64(i) - centroid
+		a += b * b * b * b * src[i]
+	}
+	return a / (sum(src) * spread * spread * spread * spread)
+}
