@@ -63,7 +63,7 @@ Each line is a pair of two integers, separated by space.
 First integer is an input sample index, second is an output sample index.
 Unlike rubberband, specifying total duration is not needed, but last pair 
 must be a pair of input sample index and a last output sample index.
-Time map must be functional. Output index of any breakpoint can't be 
+Time map must be monotonic. Output index of any breakpoint can't be 
 less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")

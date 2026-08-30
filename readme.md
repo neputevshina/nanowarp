@@ -90,6 +90,7 @@ but currently sounds best on audio data with aforementioned parameters.
   In many cases, faster and greedy approximation sounds better than default PGHI.
   On hard electronica, such as Carpenter Brut, it is the only option.
   Even on hiphop, such as Joji — Tick Tock, it sounds considerably better than -q 0.
+- TODO: Bass with Goertzel at 3800, everything else with BaseNfft = 2400.
 - TODO: Calibrate warper's base nfft and partial derivative formulas.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
