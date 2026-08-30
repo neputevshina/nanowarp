@@ -59,7 +59,7 @@ type wbufs struct {
 }
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
-	nfft := nextpow2(nbuf * osamp)
+	nfft := pffft.NearestNfft(nbuf * osamp)
 	n = &warper{
 		nfft:   nfft,
 		nbins:  nfft/2 + 1,

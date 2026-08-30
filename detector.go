@@ -30,7 +30,7 @@ type dbufs struct {
 }
 
 func detectorNew(nfft, fs, nch int, onsetevery int) (n *detector) {
-	nfft = nextpow2(nfft)
+	nfft = pffft.NearestNfft(nfft)
 	nbuf := nfft
 	nbins := nfft/2 + 1
 	olap := 16
