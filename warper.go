@@ -16,7 +16,7 @@ import (
 const warperOverlap = 6
 
 type warper struct {
-	nfft   int     // DFT size, a power of 2
+	nfft   int     // DFT size, a composite of some small prime factors
 	nbuf   int     // Effective window size, nbuf<nfft
 	hop    int     // Window output hop size
 	nbins  int     // nfft/2+1, Number of DFT bins
@@ -38,10 +38,6 @@ type warper struct {
 	ridges   []uint    // Extracted ridges
 	resetnow []bool    // Forced per-bin resets
 
-	// PGPI-related
-	reverse       [][]int      // Reverse index
-	pairs, fpairs []heaptriple // Sorted tapes
-
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
 	a wbufs
@@ -49,7 +45,7 @@ type warper struct {
 
 type wbufs struct {
 	S, Mid        []float64      // Scratch buffers
-	F, M, P       []float64      `size:"nbins"` // Magnitudes: future, current and previous
+	M, P          []float64      `size:"nbins"` // Magnitudes: current and previous
 	Ph            []float64      `size:"nbins"` // Current phase
 	Past          []float64      // Phase accumulator
 	Fadv, Tadv    []float64      // Partial derivatives
@@ -273,7 +269,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 		default:
 			panic(`incorrect value for nanowarp.Options.TriplicationFix`)
 		}
-		if disp >= float64(n.hop)/stretch {
+		if disp >= float64(n.hop)/stretch*2 {
 			a.Y[w] = 0
 			continue
 		}
