@@ -81,14 +81,16 @@ but currently sounds best on audio data with aforementioned parameters.
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w).
 
 ## Notes
-- TODO: Bass with Goertzel at 3800, everything else with BaseNfft = 2400.
+- TODO: Bass with Goertzel at 4000, everything else with BaseNfft = 2000. 
+  Step with hop of smaller nfft at overlap 6, output bass frame for each even smaller frame.
 - TODO: Calibrate warper's base nfft and partial derivative formulas.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
   - Same with pffft bindings.
 - TODO: NSDGT and 95% spectral rolloff: use smaller nfft for signals with higher fundamental.
   - Cross-breed with centroid to get transient-aware variable nfft.
-- A new onset detector is needed. This one is not that good.
+  - Cross-breed with double window for cleanest sound.
+- Currently used onset detector is very good but this thing can always be improved
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
   Plain GrainReader and RegularToOfflineGrainWriter can be paired.
@@ -103,6 +105,7 @@ but currently sounds best on audio data with aforementioned parameters.
     (when trace\[w\] == 1).
   - We may limit amount of reset-continued ridges to, say, loudest 10-20 using 
     existing arrow data.
+  - Idea similar to [Roebel 2003](https://hal.science/hal-01161124/document).
 - Differentiation of major (full) and minor (with continued partials) phase resets.
 - Discrete partial phase derivatives may perform better than reassignment.
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
