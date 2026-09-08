@@ -41,6 +41,8 @@ type warper struct {
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
 	a wbufs
+
+	stats Progress
 }
 
 type wbufs struct {
@@ -48,7 +50,7 @@ type wbufs struct {
 	M, P          []float64      `size:"nbins"` // Magnitudes: current and previous
 	Ph            []float64      `size:"nbins"` // Current phase
 	Past          []float64      // Phase accumulator
-	Fadv, Tadv    []float64      // Partial derivatives
+	Fadv, Tadv    []float64      // Partial derivatives of phase
 	W, Wr, Wd, Wt []float64      // Window functions: analysis, synthesis (dual), derivative of W, time-weighted W
 	X, Y, Xd, Xt  []complex128   // Complex spectra
 	C, Co         [][]complex128 // Channel differences, original channels
@@ -109,33 +111,28 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 			End:     phasor.end.J,
 			Process: `Warping`}
 		defer func() {
-			progress <- Progress{
-				Current: phasor.end.J,
-				End:     phasor.end.J,
-				Process: `Warping`}
 			close(progress)
 		}()
 	}
-	var err error
-	final := false
+	var err, srr error
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
 		i := int(phasor.ReverseSample(float64(j)))
 		c := 1 / phasor.Dy(float64(j)) // Stretch, inverse of scan speed, which Dy is.
 
 		if progress != nil && j/fivesec > tsc {
 			progress <- Progress{
-				Current: float64(j),
-				End:     phasor.end.J,
-				Process: `Warping`}
+				Current:      float64(j),
+				End:          phasor.end.J,
+				Process:      `Warping`,
+				HarshFrames:  n.stats.HarshFrames,
+				SmoothFrames: n.stats.SmoothFrames,
+			}
 			tsc = j / fivesec
 		}
 
-		lead, err = in.GrainSeek(err, int64(i-n.nbuf/2), n.nbuf)
-		if err != nil && err != io.EOF {
-			return err
-		}
-		if err == io.EOF {
-			final = true
+		lead, srr = in.GrainSeek(nil, int64(i-n.nbuf/2), n.nbuf)
+		if srr != nil && srr != io.EOF {
+			return srr
 		}
 
 		resets := n.root.opts.Resets
@@ -152,12 +149,14 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *C
 		if err != nil {
 			return err
 		}
-		if final {
+		if srr == io.EOF { // Final frame
 			if progress != nil {
 				progress <- Progress{
-					Current: phasor.end.J,
-					End:     phasor.end.J,
-					Process: `Warping`}
+					Current:      phasor.end.J,
+					End:          phasor.end.J,
+					Process:      `Warping`,
+					HarshFrames:  n.stats.HarshFrames,
+					SmoothFrames: n.stats.SmoothFrames}
 			}
 			break
 		}
@@ -215,8 +214,10 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 		kurtosis := spectralkurtosis(what, centroid, spread)
 		if kurtosis < 3 {
 			arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+			n.stats.HarshFrames++
 		} else {
 			arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+			n.stats.SmoothFrames++
 		}
 	}
 

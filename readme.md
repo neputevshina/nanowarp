@@ -81,6 +81,8 @@ but currently sounds best on audio data with aforementioned parameters.
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w).
 
 ## Notes
+- TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
+  authors propose for that case is just interpolating in per-sample domain. Abuse cellular automaton view of PGHI.
 - TODO: Bass with Goertzel at 4000, everything else with BaseNfft = 2000. 
   Step with hop of smaller nfft at overlap 6, output bass frame for each even smaller frame.
 - TODO: Calibrate warper's base nfft and partial derivative formulas.

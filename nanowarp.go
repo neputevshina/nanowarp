@@ -58,6 +58,9 @@ type Progress struct {
 	Current float64
 	End     float64
 	Process string
+
+	HarshFrames  int // Number of noisy frames for which -q=-1 was used to date.
+	SmoothFrames int // Number of smoother frames for which -q=+1 was used to date.
 }
 
 // Hyperparams contains low-level configuration of Nanowarp algorithm.

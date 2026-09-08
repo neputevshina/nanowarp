@@ -397,6 +397,9 @@ func main() {
 			for bp := range pch {
 				pb.Set(bp.Current, bp.End)
 				fmt.Fprint(os.Stderr, " ", bp.Process)
+				if bp.Process == `Warping` {
+					fmt.Fprintf(os.Stderr, ", Harshness: %.2f%%", float64(bp.HarshFrames)/float64(bp.HarshFrames+bp.SmoothFrames)*100)
+				}
 			}
 			fmt.Fprintln(os.Stderr)
 			exit <- struct{}{}
