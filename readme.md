@@ -80,18 +80,20 @@ but currently sounds best on audio data with aforementioned parameters.
 
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w).
 
-## Notes
-- TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
-  authors propose for that case is just interpolating in per-sample domain. Abuse cellular automaton view of PGHI.
-- TODO: Bass with Goertzel at 4000, everything else with BaseNfft = 2000. 
-  Step with hop of smaller nfft at overlap 6, output bass frame for each even smaller frame.
+## Notes and todo
 - TODO: Calibrate warper's base nfft and partial derivative formulas.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
   - Same with pffft bindings.
-- TODO: NSDGT and 95% spectral rolloff: use smaller nfft for signals with higher fundamental.
-  - Cross-breed with centroid to get transient-aware variable nfft.
-  - Cross-breed with double window for cleanest sound.
+- For “Terawarp”:
+  - TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
+    authors propose for that case is just interpolating in per-sample domain. Abuse cellular automaton view of PGHI.
+  - TODO: Bass with Goertzel at 4000, everything else with BaseNfft = 2000. 
+    Step with hop of smaller nfft at overlap 6, output bass frame for each even smaller frame.
+  - TODO: NSDGT and 95% spectral rolloff: use smaller nfft for signals with higher fundamental.
+    - Cross-breed with centroid to get transient-aware variable nfft.
+    - Cross-breed with double window for cleanest sound.
+  - TODO: zero-padded NSDGT is a very good varispeed resampler.
 - Currently used onset detector is very good but this thing can always be improved
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 

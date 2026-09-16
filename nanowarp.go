@@ -63,7 +63,7 @@ type Progress struct {
 	SmoothFrames int // Number of smoother frames for which -q=+1 was used to date.
 }
 
-// Hyperparams contains low-level configuration of Nanowarp algorithm.
+// Hyperparams contains low-level configuration of a Nanowarp algorithm instance.
 type Hyperparams struct {
 	// Size of transient picking filter in milliseconds.
 	// Minimum amount of time between two consecutive transient detections.

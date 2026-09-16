@@ -502,20 +502,23 @@ func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) 
 	}
 }
 
-// fadv calculates the partial derivative of the phase with respect
-// to frequency using time-frequency reassignment.
-//
-// Also known as LGD[1] (local group delay) or “horizontal bin displacement”.
+// fadv calculates the frequency-axis phase advance value based on
+// local group delay (LGD[1]) or “horizontal bin displacement” using
+// time-frequency reassignment.
 //
 // osamp is the oversampling ratio and related to shift of the effective window
 // relative to the center of full oversampled window.
 // Inspired by https://ltfat.org/notes/ltfatnote042.pdf.
 //
-// May be replaced with finite bin difference, see Flandrin and Auger, eq. 5.17
-// https://hal.science/hal-00414583/document
+// There exists finite bin difference reassignment ([2], eq. 5.17), but it sounds by far worse than exact method
+// with modified windows.
 //
 // [1]: Nelson, D. J. (2001). Cross-spectral methods for processing speech.
 // The Journal of the Acoustical Society of America, 110(5), 2575-2592.
+// [2]: Flandrin, P., Auger, F., & Chassande-Mottin, E. (2002). Time-frequency reassignment:
+// from principles to algorithms. In Applications in time-frequency signal processing
+// (pp. 179-204). CRC Press.
+// https://hal.science/hal-00414583/document
 func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	if cmplx.Abs(x[w]) == 0 {
 		return 0
@@ -523,11 +526,11 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/osamp
 }
 
-// tadv calculates the partial derivative of the phase with respect
-// to time using time-frequency reassignment.
+// fadv calculates the time-axis phase advance value based on
+// channelized instantaneous frequency (CIF) or “vertical bin displacement”
+// using time-frequency reassignment.
 //
-// Also known as CIF (channelized instantaneous frequency) or
-// “vertical bin displacement”.
+// It is also known as phase difference in phase vocoder.
 //
 // scale is the correction factor.
 func tadv(x, xd []complex128, scale float64, w int) float64 {
