@@ -204,21 +204,22 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	switch n.root.opts.Quality {
 	case -1:
 		arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+	case 0:
+		fallthrough // TODO In a search of better noisiness measure.
+		// // Calculate spectral kurtosis, use PGHI for less flat frames only.
+		// what := a.M[:n.nbins]
+		// centroid := spectralcentroid(what)
+		// spread := spectralspread(what, centroid)
+		// kurtosis := spectralkurtosis(what, centroid, spread)
+		// if kurtosis < 3 {
+		// 	arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
+		// 	n.stats.HarshFrames++
+		// } else {
+		// 	arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+		// 	n.stats.SmoothFrames++
+		// }
 	case 1:
 		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
-	case 0:
-		// Calculate spectral kurtosis, use PGHI for less flat frames only.
-		what := a.M[:n.nbins]
-		centroid := spectralcentroid(what)
-		spread := spectralspread(what, centroid)
-		kurtosis := spectralkurtosis(what, centroid, spread)
-		if kurtosis < 3 {
-			arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
-			n.stats.HarshFrames++
-		} else {
-			arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
-			n.stats.SmoothFrames++
-		}
 	}
 
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
@@ -510,8 +511,8 @@ func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) 
 // relative to the center of full oversampled window.
 // Inspired by https://ltfat.org/notes/ltfatnote042.pdf.
 //
-// There exists finite bin difference reassignment ([2], eq. 5.17), but it sounds by far worse than exact method
-// with modified windows.
+// There exists finite bin difference reassignment ([2], eq. 5.17), but it sounds
+// by far worse than exact method with modified windows.
 //
 // [1]: Nelson, D. J. (2001). Cross-spectral methods for processing speech.
 // The Journal of the Acoustical Society of America, 110(5), 2575-2592.

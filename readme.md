@@ -52,7 +52,7 @@ of Superflux method[3]. If onset is detected, phase ramp will have a derivative 
 1 in a region around detected onset. Starting points of these sample regions are scaled by the 
 stretch size, and points between regions are linearly interpolated.
 
-Then the large-grained (nfft=4096) PVDR is applied, using phase ramp curve for input 
+Then the large-grained (nfft=3600@48kHz by default) PVDR is applied, using phase ramp curve for input 
 sample indexes. PVDR is applied in two steps: first, integration directions (arrows) are detected.
 If `Quality` parameter set to -1, Nanowarp uses faster greedy local maximum arrow detection instead of PGHI, which uses priority queue.
 Sources of these arrows (ridges) are extracted too. Then, phase is accumulated from partial derivatives by interpreting the arrows. 
