@@ -524,10 +524,13 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	if cmplx.Abs(x[w]) == 0 {
 		return 0
 	}
+	// TODO This exact line is the source of all mushiness.
+	//      If you add 0.0001 to osamp, mushiness will migrate to mid frequencies.
+	//      The only other way to improve it is to correctly implement momentary resets.
 	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/osamp
 }
 
-// fadv calculates the time-axis phase advance value based on
+// tadv calculates the time-axis phase advance value based on
 // channelized instantaneous frequency (CIF) or “vertical bin displacement”
 // using time-frequency reassignment.
 //

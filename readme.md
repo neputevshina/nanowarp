@@ -85,6 +85,11 @@ but currently sounds best on audio data with aforementioned parameters.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
   - Same with pffft bindings.
+- Stupid resampling, the plan:
+  - [ ] Add ZOH mode to Curve.
+  - [ ] Add new curve for pitch.
+  - [ ] Scale the 1 at transients by pitch scale.
+  - [ ] Use two (for more accuracy) FFT reinterpretations to get resampled frame when needed.
 - For “Terawarp”:
   - TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
     authors propose for that case is just interpolating in per-sample domain. Abuse cellular automaton view of PGHI.
