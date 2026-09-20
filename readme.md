@@ -11,15 +11,37 @@ go get github.com/neputevshina/nanowarp
 
 ## nanowarp CLI: Installation and usage
 
-1. Install [Go](https://go.dev/)
-2. Open terminal/shell/command prompt.
-3. Install Nanowarp
-```
-go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
-```
 Please note that `@latest` installs the last tagged version (e.g. v0.5.4), not the latest commit in master.
 
-4. Use it
+### Linux
+1. Install [Go](https://go.dev/).
+2. In terminal
+```
+CGO_ENABLED=1 go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
+```
+
+### Windows
+1. Install [MSYS2](https://www.msys2.org/).
+2. Open “UCRT64” application.
+3. Install gcc and go.
+```
+pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-go
+```
+4. Install Nanowarp
+```
+CGO_ENABLED=1 go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
+```
+
+`nanowarp` will be compiled as native Windows application.
+Use UCRT64 command prompt each time you need to use `nanowarp` 
+(paths in msys2 use forward slashes and `C:/` is `/c/`). 
+For use in `cmd.exe`/Powershell add GOBIN of this environment 
+(typically `C:\msys64\home\user\go\bin`) to your Windows' [PATH](https://www.java.com/en/download/help/path.html).
+
+### macOS
+Install Xcode, then follow Linux guide.
+
+### Usage
 ```
 nanowarp -i inputfile.wav -to <stretch> [-o outputfile.wav]
 ```
@@ -81,7 +103,9 @@ but currently sounds best on audio data with aforementioned parameters.
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w).
 
 ## Notes and todo
-- TODO: Calibrate warper's base nfft and partial derivative formulas.
+- TODO: Rewrite PFFFT to Go SIMD intrinsics. This way dysfunctional desktop platforms won't hurt 
+  users of dependants and cmd/nanowarp.
+- TODO: Calibrate warper's base nfft and partial derivative formulas. Again.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
   - Same with pffft bindings.
