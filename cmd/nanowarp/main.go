@@ -278,7 +278,7 @@ func main() {
 	}
 
 	// Phase ramp generation.
-	var bps []nanowarp.Breakpoint
+	var bps []nanowarp.Phasorpoint
 	var timemapfile *os.File
 	if *timemappath != "" {
 		timemapfile, err = os.Open(*timemappath)
@@ -308,7 +308,7 @@ func main() {
 			if err != nil {
 				panic(fmt.Sprint(`second element of pair is invalid number, line `, n))
 			}
-			bps = append(bps, nanowarp.Bp(float64(i), float64(j)))
+			bps = append(bps, nanowarp.Pp(float64(j), float64(i)))
 		}
 	} else {
 		if *from > 1 || math.Abs(*st) > 0 {
@@ -318,12 +318,12 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		bps = []nanowarp.Breakpoint{nanowarp.Bp(0, 0), nanowarp.Bp(inputLength, inputLength**to)}
+		bps = []nanowarp.Phasorpoint{nanowarp.Pp(0, 0), nanowarp.Pp(inputLength**to, inputLength)}
 	}
-	slices.SortFunc(bps, func(a, b nanowarp.Breakpoint) int {
+	slices.SortFunc(bps, func(a, b nanowarp.Phasorpoint) int {
 		return int((a.I - b.I) / math.Abs(a.I-b.I))
 	})
-	phasor, err := nanowarp.NewCurve(bps)
+	phasor, err := nanowarp.NewPhasor(bps)
 	if err != nil {
 		panic(err)
 	}
@@ -406,7 +406,7 @@ func main() {
 		}()
 	}
 
-	tsm.Process(&withlength{wsr}, wsw, phasor)
+	tsm.Process(&withlength{wsr}, wsw, phasor, nil)
 
 	err = wsw.Close()
 	if err != nil {

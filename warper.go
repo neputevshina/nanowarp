@@ -95,7 +95,7 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Curve) error {
+func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Phasor, pitch *Envelope) error {
 	nch := in.NchRead()
 	get := func() [][]float64 { return make2[float64](nch, n.nbuf) }
 	progress := n.root.opts.Progress

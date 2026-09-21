@@ -50,7 +50,7 @@ func blackmanHarris92dB(out []float64) {
 // It is related to DPSS window like Kaiser, but doesn't require
 // modified Bessel function to calculate.
 // Duality to itself is achieved by tuning the parameter a.
-// For example, COLA at overlap 4 can be approximately achieved with a = 1.78.
+// For example, COLA at overlap 4 can approximately be achieved with a = 1.78.
 //
 // [1]: Doerry, Armin W. Catalog of window taper functions for sidelobe control. No. SAND2017-4042.
 // Sandia National Laboratories (SNL-NM), Albuquerque, NM (United States), 2017.

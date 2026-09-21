@@ -32,7 +32,7 @@ pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-go
 CGO_ENABLED=1 go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
 ```
 
-`nanowarp` will be compiled as native Windows application.
+`nanowarp` will be compiled as a native Windows application.
 Use UCRT64 command prompt each time you need to use `nanowarp` 
 (paths in msys2 use forward slashes and `C:/` is `/c/`). 
 For use in `cmd.exe`/Powershell add GOBIN of this environment 
@@ -53,9 +53,6 @@ or
 ```
 nanowarp -i inputfile.wav -timemap <time map file> [-o outputfile.wav]
 ```
-If your system can't find `nanowarp` executable, you have probably changed PATH environment variable.
-Probably the simplest way to bring it back if you are under Windows is by reinstalling the Go.
-On Linux and macOS, you should know what to do.
 
 Consult 
 ```
@@ -110,8 +107,8 @@ but currently sounds best on audio data with aforementioned parameters.
 - TODO: Extract dspio/wavio to an independent package.
   - Same with pffft bindings.
 - Stupid resampling, the plan:
-  - [ ] Add ZOH mode to Curve.
-  - [ ] Add new curve for pitch.
+  - [x] ~~Add ZOH mode to Curve.~~ Split envelope and phasor curves.
+  - [x] Add new curve argument for pitch.
   - [ ] Scale the 1 at transients by pitch scale.
   - [ ] Use two (for more accuracy) FFT reinterpretations to get resampled frame when needed.
 - For “Terawarp”:

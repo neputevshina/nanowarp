@@ -157,7 +157,7 @@ type Lengther interface {
 }
 
 // Process pefrorms the time-scale modification of r and writes the result to w.
-func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor *Curve) {
+func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor *Phasor, pitch *Envelope) {
 	if n.opts.Resets > -2 {
 		po, pi := dspio.GoPipe(2)
 		wg := sync.WaitGroup{}
@@ -205,16 +205,16 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 		wg.Wait()
 
 		c := phasor.Clone()
-		n.bendPhasor(phasor, c, sam)
+		n.bendPhasor(phasor, c, sam, pitch)
 
 		phasor = c
 	}
 
 	grw := dspio.NewRegularToOfflineGrainWriter(n.warper.nbuf, n.warper.hop, w)
-	n.warper.process(r, grw, phasor)
+	n.warper.process(r, grw, phasor, pitch)
 }
 
-func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {
+func (n *Nanowarp) bendPhasor(old, new *Phasor, onsets []Onset, pitch *Envelope) {
 	tsa := n.warper.hop * 2
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
@@ -232,15 +232,17 @@ func (n *Nanowarp) bendPhasor(old, new *Curve, onsets []Onset) {
 		}
 	}
 	for k := 0; k < len(onsets)-1; k++ {
+		// TODO: Support non-monotonic phasors.
+		//	 Bend onset phasor with initial phasor.
 		i := onsets[k].I
 		r := float64(tsa / 2)
 		j, _ := old.Sample(i)
 		a, b := new.Between(i-r), new.Between(i+r)
-		new.Mutate(func(f []Breakpoint) []Breakpoint {
+		new.Mutate(func(f []Phasorpoint) []Phasorpoint {
 			if a != b {
 				f = slices.Delete(f, a, b)
 			}
-			f = slices.Insert(f, a+1, []Breakpoint{{i - r, j - r}, {i + r, j + r}}...)
+			f = slices.Insert(f, a+1, []Phasorpoint{{I: i - r, J: j - r}, {I: i + r, J: j + r}}...)
 			return f
 		})
 	}

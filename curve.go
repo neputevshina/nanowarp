@@ -5,12 +5,36 @@ import (
 	"slices"
 )
 
-// ErrNonMonotonicCurve is returned when the given [Curve] is not monotonic when a monotonic one is expected.
-type ErrNonMonotonicCurve struct {
+// Tween describes the curve type between two [Phasorpoint]s,
+// with former taking the lead.
+type Tween int
+
+// Tween types.
+const (
+	// Zero-order hold, same value for the whole range.
+	// For [Phasorpoint] is same as [TweenLinear].
+	TweenZoh Tween = iota
+	// Linear segment.
+	TweenLinear
+)
+
+// ErrNonMonotonicPhasor is the error returned when the given [Phasor] is not monotonic when a monotonic one is expected.
+type ErrNonMonotonicPhasor struct {
 	Index int
 }
 
-func (i *ErrNonMonotonicCurve) Error() string {
+// Error implements [error].
+func (i *ErrNonMonotonicPhasor) Error() string {
+	return fmt.Sprintf(`curve is not monotonic, e[%d+1].J<e[%d].J`, i.Index, i.Index)
+}
+
+// ErrInvalidCurve is the error returned when the given [Phasor] or [Envelope] has a point when J is less than J of a previous point.
+type ErrInvalidCurve struct {
+	Index int
+}
+
+// Error implements [error].
+func (i *ErrInvalidCurve) Error() string {
 	return fmt.Sprintf(`curve is not monotonic, e[%d+1].J<e[%d].J`, i.Index, i.Index)
 }
 
@@ -20,37 +44,49 @@ type Onset struct {
 	Power float64 // Absolute unitless power of a transient.
 }
 
-// Breakpoint is a point of a [Curve].
+// Phasorpoint is a point of a [Phasor].
 //
-// I is the input sample index, and J is the output sample index.
+// J is the output sample index and I is the input sample index.
+type Phasorpoint struct {
+	J, I float64
+	Tween
+}
+
+// Pp is a quick constructor for a [Phasorpoint].
+func Pp(j, i float64) Phasorpoint { return Phasorpoint{I: i, J: j} }
+
+// Breakpoint is a point of an [Envelope].
+//
+// J is the sample index and V is the value.
 type Breakpoint struct {
-	I, J float64
+	J, V float64
+	Tween
 }
 
 // Bp is a quick constructor for a [Breakpoint].
-func Bp(i, j float64) Breakpoint { return Breakpoint{I: i, J: j} }
+func Bp(j, value float64) Breakpoint { return Breakpoint{J: j, V: value} }
 
-// Curve is a line-segment curve, describing the time mapping between input sample indices
-// and output sample indices.
+// Phasor is a curve describing the time mapping between input sample indices and output sample indices.
 //
-// Output sample indices are used as an input to curve function and Curve is always guaranteed to
+// Output sample indices are used as an input to curve function and a valid Phasor is always guaranteed to
 // be indexable by J.
 //
-// A Curve is indexable by I iff it is monotonic.
-// Currently, Nanowarp does not support variable stretching using non-monotonic curves.
-type Curve struct {
-	elems       []Breakpoint
+// A Phasor is indexable by I iff it is monotonic.
+//
+// Currently, Nanowarp does not support variable stretching using non-monotonic curves (can't reverse while stretching).
+type Phasor struct {
+	elems       []Phasorpoint
 	last, rlast int
-	start, end  Breakpoint
+	start, end  Phasorpoint
 }
 
-// NewCurve creates a new [Curve] from individual breakpoints.
+// NewPhasor creates a new [Phasor] from individual breakpoints.
 //
 // The curve must be monotonic.
-// If not, [ErrNonMonotonicCurve] is returned.
-func NewCurve(bps []Breakpoint) (*Curve, error) {
-	c := &Curve{}
-	c.Mutate(func(b []Breakpoint) []Breakpoint {
+// If not, [ErrNonMonotonicPhasor] is returned.
+func NewPhasor(bps []Phasorpoint) (*Phasor, error) {
+	c := &Phasor{}
+	c.Mutate(func(b []Phasorpoint) []Phasorpoint {
 		return slices.Clone(bps)
 	})
 	return c, c.Validate()
@@ -58,7 +94,7 @@ func NewCurve(bps []Breakpoint) (*Curve, error) {
 
 // Dx returns the derivative of the curve with respect to input sample scale
 // at the given input sample offset.
-func (c *Curve) Dx(i float64) (v float64) {
+func (c *Phasor) Dx(i float64) (v float64) {
 	if i >= c.end.I {
 		return c.dx(len(c.elems) - 2)
 	}
@@ -69,9 +105,9 @@ func (c *Curve) Dx(i float64) (v float64) {
 	return c.dx(f)
 }
 
-// Dx returns the derivative of the curve with respect to output sample scale
+// Dy returns the derivative of the curve with respect to output sample scale
 // at the given output sample offset.
-func (c *Curve) Dy(j float64) (v float64) {
+func (c *Phasor) Dy(j float64) (v float64) {
 	if j >= c.end.J {
 		return 1 / c.dx(len(c.elems)-2)
 	}
@@ -82,16 +118,16 @@ func (c *Curve) Dy(j float64) (v float64) {
 	return 1 / c.dx(f)
 }
 
-func (c *Curve) dx(f int) float64 {
+func (c *Phasor) dx(f int) float64 {
 	delx := (c.elems[f+1].I - c.elems[f].I)
 	dely := (c.elems[f+1].J - c.elems[f].J)
 	return dely / delx
 }
 
-// Sample returns the value of the curve at the given input sample index.
+// Sample returns the value of a curve at the given input sample index.
 // This function is not guaranteed to return a correct result if the curve
 // is not monotonic.
-func (c *Curve) Sample(i float64) (j float64, oflow int) {
+func (c *Phasor) Sample(i float64) (j float64, oflow int) {
 	if i >= c.end.I {
 		return c.end.J, 1
 	}
@@ -105,7 +141,7 @@ func (c *Curve) Sample(i float64) (j float64, oflow int) {
 }
 
 // ReverseSample returns the value of the curve at the given output sample index.
-func (c *Curve) ReverseSample(j float64) (i float64) {
+func (c *Phasor) ReverseSample(j float64) (i float64) {
 	if j >= c.end.J {
 		return c.end.I + j - c.end.J
 	}
@@ -120,7 +156,7 @@ func (c *Curve) ReverseSample(j float64) (i float64) {
 
 // Between returns an integer index of an internal slice of Breakpoints such as
 // sl[a].I < i < sl[a+1].I.
-func (c *Curve) Between(i float64) (a int) {
+func (c *Phasor) Between(i float64) (a int) {
 	if c.elems[c.last].I < i {
 		c.last = 0
 	}
@@ -141,7 +177,7 @@ func (c *Curve) Between(i float64) (a int) {
 
 // ReverseBetween returns an integer index of an internal slice of Breakpoints such as
 // sl[a].J < j < sl[a+1].J.
-func (c *Curve) ReverseBetween(j float64) (a int) {
+func (c *Phasor) ReverseBetween(j float64) (a int) {
 	if c.elems[c.rlast].I < j {
 		c.rlast = 0
 	}
@@ -161,13 +197,13 @@ func (c *Curve) ReverseBetween(j float64) (a int) {
 }
 
 // Mutate allows editing the internal slice of Breakpoints,
-// maintaining the validity of a Curve object.
-func (c *Curve) Mutate(f func([]Breakpoint) []Breakpoint) {
+// maintaining the validity of a Phasor object.
+func (c *Phasor) Mutate(f func([]Phasorpoint) []Phasorpoint) {
 	c.elems = f(c.elems)
 	c.mutate()
 }
 
-func (c *Curve) mutate() {
+func (c *Phasor) mutate() {
 	c.start = c.elems[0]
 	c.end = c.elems[len(c.elems)-1]
 	c.last = 0
@@ -175,21 +211,135 @@ func (c *Curve) mutate() {
 }
 
 // Clone returns the copy of a Curve.
-func (c *Curve) Clone() *Curve {
-	oc := &Curve{
+func (c *Phasor) Clone() *Phasor {
+	oc := &Phasor{
 		elems: slices.Clone(c.elems),
 	}
 	oc.mutate()
 	return oc
 }
 
-// Validate checks the curve for monotonicity and if it is
-// not monotonic returns [ErrNonMonotonicCurve].
+// Validate checks the curve for correctness and returns [ErrInvalidCurve] when
+// it is invalid or [ErrNonMonotonicPhasor] when it is not monotonic.
 // It returns nil otherwise.
-func (c *Curve) Validate() error {
+func (c *Phasor) Validate() error {
 	for e := range c.elems[1:] {
 		if c.elems[e+1].J < c.elems[e].J {
-			return &ErrNonMonotonicCurve{Index: e}
+			return &ErrInvalidCurve{Index: e}
+		}
+		if c.elems[e+1].I < c.elems[e].I {
+			return &ErrNonMonotonicPhasor{Index: e}
+		}
+	}
+	return nil
+}
+
+// Envelope is a curve describing the value of a variable mapped by sample indices.
+type Envelope struct {
+	elems       []Breakpoint
+	last, rlast int
+	start, end  Breakpoint
+}
+
+// NewEnvelope creates a new [Envelope] from individual breakpoints.
+func NewEnvelope(bps []Breakpoint) (*Envelope, error) {
+	c := &Envelope{}
+	c.Mutate(func(b []Breakpoint) []Breakpoint {
+		return slices.Clone(bps)
+	})
+	return c, c.Validate()
+}
+
+// Dy returns the derivative of the curve value at the given sample offset.
+func (c *Envelope) Dy(j float64) (v float64) {
+	if j >= c.end.J {
+		return c.dx(len(c.elems) - 2)
+	}
+	if j < c.start.J {
+		return c.dx(0)
+	}
+	f := c.Between(j)
+	return c.dx(f)
+}
+
+func (c *Envelope) dx(f int) float64 {
+	dela := (c.elems[f+1].V - c.elems[f].V)
+	dely := (c.elems[f+1].J - c.elems[f].J)
+	return dely / dela
+}
+
+// Sample returns the value of the curve at the given output sample index.
+func (c *Envelope) Sample(j float64) (v float64) {
+	if j >= c.end.J {
+		return c.end.V
+	}
+	if j < c.start.J {
+		return c.start.V
+	}
+	f := c.Between(j)
+	nj := unmix(c.elems[f].J, c.elems[f+1].J, j)
+	switch c.elems[f].Tween {
+	case TweenZoh:
+		v = c.elems[f].V
+	case TweenLinear:
+		v = precisionmix(c.elems[f].V, c.elems[f+1].V, nj)
+	default:
+		panic(`invalid Tween type`)
+	}
+	return
+}
+
+// Between returns an integer index of an internal slice of Breakpoints such as
+// sl[a].J < j < sl[a+1].J.
+func (c *Envelope) Between(j float64) (a int) {
+	if c.elems[c.rlast].J < j {
+		c.rlast = 0
+	}
+	if j >= c.end.J {
+		return len(c.elems)
+	}
+	if j < c.start.J {
+		return -1
+	}
+	for f := c.last; f < len(c.elems); f++ {
+		if c.elems[f+1].J > j {
+			c.last = f
+			return f
+		}
+	}
+	panic(`unreachable`)
+}
+
+// Mutate allows editing the internal slice of Breakpoints,
+// maintaining the validity of an Envelope object.
+func (c *Envelope) Mutate(f func([]Breakpoint) []Breakpoint) {
+	c.elems = f(c.elems)
+	c.mutate()
+}
+
+func (c *Envelope) mutate() {
+	c.start = c.elems[0]
+	c.end = c.elems[len(c.elems)-1]
+	c.last = 0
+	c.rlast = 0
+}
+
+// Clone returns the copy of a Curve.
+func (c *Envelope) Clone() *Envelope {
+	oc := &Envelope{
+		elems: slices.Clone(c.elems),
+	}
+	oc.mutate()
+	return oc
+}
+
+// Validate checks the curve for correctness and returns [ErrInvalidCurve] when
+// it is invalid.
+// It returns nil otherwise.
+func (c *Envelope) Validate() error {
+	for e := range c.elems[1:] {
+		if c.elems[e+1].J < c.elems[e].J {
+			return &ErrInvalidCurve{Index: e}
 		}
 	}
 	return nil
