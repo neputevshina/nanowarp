@@ -136,7 +136,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *P
 		}
 
 		resets := n.root.opts.Resets
-		normal, diff, _ := n.advance(lead, c, resets >= -1 && c == 1, resets == -1)
+		normal, diff, _ := n.advance(lead, c, resets >= -1 && phasor.reverseReset(float64(j)), resets == -1)
 		n.synthesize(grain, normal, diff)
 
 		if n.root.opts.Onsets && c != 1 {
@@ -525,9 +525,15 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 		return 0
 	}
 	// TODO This exact line is the source of all mushiness.
-	//      If you add 0.0001 to osamp, mushiness will migrate to mid frequencies.
 	//      The only other way to improve it is to correctly implement momentary resets.
-	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/osamp
+	//
+	// len(x)-1 is more phase-correct, because it blends better with original,
+	// but without -1 it sounds fatter and fuller.
+	//
+	// A compromise:
+	// return -real(xt[w]/x[w])/(float64(len(x))-1*float64(w)/float64(len(x)))*math.Pi*stretch - math.Pi/osamp
+	//
+	return -real(xt[w]/x[w])/float64(len(x)-1)*math.Pi*stretch - math.Pi/osamp
 }
 
 // tadv calculates the time-axis phase advance value based on

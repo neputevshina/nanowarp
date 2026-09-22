@@ -406,7 +406,8 @@ func main() {
 		}()
 	}
 
-	tsm.Process(&withlength{wsr}, wsw, phasor, nil)
+	e, _ := nanowarp.NewEnvelope([]nanowarp.Breakpoint{nanowarp.Bp(0, 0)})
+	tsm.Process(&withlength{wsr}, wsw, phasor, e)
 
 	err = wsw.Close()
 	if err != nil {

@@ -269,6 +269,12 @@ func dbtoa(db float64) float64 {
 	return math.Pow(10, db/20)
 }
 
+// twelveedo converts a value in semitones of 12-EDO to speed multiplier.
+// I.e. +12 gets converted to 2 and -12 to 0.5.
+func twelveedo(st float64) float64 {
+	return math.Pow(2, st/12)
+}
+
 func bend(x float64, outsize float64, insize float64, start float64) float64 {
 	exp := math.Exp
 	log := math.Log

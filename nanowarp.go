@@ -237,12 +237,13 @@ func (n *Nanowarp) bendPhasor(old, new *Phasor, onsets []Onset, pitch *Envelope)
 		i := onsets[k].I
 		r := float64(tsa / 2)
 		j, _ := old.Sample(i)
+		sr := r * twelveedo(pitch.Sample(j)) // Scale the resampled speed
 		a, b := new.Between(i-r), new.Between(i+r)
 		new.Mutate(func(f []Phasorpoint) []Phasorpoint {
 			if a != b {
 				f = slices.Delete(f, a, b)
 			}
-			f = slices.Insert(f, a+1, []Phasorpoint{{I: i - r, J: j - r}, {I: i + r, J: j + r}}...)
+			f = slices.Insert(f, a+1, []Phasorpoint{{I: i - r, J: j - sr, reset: true}, {I: i + r, J: j + sr}}...)
 			return f
 		})
 	}

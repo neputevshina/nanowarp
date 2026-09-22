@@ -12,7 +12,7 @@ type Tween int
 // Tween types.
 const (
 	// Zero-order hold, same value for the whole range.
-	// For [Phasorpoint] is same as [TweenLinear].
+	// For [Phasorpoint] is the same as [TweenLinear].
 	TweenZoh Tween = iota
 	// Linear segment.
 	TweenLinear
@@ -50,6 +50,8 @@ type Onset struct {
 type Phasorpoint struct {
 	J, I float64
 	Tween
+
+	reset bool
 }
 
 // Pp is a quick constructor for a [Phasorpoint].
@@ -232,6 +234,15 @@ func (c *Phasor) Validate() error {
 		}
 	}
 	return nil
+}
+
+// reverseReset returns the state of a reset flag for a given j.
+func (c *Phasor) reverseReset(j float64) bool {
+	if j >= c.end.J || j < c.start.J {
+		return false
+	}
+	f := c.ReverseBetween(j)
+	return c.elems[f].reset
 }
 
 // Envelope is a curve describing the value of a variable mapped by sample indices.
