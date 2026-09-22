@@ -533,7 +533,7 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	// A compromise:
 	// return -real(xt[w]/x[w])/(float64(len(x))-1*float64(w)/float64(len(x)))*math.Pi*stretch - math.Pi/osamp
 	//
-	return -real(xt[w]/x[w])/float64(len(x)-1)*math.Pi*stretch - math.Pi/osamp
+	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/osamp
 }
 
 // tadv calculates the time-axis phase advance value based on

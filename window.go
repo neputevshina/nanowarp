@@ -31,8 +31,8 @@ func hann(out []float64) {
 // Sandia National Laboratories (SNL-NM), Albuquerque, NM (United States), 2017.
 // https://www.osti.gov/servlets/purl/1365510
 func blackmanHarrisClassic(out []float64) {
-	for i := range out[:len(out)-1] {
-		x := float64(i) / float64(len(out)-1)
+	for i := range out {
+		x := float64(i) / float64(len(out))
 		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
 	}
 }
