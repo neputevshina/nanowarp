@@ -32,7 +32,7 @@ func hann(out []float64) {
 // https://www.osti.gov/servlets/purl/1365510
 func blackmanHarrisClassic(out []float64) {
 	for i := range out {
-		x := float64(i) / float64(len(out))
+		x := float64(i) / float64(len(out)-1)
 		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
 	}
 }
