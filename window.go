@@ -12,7 +12,7 @@ import (
 // Dual to itself (achieves COLA/perfect reconstruction) at any integer overlap greater than 2.
 func hann(out []float64) {
 	for i := range out {
-		x := float64(i) / float64(len(out)-1)
+		x := float64(i) / float64(len(out))
 		out[i] = 0.5 * (1 - math.Cos(2*math.Pi*x))
 	}
 }
@@ -31,6 +31,7 @@ func hann(out []float64) {
 // Sandia National Laboratories (SNL-NM), Albuquerque, NM (United States), 2017.
 // https://www.osti.gov/servlets/purl/1365510
 func blackmanHarrisClassic(out []float64) {
+	// See [fadv].
 	for i := range out {
 		x := float64(i) / float64(len(out)-1)
 		out[i] = .4243801 - .4973406*math.Cos(2*math.Pi*x) + .0782793*math.Cos(4*math.Pi*x)
@@ -41,7 +42,7 @@ func blackmanHarrisClassic(out []float64) {
 // See blackmanHarrisClassic.
 func blackmanHarris92dB(out []float64) {
 	for i := range out {
-		x := float64(i) / float64(len(out)-1)
+		x := float64(i) / float64(len(out))
 		out[i] = .35875 - .48829*math.Cos(2*math.Pi*x) + .14128*math.Cos(4*math.Pi*x) - .01168*math.Cos(6*math.Pi*x)
 	}
 }
@@ -57,12 +58,24 @@ func blackmanHarris92dB(out []float64) {
 // https://www.osti.gov/servlets/purl/1365510
 func avciNacaroglu(out []float64, a float64) {
 	for i := range out {
-		x := float64(i) / float64(len(out)-1)
+		x := float64(i) / float64(len(out))
 		out[i] = math.Exp(math.Pi*a*math.Sqrt(1-(4*(x-0.5)*(x-0.5))) - 1)
 	}
 	m := slices.Max(out)
 	for i := range out {
 		out[i] /= m
+	}
+}
+
+// kaiser is Kaiser window function.
+//
+// See https://en.wikipedia.org/wiki/Kaiser_window
+func kaiser(out []float64, α float64) {
+	α *= math.Pi
+	q := i0(α)
+	for i := range out {
+		x := float64(i) / float64(len(out))
+		out[i] = i0(α*math.Sqrt(1-(2*x-1)*(2*x-1))) / q
 	}
 }
 

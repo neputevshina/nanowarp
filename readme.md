@@ -109,8 +109,9 @@ but currently sounds best on audio data with aforementioned parameters.
 - Stupid resampling, the plan:
   - [x] ~~Add ZOH mode to Curve.~~ Split envelope and phasor curves.
   - [x] Add new curve argument for pitch.
-  - [ ] Scale the 1 at transients by pitch scale.
-  - [ ] Use two (for more accuracy) FFT reinterpretations to get resampled frame when needed.
+  - [x] Scale the 1 at transients by pitch scale.
+  - [ ] Implement a resampler.
+  - [ ] Read resampled grains.
 - For “Terawarp”:
   - TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
     authors propose for that case is just interpolating in per-sample domain. Abuse cellular automaton view of PGHI.

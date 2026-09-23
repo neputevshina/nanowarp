@@ -76,7 +76,7 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	s := func(w []float64) []float64 {
 		return w[:nbuf]
 	}
-	blackmanHarrisClassic(s(a.W))
+	kaiser(s(a.W), 3)
 	windowDx(s(a.Wd), s(a.W))
 	windowT(s(a.Wt), s(a.W))
 	n.wgain = windowDualUniform(s(a.Wr), s(a.W), n.hop)
@@ -527,8 +527,9 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	// TODO This exact line is the source of all mushiness.
 	//      The only other way to improve it is to correctly implement momentary resets.
 	//
-	// len(x)-1 is more phase-correct, because it blends better with original,
-	// but without -1 it sounds fatter and fuller.
+	// len(x)-1 blends better while alternating between stretched and original in Sonic Lineup,
+	// but len(x) is more faithful to the resampled signal in context of pitch change, so it must be true.
+	// Changing window function generation strategy is ineffective.
 	//
 	// A compromise:
 	// return -real(xt[w]/x[w])/(float64(len(x))-1*float64(w)/float64(len(x)))*math.Pi*stretch - math.Pi/osamp
