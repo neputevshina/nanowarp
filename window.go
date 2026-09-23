@@ -7,6 +7,43 @@ import (
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
+// kaiser is Kaiser window function.
+//
+// See https://en.wikipedia.org/wiki/Kaiser_window
+func kaiser(out []float64, α float64) {
+	α *= math.Pi
+	q := i0(α)
+	for i := range out {
+		x := float64(i) / float64(len(out))
+		out[i] = i0(α*math.Sqrt(1-(2*x-1)*(2*x-1))) / q
+	}
+}
+
+// niemitalo is an asymmetric windowing function, designed by Olli Niemitalo.
+//
+// See https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing
+func niemitalo(out []float64) {
+	nfft := float64(len(out))
+	clear(out)
+	sin, cos := math.Sin, math.Cos
+	for i := nfft / 4; i < nfft*7/8; i++ {
+		x := 2 * math.Pi * ((i+0.5)/nfft - 1.75)
+		out[int(i)] = 2.57392230162633461887 - 1.58661480271141974718*cos(x) + 3.80257516644523141380*sin(x) -
+			1.93437090055110760822*cos(2*x) - 3.27163999159752183488*sin(2*x) + 3.26617449847621266201*cos(3*x) -
+			0.30335261753524439543*sin(3*x) - 0.92126091064427817479*cos(4*x) + 2.33100177294084742741*sin(4*x) -
+			1.19953922321306438725*cos(5*x) - 1.25098147932225423062*sin(5*x) + 0.99132076607048635886*cos(6*x) -
+			0.34506787787355830410*sin(6*x) - 0.04028033685700077582*cos(7*x) + 0.55461815542612269425*sin(7*x) -
+			0.21882110175036428856*cos(8*x) - 0.10756484378756643594*sin(8*x) + 0.06025986430527170007*cos(9*x) -
+			0.05777077835678736534*sin(9*x) + 0.00920984524892982936*cos(10*x) + 0.01501989089735343216*sin(10*x)
+	}
+	for i := 0; i < int(nfft)/8; i++ {
+		nfft := int(nfft)
+		out[nfft-1-i] = (1 - out[nfft*3/4-1-i]*out[nfft*3/4+i]) / out[nfft/2+i]
+	}
+	copy(out, out[int(nfft)*2/8:])
+	clear(out[int(nfft)*6/8:])
+}
+
 // hann is a Hann window function.
 //
 // Dual to itself (achieves COLA/perfect reconstruction) at any integer overlap greater than 2.
@@ -65,43 +102,6 @@ func avciNacaroglu(out []float64, a float64) {
 	for i := range out {
 		out[i] /= m
 	}
-}
-
-// kaiser is Kaiser window function.
-//
-// See https://en.wikipedia.org/wiki/Kaiser_window
-func kaiser(out []float64, α float64) {
-	α *= math.Pi
-	q := i0(α)
-	for i := range out {
-		x := float64(i) / float64(len(out))
-		out[i] = i0(α*math.Sqrt(1-(2*x-1)*(2*x-1))) / q
-	}
-}
-
-// niemitalo is an asymmetric windowing function, designed by Olli Niemitalo.
-//
-// See https://dsp.stackexchange.com/questions/2337/fft-with-asymmetric-windowing
-func niemitalo(out []float64) {
-	nfft := float64(len(out))
-	clear(out)
-	sin, cos := math.Sin, math.Cos
-	for i := nfft / 4; i < nfft*7/8; i++ {
-		x := 2 * math.Pi * ((i+0.5)/nfft - 1.75)
-		out[int(i)] = 2.57392230162633461887 - 1.58661480271141974718*cos(x) + 3.80257516644523141380*sin(x) -
-			1.93437090055110760822*cos(2*x) - 3.27163999159752183488*sin(2*x) + 3.26617449847621266201*cos(3*x) -
-			0.30335261753524439543*sin(3*x) - 0.92126091064427817479*cos(4*x) + 2.33100177294084742741*sin(4*x) -
-			1.19953922321306438725*cos(5*x) - 1.25098147932225423062*sin(5*x) + 0.99132076607048635886*cos(6*x) -
-			0.34506787787355830410*sin(6*x) - 0.04028033685700077582*cos(7*x) + 0.55461815542612269425*sin(7*x) -
-			0.21882110175036428856*cos(8*x) - 0.10756484378756643594*sin(8*x) + 0.06025986430527170007*cos(9*x) -
-			0.05777077835678736534*sin(9*x) + 0.00920984524892982936*cos(10*x) + 0.01501989089735343216*sin(10*x)
-	}
-	for i := 0; i < int(nfft)/8; i++ {
-		nfft := int(nfft)
-		out[nfft-1-i] = (1 - out[nfft*3/4-1-i]*out[nfft*3/4+i]) / out[nfft/2+i]
-	}
-	copy(out, out[int(nfft)*2/8:])
-	clear(out[int(nfft)*6/8:])
 }
 
 // windowGain returns the squared window gain for correcting the output grain

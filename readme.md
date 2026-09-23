@@ -152,6 +152,7 @@ but currently sounds best on audio data with aforementioned parameters.
 
 ## Known issues
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
+- [Energy losses (on example of log sweep)](https://mega.nz/file/7qAWXILb#QFsFQkHeCRD8osJMlS_QbFvgPVvKC8_Eqz4VPI0lsS0)
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 

@@ -525,7 +525,7 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 		return 0
 	}
 	// TODO This exact line is the source of all mushiness.
-	//      The only other way to improve it is to correctly implement momentary resets.
+	//      The other way to improve it is to correctly implement momentary resets.
 	//
 	// len(x)-1 blends better while alternating between stretched and original in Sonic Lineup,
 	// but len(x) is more faithful to the resampled signal in context of pitch change, so it must be true.
