@@ -209,6 +209,14 @@ func main() {
 	if *foutput == "" {
 		nooutname = true
 		*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
+	} else {
+		fi, err := os.Stat(*foutput)
+		if os.IsExist(err) && fi.IsDir() {
+			nooutname = true
+			*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
+		} else if err != nil {
+			panic(err)
+		}
 	}
 
 	file, err := os.Open(*finput)

@@ -25,8 +25,8 @@ var watches = map[where]*watch{}
 type Etc = any
 
 type Name string
-
 type Normalize bool
+type Quantization int
 
 type watch struct {
 	outfile string
@@ -47,13 +47,13 @@ func getGID() uintptr {
 	return uintptr(n)
 }
 
-func findetc[T any](etc []Etc) (int, T) {
+func findetc[T any](etc []Etc) (int, T, bool) {
 	i := slices.IndexFunc(etc, func(e Etc) bool { _, k := e.(T); return k })
-	if i >= 0 {
-		return i, etc[i].(T)
-	}
 	var z T
-	return i, z
+	if i >= 0 {
+		z = etc[i].(T)
+	}
+	return i, z, i >= 0
 }
 
 func Oscope(a any, etc ...Etc) {
@@ -68,8 +68,8 @@ func Oscope(a any, etc ...Etc) {
 			panic(`oscope.Oscope: can't identify a function that is not traceable on the stack`)
 		}
 		fn := ""
-		i, e := findetc[Name](etc)
-		if i >= 0 {
+		_, e, ok := findetc[Name](etc)
+		if ok {
 			fn = string(e)
 		} else {
 			fn = fmt.Sprintf("%s:%d(%d)", path.Base(file), line, wh[1])
@@ -81,48 +81,15 @@ func Oscope(a any, etc ...Etc) {
 			elem:    a,
 		}
 		w = watches[wh]
-		_, n := findetc[Normalize](etc)
+		_, n, _ := findetc[Normalize](etc)
 		w.norm = bool(n)
 	}
 	w.data = append(w.data, a)
 }
 
-func Dump(err error, topath string) error {
-	if err != nil {
-		return err
-	}
-	if !Enable {
-		return nil
-	}
-	for _, w := range watches {
-		outf := path.Join(topath, w.outfile+".png")
-		switch w.elem.(type) {
-		case float64:
-			err = dumpWaveform[float64](nil, w, w.data, outf)
-		case float32:
-			err = dumpWaveform[float32](nil, w, w.data, outf)
-		case int:
-			err = dumpWaveform[int](nil, w, w.data, outf)
-		case uint8:
-			err = dumpWaveform[uint8](nil, w, w.data, outf)
-
-		case []float64:
-			err = dumpTexture[float64](nil, w, w.data, outf)
-		case []float32:
-			err = dumpTexture[float32](nil, w, w.data, outf)
-		case []int:
-			err = dumpTexture[int](nil, w, w.data, outf)
-		case []uint8:
-			err = dumpTexture[uint8](nil, w, w.data, outf)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func dumpWaveform[T constraints.Integer | constraints.Float](err error, w *watch, data []any, topath string) error {
+func dumpWaveform[T constraints.Integer | constraints.Float](err error, w *watch, topath string) error {
+	topath = path.Join(topath, w.outfile+".png")
+	data := w.data
 	n, x := data[0].(T), data[0].(T)
 	for _, e := range data {
 		n = min(n, e.(T))
@@ -148,7 +115,9 @@ func dumpWaveform[T constraints.Integer | constraints.Float](err error, w *watch
 	return png.Encode(file, img)
 }
 
-func dumpTexture[T constraints.Integer | constraints.Float](err error, w *watch, data []any, topath string) error {
+func dumpTexture[T constraints.Integer | constraints.Float](err error, w *watch, topath string) error {
+	topath = path.Join(topath, w.outfile+".png")
+	data := w.data
 	type S = []T
 	n, x := data[0].(S)[0], data[0].(S)[0]
 	for _, s := range data {

@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
+	"github.com/neputevshina/nanowarp/oscope"
 	"github.com/neputevshina/nanowarp/pffft"
 	"gonum.org/v1/gonum/cmplxs"
 	"gonum.org/v1/gonum/floats"
@@ -234,11 +235,16 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 	for w := range a.X {
-		a.Fadv[w] = princarg(fadv(a.X, a.Xt, stretch, n.osamp, w))
-		a.Tadv[w] = tadv(a.X, a.Xd, float64(n.nfft)/float64(n.hop)/2, w)
+		a.Fadv[w] = fadv(a.X, a.Xt, stretch, n.osamp, w)
+		// a.Tadv[w] = cmplx.Phase(a.X[w]) - a.Past[w]
+		a.Tadv[w] = princarg(tadv(a.X, a.Xd, stretch, float64(n.nfft)/float64(n.hop)/2, w))
 	}
+	oscope.Enable = true
+	oscope.Oscope(slices.Clone(a.Tadv))
 
-	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
+	// n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
+	_ = arrows
+	n.pvintegrate(a.Tadv, a.Ph, a.Past)
 
 	c := float64(hp.LongRidgeLength) * stretch
 	for w := range a.Y {
@@ -281,6 +287,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	}
 
 	copy(a.P, a.M)
+	copy(a.Past, a.Ph)
 	copy(a.Past, a.Ph)
 
 	return a.Y, a.C, a.M
@@ -503,6 +510,13 @@ func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) 
 	}
 }
 
+// pghiintegrate integrates partial derivatives of phase in a phase vocoder manner.
+func (n *warper) pvintegrate(Tadv, Ph, Past []float64) {
+	for w := range Ph {
+		Ph[w] = princarg(Past[w]) + Tadv[w]
+	}
+}
+
 // fadv calculates the frequency-axis phase advance value based on
 // local group delay (LGD[1]) or “horizontal bin displacement” using
 // time-frequency reassignment.
@@ -534,6 +548,10 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 	// A compromise:
 	// return -real(xt[w]/x[w])/(float64(len(x))-1*float64(w)/float64(len(x)))*math.Pi*stretch - math.Pi/osamp
 	//
+	// xx := float64(w) / float64(len(x)) / 2
+	// return -math.Pi / osamp
+	// flatter := stretch / 4
+	// hop := float64(len(x)) / osamp / warperOverlap
 	return -real(xt[w]/x[w])/float64(len(x))*math.Pi*stretch - math.Pi/osamp
 }
 
@@ -544,9 +562,15 @@ func fadv(x, xt []complex128, stretch, osamp float64, w int) float64 {
 // It is also known as phase difference in phase vocoder.
 //
 // scale is the correction factor.
-func tadv(x, xd []complex128, scale float64, w int) float64 {
+func tadv(x, xd []complex128, stretch, scale float64, w int) float64 {
 	if cmplx.Abs(x[w]) < 1e-6 {
 		return 0
 	}
 	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / scale
+	// return (math.Pi*float64(w)/float64(len(x))/stretch + imag(xd[w]/x[w])) / scale
+	// return (math.Pi*float64(w)/float64(len(x)) + imag(xd[w]/x[w])*float64(len(x))/2/math.Pi) / scale
+	// oscope.Enable = true
+	// oscope.Histo(imag(xd[w]/x[w]), oscope.Quantization(4))
+	// return (imag(xd[w] / x[w])) / scale
+	return imag(xd[w]/x[w]) / 3600 / 2
 }
