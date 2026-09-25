@@ -37,6 +37,7 @@ type warper struct {
 	ftrace   []float64 // Filtered trace
 	ridges   []uint    // Extracted ridges
 	resetnow []bool    // Forced per-bin resets
+	pks      []int
 
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
@@ -235,7 +236,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	enfft(a.Xt, a.Wt, a.Mid)
 	for w := range a.X {
 		a.Fadv[w] = fadv(a.X, a.Xt, stretch, n.osamp, w)
-		a.Tadv[w] = princarg(tadv(a.X, a.Xd, float64(n.nfft)/float64(n.hop)/2, w))
+		a.Tadv[w] = tadv(a.X, a.Xd, float64(n.nfft)/float64(n.hop)/2, w)
 	}
 
 	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
@@ -501,13 +502,6 @@ func (n *warper) pghiintegrate(arrows [][2]int, Fadv, Tadv, Ph, Past []float64) 
 		case up:
 			Ph[e[0]+1] = Ph[e[0]] + Fadv[e[0]+1]
 		}
-	}
-}
-
-// pghiintegrate integrates partial derivatives of phase in a phase vocoder manner.
-func (n *warper) pvintegrate(Tadv, Ph, Past []float64) {
-	for w := range Ph {
-		Ph[w] = princarg(Past[w]) + Tadv[w]
 	}
 }
 

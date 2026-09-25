@@ -34,7 +34,7 @@ CGO_ENABLED=1 go install github.com/neputevshina/nanowarp/cmd/nanowarp@latest
 
 `nanowarp` will be compiled as a native Windows application.
 Use UCRT64 command prompt each time you need to use `nanowarp` 
-(paths in msys2 use forward slashes and `C:/` is `/c/`). 
+(paths in msys2 use forward slashes and C:\ is `/c/`). 
 For use in `cmd.exe`/Powershell add GOBIN of this environment 
 (typically `C:\msys64\home\user\go\bin`) to your Windows' [PATH](https://www.java.com/en/download/help/path.html).
 
@@ -83,7 +83,7 @@ Stereo coherence is obtained through stretching mono and adding complex phase di
 respective side channels after stretching back[4].
 
 Transient triplication, characteristic to all PVDRs, is mitigated by removing all bins where 
-absolute LGD[2], or horizontal bin displacement ($|{d\phi}\over{d\omega}|$) is greater than 
+absolute LGD[2], or horizontal bin displacement ($\lvert{{d\phi}\over{d\omega}}\rvert$) is greater than 
 half analysis hop size. This mechanism is engaged only for stretch coefficients greater than 2.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
@@ -152,6 +152,7 @@ but currently sounds best on audio data with aforementioned parameters.
 
 ## Known issues
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
+- Very loud or noisy tracks might get mushy. Try using -q -1 if results sounds bad.
 - [Energy losses (on example of log sweep)](https://mega.nz/file/7qAWXILb#QFsFQkHeCRD8osJMlS_QbFvgPVvKC8_Eqz4VPI0lsS0)
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.

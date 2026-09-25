@@ -74,6 +74,10 @@ func unmix[F constraints.Float](a, b, x F) F {
 	return (x - a) / (b - a)
 }
 
+func intunmix[F constraints.Integer](a, b, x F) float64 {
+	return (float64(x) - float64(a)) / (float64(b) - float64(a))
+}
+
 // clamp hard clips value x to satisfy a ≤ x ≤ b.
 func clamp[T cmp.Ordered](a, b, x T) T {
 	return max(a, min(b, x))
@@ -315,4 +319,9 @@ func spectralkurtosis(src []float64, centroid, spread float64) float64 {
 		a += b * b * b * b * src[i]
 	}
 	return a / (sum(src) * spread * spread * spread * spread)
+}
+
+func smoothstep(a, b, x float64) float64 {
+	x = unmix(a, b, x)
+	return x * x * (3.0 - 2.0*x)
 }
