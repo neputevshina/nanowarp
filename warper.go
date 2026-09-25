@@ -556,3 +556,35 @@ func tadv(x, xd []complex128, scale float64, w int) float64 {
 	}
 	return (math.Pi*float64(w) + imag(xd[w]/x[w])) / scale
 }
+
+var comptanhs = [][12]float64{
+	// After 1.5x stretch, log sweep response looks something like this:
+	//
+	// 	████🭍🬾
+	// 	█████🭎🬽🭑🬽
+	// 	█████████
+	// 	       ↑ This point is cutpt
+	//
+	// This table contains log-space normalized frequency tanh curve pairs used to
+	// correct these attenuations.
+	//
+	// This table must be sorted in ascending order.
+	//
+	// x, a x0, a y0,   a x1,y1, askw,  cutpt, b x0,     b y0,   b x1,   b y1, bskw,
+	{1.2, 0.79, 0.9775, 0.29, 1, 1.00, 0.6900, 1.0000, 0.9907, 0.6000, 0.9773, 0.73},
+	// After this point, attenuations are ”saw-like”. Before they are “bell+shelf-like”.
+	{1.5, 0.92, 0.9455, 0.29, 1, 1.10, 0.6550, 0.9400, 0.9577, 0.2800, 1.0000, 1.40},
+	{1.7, 0.97, 0.9305, 0.30, 1, 0.90},
+	{1.9, 1.00, 0.8900, 0.25, 1, 1.10, 0.6685, 1.0000, 0.9020, 0.2500, 1.0000, 0.75},
+	{2.0, 1.00, 0.8680, 0.26, 1, 0.90, 0.6845, 1.0000, 0.8880, 0.2600, 1.0000, 0.80},
+	{3.0, 1.00, 0.7150, 0.27, 1, 0.92, 0.7530, 1.0000, 0.7655, 0.2970, 1.0000, 0.89},
+	{4.0, 1.00, 0.5950, 0.25, 1, 0.88, 0.7954, 1.0000, 0.6763, 0.2700, 1.0000, 0.92},
+}
+
+// // compensate tries to compensate the spectral energy losses of imperfect phase reconstruction by applying
+// // stretch-adaptive equalizer.
+// func (n *warper) compensate(x []complex128, stretch float64) {
+// 	for w := range x {
+
+// 	}
+// }

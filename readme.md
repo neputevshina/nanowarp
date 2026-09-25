@@ -83,7 +83,7 @@ Stereo coherence is obtained through stretching mono and adding complex phase di
 respective side channels after stretching back[4].
 
 Transient triplication, characteristic to all PVDRs, is mitigated by removing all bins where 
-absolute LGD[2], or horizontal bin displacement ($\lvert{{d\phi}\over{d\omega}}\rvert$) is greater than 
+absolute LGD[2], or horizontal bin displacement ($\lvert{{d\varphi}\over{d\omega}}\rvert$) is greater than 
 half analysis hop size. This mechanism is engaged only for stretch coefficients greater than 2.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
