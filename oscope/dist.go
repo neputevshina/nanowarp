@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"math"
+	"os"
 	"path"
 	"runtime"
 	"slices"
@@ -79,11 +80,16 @@ func Histo(v float64, etc ...Etc) {
 	}
 }
 
-func dumpDist(_ error, w *dist, _ string) error {
-	fmt.Println(`Distribution for `, w.outfile)
+func dumpDist(_ error, w *dist, topath string) error {
+	topath = path.Join(topath, w.outfile+".tsv")
+	file, err := os.Create(topath)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(file, `Distribution for `, w.outfile)
 	sort.Sort(&w.heap)
 	for _, p := range w.heap {
-		fmt.Println(p.v, "\t", p.n)
+		fmt.Fprintln(file, p.v, "\t", p.n)
 	}
-	return nil
+	return file.Close()
 }
