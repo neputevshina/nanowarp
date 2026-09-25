@@ -581,6 +581,13 @@ var comptanhs = [][12]float64{
 	{4.0, 1.00, 0.5950, 0.25, 1, 0.88, 0.7954, 1.0000, 0.6763, 0.2700, 1.0000, 0.92},
 }
 
+func tanhstep(skew, x float64) float64 {
+	return (math.Tanh(math.Pi*skew*(2*x-1)) + 1) / 2
+}
+func tanhterp(x0, y0, x1, y1, skew, x float64) float64 {
+	return (y1-y0)*tanhstep(skew, unmix(x0, x1, x)) + y0
+}
+
 // // compensate tries to compensate the spectral energy losses of imperfect phase reconstruction by applying
 // // stretch-adaptive equalizer.
 // func (n *warper) compensate(x []complex128, stretch float64) {
