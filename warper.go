@@ -56,7 +56,7 @@ type wbufs struct {
 	W, Wr, Wd, Wt    []float64      // Window functions: analysis, synthesis (dual), derivative of W, time-weighted W
 	X, Y, Xd, Xt, Pp []complex128   // Complex spectra
 	C, Co            [][]complex128 // Channel differences, original channels
-	Mp               []complex128   // [warper.compensate] factor cache
+	Mp               []float64      // [warper.compensate] factor cache
 }
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -243,6 +243,12 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 
 	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
 
+	// Generate compensation EQ.
+	if stretch != n.prevstretch {
+		n.compensate(a.Mp, stretch, float64(n.root.fs))
+	}
+	n.prevstretch = stretch
+
 	c := float64(hp.LongRidgeLength) * stretch
 	for w := range a.Y {
 		// Reset if speed is 1, bypass short ridges.
@@ -279,13 +285,9 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 			continue
 		}
 
-		// Receive normals from the current phase, if not resetting.
-		a.Y[w] = cmplx.Rect(1, a.Ph[w])
-	}
-
-	// Compensate phase reconstruction energy losses.
-	if !reset {
-		n.compensate(a.Y, stretch, float64(n.root.fs))
+		// Receive normals from the current phase and apply energy compensation,
+		// if not resetting.
+		a.Y[w] = cmplx.Rect(a.Mp[w], a.Ph[w])
 	}
 
 	copy(a.P, a.M)
@@ -601,22 +603,15 @@ func logmix(a, b, x float64) float64 {
 	return a * math.Pow(b/a, x)
 }
 
-// compensate tries to compensate the spectral energy losses of imperfect phase reconstruction by applying
-// stretch-adaptive equalizer.
+// compensate generates an stretch-adaptive EQ table for compensation the
+// spectral energy losses of imperfect phase reconstruction.
 //
 // The method was calibrated on log scale sweeps from 20 to 20000 Hz.
 // Ascending and descending sweeps recieve the same magnitude response.
 // From experiments, clean tones (pure sines) of any frequency are not attenuated.
-func (n *warper) compensate(x []complex128, stretch float64, fs float64) {
-	// Faster route if cached.
-	if stretch == n.prevstretch {
-		cmplxs.Mul(x, n.a.Mp)
-		return
-	}
-	n.prevstretch = stretch
-
+func (n *warper) compensate(mp []float64, stretch float64, fs float64) {
 	bin := func(hz float64) int {
-		return hztobin(hz, (len(x)-1)*2, fs)
+		return hztobin(hz, (len(mp)-1)*2, fs)
 	}
 	r, _ := slices.BinarySearchFunc(comptanhs, stretch, func(v [12]float64, s float64) int {
 		if v[0] < s {
@@ -642,12 +637,11 @@ func (n *warper) compensate(x []complex128, stretch float64, fs float64) {
 			return tanhterp(c[7], c[8], c[9], c[10], c[11], y)
 		}
 	}
-	for w := range x {
+	for w := range mp {
 		c := comptanhs
 		y := intunmix(bin(20), bin(20000), w)
 		y = logunmix(20, 20000, mix(20, 20000, y))
 		v := mix(tanhpair(l, y), tanhpair(r, y), unmix(c[l][0], c[r][0], stretch))
-		n.a.Mp[w] = complex(1/v, 0)
+		mp[w] = 1 / v
 	}
-	cmplxs.Mul(x, n.a.Mp)
 }

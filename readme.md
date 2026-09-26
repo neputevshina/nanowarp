@@ -153,7 +153,8 @@ but currently sounds best on audio data with aforementioned parameters.
 ## Known issues
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - Very loud or noisy tracks might get mushy. Try using -q -1 if results sounds bad.
-- [Energy losses (on example of log sweep)](https://mega.nz/file/7qAWXILb#QFsFQkHeCRD8osJMlS_QbFvgPVvKC8_Eqz4VPI0lsS0)
+- [Energy losses (on example of log sweep)](https://mega.nz/file/7qAWXILb#QFsFQkHeCRD8osJMlS_QbFvgPVvKC8_Eqz4VPI0lsS0) are compensated by EQing,
+  pure tones will recieve an unwanted gain increase (≈2 dB @ 2x, increases with stretch factor).
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 
