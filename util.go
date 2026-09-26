@@ -71,6 +71,9 @@ func precisionmix(a, b, x float64) float64 {
 
 // unmix is a linear extrapolation.
 func unmix[F constraints.Float](a, b, x F) F {
+	if a == b {
+		return a
+	}
 	return (x - a) / (b - a)
 }
 
@@ -213,8 +216,8 @@ func boolfloat(b bool) float64 {
 
 // hztobin converts a frequency value in hertz to bin number of a DFT
 // of size nfft on a signal with known sample rate.
-func hztobin(hz float64, nfft, samplerate int) int {
-	return int(hz * float64(nfft) / float64(samplerate))
+func hztobin(hz float64, nfft int, samplerate float64) int {
+	return int(hz * float64(nfft) / samplerate)
 }
 
 func scale[T constraints.Float | constraints.Complex](dst []T, s T) {
@@ -280,17 +283,14 @@ func twelveedo(st float64) float64 {
 }
 
 func bend(x float64, outsize float64, insize float64, start float64) float64 {
-	exp := math.Exp
-	log := math.Log
-	return start * exp(x*log(outsize/start)/insize)
+	return start * math.Exp(x*math.Log(outsize/start)/insize)
 }
 
 func unbend(x float64, outsize float64, insize float64, start float64) float64 {
-	log := math.Log
 	if x < start {
 		return 0
 	}
-	return insize * log(x/start) / log(outsize/start)
+	return insize * math.Log(x/start) / math.Log(outsize/start)
 }
 
 // Spectral descriptors.

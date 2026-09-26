@@ -281,8 +281,9 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 		a.Y[w] = cmplx.Rect(1, a.Ph[w])
 	}
 
+	n.compensate(a.Y, stretch, float64(n.root.fs))
+
 	copy(a.P, a.M)
-	copy(a.Past, a.Ph)
 	copy(a.Past, a.Ph)
 
 	return a.Y, a.C, a.M
@@ -568,13 +569,13 @@ var comptanhs = [][12]float64{
 	// This table contains log-space normalized frequency tanh curve pairs used to
 	// correct these attenuations.
 	//
-	// This table must be sorted in ascending order.
+	// This table must be sorted by first element in ascending order.
 	//
 	// x, a x0, a y0,   a x1,y1, askw,  cutpt, b x0,     b y0,   b x1,   b y1, bskw,
+	{1.0, 0.73, 0.9797, 0.44, 1, 0.63, 0.7000, 1.0000, 0.9994, 0.6400, 0.9797, 0.63},
 	{1.2, 0.79, 0.9775, 0.29, 1, 1.00, 0.6900, 1.0000, 0.9907, 0.6000, 0.9773, 0.73},
 	// After this point, attenuations are ”saw-like”. Before they are “bell+shelf-like”.
 	{1.5, 0.92, 0.9455, 0.29, 1, 1.10, 0.6550, 0.9400, 0.9577, 0.2800, 1.0000, 1.40},
-	{1.7, 0.97, 0.9305, 0.30, 1, 0.90},
 	{1.9, 1.00, 0.8900, 0.25, 1, 1.10, 0.6685, 1.0000, 0.9020, 0.2500, 1.0000, 0.75},
 	{2.0, 1.00, 0.8680, 0.26, 1, 0.90, 0.6845, 1.0000, 0.8880, 0.2600, 1.0000, 0.80},
 	{3.0, 1.00, 0.7150, 0.27, 1, 0.92, 0.7530, 1.0000, 0.7655, 0.2970, 1.0000, 0.89},
@@ -588,10 +589,51 @@ func tanhterp(x0, y0, x1, y1, skew, x float64) float64 {
 	return (y1-y0)*tanhstep(skew, unmix(x0, x1, x)) + y0
 }
 
-// // compensate tries to compensate the spectral energy losses of imperfect phase reconstruction by applying
-// // stretch-adaptive equalizer.
-// func (n *warper) compensate(x []complex128, stretch float64) {
-// 	for w := range x {
+func logunmix(a, b, x float64) float64 {
+	return math.Log(x/a) / math.Log(b/a)
+}
+func logmix(a, b, x float64) float64 {
+	return a * math.Pow(b/a, x)
+}
 
-// 	}
-// }
+// compensate tries to compensate the spectral energy losses of imperfect phase reconstruction by applying
+// stretch-adaptive equalizer.
+//
+// The method was calibrated on log scale sweeps from 20 to 20000 Hz.
+// Ascending and descending sweeps recieve the same magnitude response.
+// From experiments, clean tones (pure sines) of any frequency are not attenuated.
+func (n *warper) compensate(x []complex128, stretch float64, fs float64) {
+	bin := func(hz float64) int {
+		return hztobin(hz, (len(x)-1)*2, fs)
+	}
+	r, _ := slices.BinarySearchFunc(comptanhs, stretch, func(v [12]float64, s float64) int {
+		if v[0] < s {
+			return -1
+		} else if v[0] > s {
+			return 1
+		} else {
+			return 0
+		}
+	})
+	l := r - 1
+	if r == 0 {
+		l = 0
+	} else if r == len(comptanhs) {
+		r--
+	}
+
+	tanhpair := func(i int, y float64) float64 {
+		c := comptanhs[i]
+		if y < c[6] {
+			return tanhterp(c[1], c[2], c[3], c[4], c[5], y)
+		} else {
+			return tanhterp(c[7], c[8], c[9], c[10], c[11], y)
+		}
+	}
+	for w := range x {
+		c := comptanhs
+		y := intunmix(bin(20), bin(20000), w)
+		y = logunmix(20, 20000, mix(20, 20000, y))
+		x[w] /= complex(mix(tanhpair(l, y), tanhpair(r, y), unmix(c[l][0], c[r][0], stretch)), 0)
+	}
+}
