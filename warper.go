@@ -37,7 +37,8 @@ type warper struct {
 	ftrace   []float64 // Filtered trace
 	ridges   []uint    // Extracted ridges
 	resetnow []bool    // Forced per-bin resets
-	pks      []int
+
+	pcomp float64 // Previous frame stretch, see [wbufs.Mp]
 
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
@@ -55,6 +56,7 @@ type wbufs struct {
 	W, Wr, Wd, Wt    []float64      // Window functions: analysis, synthesis (dual), derivative of W, time-weighted W
 	X, Y, Xd, Xt, Pp []complex128   // Complex spectra
 	C, Co            [][]complex128 // Channel differences, original channels
+	Mp               []complex128   // [warper.compensate] factor cache
 }
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
@@ -603,6 +605,12 @@ func logmix(a, b, x float64) float64 {
 // Ascending and descending sweeps recieve the same magnitude response.
 // From experiments, clean tones (pure sines) of any frequency are not attenuated.
 func (n *warper) compensate(x []complex128, stretch float64, fs float64) {
+	if stretch == n.pcomp {
+		cmplxs.Mul(x, n.a.Mp)
+		return
+	}
+	n.pcomp = stretch
+
 	bin := func(hz float64) int {
 		return hztobin(hz, (len(x)-1)*2, fs)
 	}
@@ -634,6 +642,8 @@ func (n *warper) compensate(x []complex128, stretch float64, fs float64) {
 		c := comptanhs
 		y := intunmix(bin(20), bin(20000), w)
 		y = logunmix(20, 20000, mix(20, 20000, y))
-		x[w] /= complex(mix(tanhpair(l, y), tanhpair(r, y), unmix(c[l][0], c[r][0], stretch)), 0)
+		v := mix(tanhpair(l, y), tanhpair(r, y), unmix(c[l][0], c[r][0], stretch))
+		n.a.Mp[w] = complex(1/v, 0)
 	}
+	cmplxs.Mul(x, n.a.Mp)
 }
