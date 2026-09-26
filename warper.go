@@ -38,7 +38,7 @@ type warper struct {
 	ridges   []uint    // Extracted ridges
 	resetnow []bool    // Forced per-bin resets
 
-	pcomp float64 // Previous frame stretch, see [wbufs.Mp]
+	prevstretch float64 // Previous frame stretch, see [wbufs.Mp]
 
 	norm, wgain float64 // Global normalization factor and grain-only normalization factor
 
@@ -283,7 +283,10 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 		a.Y[w] = cmplx.Rect(1, a.Ph[w])
 	}
 
-	n.compensate(a.Y, stretch, float64(n.root.fs))
+	// Compensate phase reconstruction energy losses.
+	if !reset {
+		n.compensate(a.Y, stretch, float64(n.root.fs))
+	}
 
 	copy(a.P, a.M)
 	copy(a.Past, a.Ph)
@@ -605,11 +608,12 @@ func logmix(a, b, x float64) float64 {
 // Ascending and descending sweeps recieve the same magnitude response.
 // From experiments, clean tones (pure sines) of any frequency are not attenuated.
 func (n *warper) compensate(x []complex128, stretch float64, fs float64) {
-	if stretch == n.pcomp {
+	// Faster route if cached.
+	if stretch == n.prevstretch {
 		cmplxs.Mul(x, n.a.Mp)
 		return
 	}
-	n.pcomp = stretch
+	n.prevstretch = stretch
 
 	bin := func(hz float64) int {
 		return hztobin(hz, (len(x)-1)*2, fs)
