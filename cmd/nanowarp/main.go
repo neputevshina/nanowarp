@@ -188,7 +188,53 @@ func main() {
 		os.Exit(1)
 	}
 
-	nooutname := false
+	file, err := os.Open(*finput)
+	if err != nil {
+		panic(err)
+	}
+
+	wsr, err := wavio.NewDecoder(file)
+	if err != nil {
+		// Try to call ffmpeg, we've probably got an MP3.
+		if err == wavio.ErrNotAWav {
+			_ = file.Close()
+
+			_, err = exec.LookPath(`ffmpeg`)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, `can process only WAV files without ffmpeg`)
+				os.Exit(1)
+			}
+
+			s2, err := filepath.Abs(*finput)
+			if err != nil {
+				panic(err)
+			}
+
+			ex := path.Join(os.TempDir(), path.Base(s2)) + `.wav`
+
+			cmd := exec.Command(`ffmpeg`, `-hide_banner`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
+			cmd.Stderr = os.Stderr
+			cmd.Stdout = os.Stdout
+			err = cmd.Run()
+			if err != nil {
+				if _, ok := err.(*exec.ExitError); ok {
+					os.Exit(1)
+				} else {
+					panic(err)
+				}
+			}
+
+			file, err = os.Open(ex)
+			if err != nil {
+				panic(err)
+			}
+			wsr, err = wavio.NewDecoder(file)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
 	generateOutSuffix := func() string {
 		pitchSuffix := ""
 		if *st != 0 {
@@ -207,73 +253,14 @@ func main() {
 		return path.Join(dir, fmt.Sprintf("%s-%s", generateOutSuffix(), fn))
 	}
 	if *foutput == "" {
-		nooutname = true
-		*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
+		*foutput = generateOutName(path.Dir(*finput), path.Base(file.Name()))
 	} else {
 		fi, err := os.Stat(*foutput)
 		if err != nil {
 			panic(err)
 		}
 		if fi.IsDir() {
-			nooutname = true
-			*foutput = generateOutName(*foutput, path.Base(*finput))
-		}
-	}
-
-	file, err := os.Open(*finput)
-	if err != nil {
-		panic(err)
-	}
-
-	wsr, err := wavio.NewDecoder(file)
-	if err != nil {
-		// Try to call ffmpeg, we've probably got an MP3.
-		if err == wavio.ErrNotAWav {
-			_ = file.Close()
-
-			_, err = exec.LookPath(`ffmpeg`)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, `can process only WAV files without ffmpeg`)
-				os.Exit(1)
-			}
-
-			s, err := filepath.Abs(*foutput)
-			if err != nil {
-				panic(err)
-			}
-			s2, err := filepath.Abs(*finput)
-			if err != nil {
-				panic(err)
-			}
-
-			// ex := path.Join(path.Dir(s), path.Base(s2)) + `.wav`
-			ex := path.Join(os.TempDir(), path.Base(s2)) + `.wav`
-
-			cmd := exec.Command(`ffmpeg`, `-hide_banner`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
-			cmd.Stderr = os.Stderr
-			cmd.Stdout = os.Stdout
-			err = cmd.Run()
-			if err != nil {
-				if _, ok := err.(*exec.ExitError); ok {
-					os.Exit(1)
-				} else {
-					panic(err)
-				}
-			}
-
-			file, err = os.Open(ex)
-			if nooutname {
-				*foutput = generateOutName(s, ex)
-			}
-			if err != nil {
-				panic(err)
-			}
-			wsr, err = wavio.NewDecoder(file)
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			panic(err)
+			*foutput = generateOutName(*foutput, path.Base(file.Name()))
 		}
 	}
 
@@ -406,9 +393,9 @@ func main() {
 			for bp := range pch {
 				pb.Set(bp.Current, bp.End)
 				fmt.Fprint(os.Stderr, " ", bp.Process)
-				if bp.Process == `Warping` {
-					fmt.Fprintf(os.Stderr, ", Harshness: %.2f%%", float64(bp.HarshFrames)/float64(bp.HarshFrames+bp.SmoothFrames)*100)
-				}
+				// if bp.Process == `Warping` {
+				// 	fmt.Fprintf(os.Stderr, ", Harshness: %.2f%%", float64(bp.HarshFrames)/float64(bp.HarshFrames+bp.SmoothFrames)*100)
+				// }
 			}
 			fmt.Fprintln(os.Stderr)
 			exit <- struct{}{}

@@ -596,13 +596,6 @@ func tanhterp(x0, y0, x1, y1, skew, x float64) float64 {
 	return (y1-y0)*tanhstep(skew, unmix(x0, x1, x)) + y0
 }
 
-func logunmix(a, b, x float64) float64 {
-	return math.Log(x/a) / math.Log(b/a)
-}
-func logmix(a, b, x float64) float64 {
-	return a * math.Pow(b/a, x)
-}
-
 // compensate generates an stretch-adaptive EQ table for compensation the
 // spectral energy losses of imperfect phase reconstruction.
 //

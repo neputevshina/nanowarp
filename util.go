@@ -282,7 +282,15 @@ func twelveedo(st float64) float64 {
 	return math.Pow(2, st/12)
 }
 
+func logunmix(a, b, x float64) float64 {
+	return math.Log(x/a) / math.Log(b/a)
+}
+func logmix(a, b, x float64) float64 {
+	return a * math.Pow(b/a, x)
+}
+
 func bend(x float64, outsize float64, insize float64, start float64) float64 {
+	// TODO same as logmix
 	return start * math.Exp(x*math.Log(outsize/start)/insize)
 }
 
@@ -290,7 +298,7 @@ func unbend(x float64, outsize float64, insize float64, start float64) float64 {
 	if x < start {
 		return 0
 	}
-	return insize * math.Log(x/start) / math.Log(outsize/start)
+	return insize * logunmix(start, outsize, x)
 }
 
 // Spectral descriptors.
