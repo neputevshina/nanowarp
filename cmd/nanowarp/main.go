@@ -204,18 +204,19 @@ func main() {
 		}
 	}
 	generateOutName := func(dir, fn string) string {
-		return path.Join(path.Dir(dir), fmt.Sprintf("%s-%s", generateOutSuffix(), path.Base(fn)))
+		return path.Join(dir, fmt.Sprintf("%s-%s", generateOutSuffix(), fn))
 	}
 	if *foutput == "" {
 		nooutname = true
 		*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
 	} else {
 		fi, err := os.Stat(*foutput)
-		if os.IsExist(err) && fi.IsDir() {
-			nooutname = true
-			*foutput = generateOutName(path.Dir(*finput), path.Base(*finput))
-		} else if err != nil {
+		if err != nil {
 			panic(err)
+		}
+		if fi.IsDir() {
+			nooutname = true
+			*foutput = generateOutName(*foutput, path.Base(*finput))
 		}
 	}
 
