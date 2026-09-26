@@ -56,11 +56,12 @@ type wbufs struct {
 	W, Wr, Wd, Wt    []float64      // Window functions: analysis, synthesis (dual), derivative of W, time-weighted W
 	X, Y, Xd, Xt, Pp []complex128   // Complex spectra
 	C, Co            [][]complex128 // Channel differences, original channels
-	Mp               []float64      // [warper.compensate] factor cache
+	Mp               []float64      `size:"nbins"` // [warper.compensate] factor cache
 }
 
 func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	nfft := pffft.NearestNfft(nbuf * osamp)
+	nbuf = nfft / osamp
 	n = &warper{
 		nfft:   nfft,
 		nbins:  nfft/2 + 1,
@@ -603,7 +604,7 @@ func tanhterp(x0, y0, x1, y1, skew, x float64) float64 {
 // Ascending and descending sweeps recieve the same magnitude response.
 // From experiments, clean tones (pure sines) of any frequency are not attenuated.
 func (n *warper) compensate(mp []float64, stretch float64, fs float64) {
-	bin := func(hz float64) int {
+	bin := func(hz float64) float64 {
 		return hztobin(hz, (len(mp)-1)*2, fs)
 	}
 	r, _ := slices.BinarySearchFunc(comptanhs, stretch, func(v [12]float64, s float64) int {
@@ -630,9 +631,9 @@ func (n *warper) compensate(mp []float64, stretch float64, fs float64) {
 			return tanhterp(c[7], c[8], c[9], c[10], c[11], y)
 		}
 	}
+	c := comptanhs
 	for w := range mp {
-		c := comptanhs
-		y := intunmix(bin(20), bin(20000), w)
+		y := unmix(bin(20), bin(20000), float64(w))
 		y = logunmix(20, 20000, mix(20, 20000, y))
 		v := mix(tanhpair(l, y), tanhpair(r, y), unmix(c[l][0], c[r][0], stretch))
 		mp[w] = 1 / v

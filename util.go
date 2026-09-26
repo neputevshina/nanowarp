@@ -216,8 +216,8 @@ func boolfloat(b bool) float64 {
 
 // hztobin converts a frequency value in hertz to bin number of a DFT
 // of size nfft on a signal with known sample rate.
-func hztobin(hz float64, nfft int, samplerate float64) int {
-	return int(hz * float64(nfft) / samplerate)
+func hztobin(hz float64, nfft int, samplerate float64) float64 {
+	return hz * float64(nfft) / samplerate
 }
 
 func scale[T constraints.Float | constraints.Complex](dst []T, s T) {
