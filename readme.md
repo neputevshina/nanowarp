@@ -100,6 +100,8 @@ but currently sounds best on audio data with aforementioned parameters.
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w).
 
 ## Notes and todo
+- Idea: harmonic phase locking. Propagate phase vertically from detected ridges by harmonics. Dilated 
+  traces (-if) will work perfectly for that.
 - TODO: Rewrite PFFFT to Go SIMD intrinsics. This way dysfunctional desktop platforms won't hurt 
   users of dependants and cmd/nanowarp.
 - TODO: Calibrate warper's base nfft and partial derivative formulas. Again.

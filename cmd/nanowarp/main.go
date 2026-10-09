@@ -256,10 +256,7 @@ func main() {
 		*foutput = generateOutName(path.Dir(*finput), path.Base(file.Name()))
 	} else {
 		fi, err := os.Stat(*foutput)
-		if err != nil {
-			panic(err)
-		}
-		if fi.IsDir() {
+		if err == nil && fi.IsDir() {
 			*foutput = generateOutName(*foutput, path.Base(file.Name()))
 		}
 	}
