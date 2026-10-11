@@ -969,22 +969,30 @@ func cfftf1_ps(n int, input_readonly, work1, work2 []simd.Float32s, wa []float32
 	return in
 }
 
-type PffftSetup struct {
-	n int
-	// nb of complex simd vectors (N/4 if PFFFT_COMPLEX, N/8 if PFFFT_REAL)
-	// hold the decomposition into small integers of N
-	ncvec int
-	// N , number of factors, factors (admitted values: 2, 3, 4 ou 5)
-	ifac    [IfacMaxSize]int
-	data    []lane    // allocated room for twiddle coefs
-	e       []float32 // points into 'data' , N/4*3 elements
-	twiddle []float32 // points into 'data', N/4 elements
+func pffftNewSetup(n int, transform transform) (s *pffftSetup) {
+	SIMD_SZ := simd.VectorBitSize() / 8
+	// validate N for negative values or potential int overflow
+	if n < 0 {
+		return nil
+	}
+	if n > 1<<26 {
+		panic(`pffftNewSetup: nfft too large`)
+	}
+	s = &pffftSetup{}
+	/* unfortunately, the fft size must be a multiple of 16 for complex FFTs
+	   and 32 for real FFTs -- a lot of stuff would need to be rewritten to
+	   handle other cases (or maybe just switch to a scalar fft, I don't know..) */
+	if transform == transformReal {
+		if n%(2*SIMD_SZ*SIMD_SZ) != 0 {
+			panic(`pffftNewSetup: nfft must be a multiple of 32`)
+		}
+	}
+	if transform == transformComplex {
+		if n%(SIMD_SZ*SIMD_SZ) != 0 {
+			panic(`pffftNewSetup: nfft must be a multiple of 16`)
+		}
+	}
+	s.n = n
+	s.transform = transform
+	/* nb of complex simd vectors */
 }
-
-type Transform uint
-
-// func PffftNewSetup(nfft int, transform Transform) (s *PffftSetup) {
-// 	// validate N for negative values or potential int overflow
-// 	if
-
-// }
