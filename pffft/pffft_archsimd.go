@@ -3,12 +3,15 @@
 package pffft
 
 import (
+	"math"
 	"simd"
 )
 
+type lane = simd.Float32s
+
 // v4sf tmp; tmp=VMUL(ar,bi); ar=VMUL(ar,br);
 // ar=VSUB(ar,VMUL(ai,bi)); ai=VMUL(ai,br); ai=VADD(ai,tmp); }
-func vcplxmul(ar, ai, br, bi simd.Float32s) (simd.Float32s, simd.Float32s) {
+func vcplxmul(ar, ai, br, bi lane) (lane, lane) {
 	ar = ar.Mul(br).Sub(ai.Mul(bi))
 	ai = ai.Mul(br).Add(ar.Mul(bi))
 	return ar, ai
@@ -16,38 +19,38 @@ func vcplxmul(ar, ai, br, bi simd.Float32s) (simd.Float32s, simd.Float32s) {
 
 // v4sf tmp; tmp=VMUL(ar,bi); ar=VMUL(ar,br);
 // ar=VADD(ar,VMUL(ai,bi)); ai=VMUL(ai,br); ai=VSUB(ai,tmp);
-func vcplxmulconj(ar, ai, br, bi simd.Float32s) (simd.Float32s, simd.Float32s) {
+func vcplxmulconj(ar, ai, br, bi lane) (lane, lane) {
 	ar = ar.Mul(br).Add(ai.Mul(bi))
 	ai = ai.Mul(br).Sub(ar.Mul(bi))
 	return ar, ai
 }
 
-func svmul(s float32, ps simd.Float32s) simd.Float32s {
+func svmul(s float32, ps lane) lane {
 	return simd.BroadcastFloat32s(s).Mul(ps)
 }
 
-func vadd(a, b simd.Float32s) simd.Float32s {
+func vadd(a, b lane) lane {
 	return a.Add(b)
 }
 
-func vsub(a, b simd.Float32s) simd.Float32s {
+func vsub(a, b lane) lane {
 	return a.Sub(b)
 }
 
-func vmul(a, b simd.Float32s) simd.Float32s {
+func vmul(a, b lane) lane {
 	return a.Mul(b)
 }
 
-func vmadd(a, b, c simd.Float32s) simd.Float32s {
+func vmadd(a, b, c lane) lane {
 	return a.MulAdd(b, c)
 }
 
-func ld_ps1(s float32) simd.Float32s {
+func ld_ps1(s float32) lane {
 	return simd.BroadcastFloat32s(s)
 }
 
 //go:noinline
-func passf2_ps(ido, l1 int, cc, ch []simd.Float32s, wa1 []float32, fsign float32) {
+func passf2_ps(ido, l1 int, cc, ch []lane, wa1 []float32, fsign float32) {
 	l1ido := l1 * ido
 	if ido <= 2 {
 		for k := 0; k < l1ido; k, ch, cc = k+ido, ch[ido:], cc[ido*2:] {
@@ -74,7 +77,7 @@ func passf2_ps(ido, l1 int, cc, ch []simd.Float32s, wa1 []float32, fsign float32
 }
 
 //go:noinline
-func passf3_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2 []float32, fsign float32) {
+func passf3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32, fsign float32) {
 	const taur = -0.5
 	taui := 0.866025403784439 * fsign
 	if ido <= 2 {
@@ -111,7 +114,7 @@ func passf3_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2 []float32, fsign fl
 }
 
 //go:noinline
-func passf4_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3 []float32, fsign float32) {
+func passf4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32, fsign float32) {
 	l1ido := l1 * ido
 	if ido == 2 {
 		for k := 0; k < l1ido; k, ch, cc = k+ido, ch[ido:], cc[ido*4:] {
@@ -177,7 +180,7 @@ func passf4_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3 []float32, fsi
 }
 
 //go:noinline
-func passf5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32, fsign float32) {
+func passf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32, fsign float32) {
 	const tr11 = .309016994374947
 	ti11 := .951056516295154 * fsign
 	const tr12 = -.809016994374947
@@ -186,8 +189,8 @@ func passf5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32
 	if ido <= 2 {
 		panic(`fatal: passf5_ps: ido <= 2`)
 	}
-	cc_ref := func(a_1, a_2 int) simd.Float32s { return cc[(a_2-1)*ido+a_1+1] }
-	ch_ref := func(a_1, a_3 int) *simd.Float32s { return &ch[(a_3-1)*l1*ido+a_1+1] }
+	cc_ref := func(a_1, a_2 int) lane { return cc[(a_2-1)*ido+a_1+1] }
+	ch_ref := func(a_1, a_3 int) *lane { return &ch[(a_3-1)*l1*ido+a_1+1] }
 
 	for k := 0; k < l1; k, ch, cc = k+ido, ch[ido:], cc[ido*5:] {
 		for i := 0; i < ido-1; i += 2 {
@@ -242,7 +245,7 @@ func passf5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32
 }
 
 //go:noinline
-func radf2_ps(ido, l1 int, cc, ch []simd.Float32s, wa1 []float32) {
+func radf2_ps(ido, l1 int, cc, ch []lane, wa1 []float32) {
 	l1ido := l1 * ido
 	for k := 0; k < l1ido; k += ido {
 		a, b := cc[k], cc[k+l1ido]
@@ -275,7 +278,7 @@ func radf2_ps(ido, l1 int, cc, ch []simd.Float32s, wa1 []float32) {
 }
 
 //go:noinline
-func radb2_ps(ido, l1 int, cc, ch []simd.Float32s, wa1 []float32) {
+func radb2_ps(ido, l1 int, cc, ch []lane, wa1 []float32) {
 	l1ido := l1 * ido
 	for k := 0; k < l1ido; k += ido {
 		a, b := cc[2*k], cc[2*(k+ido)-1]
@@ -312,7 +315,7 @@ func radb2_ps(ido, l1 int, cc, ch []simd.Float32s, wa1 []float32) {
 }
 
 //go:noinline
-func radf3_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2 []float32) {
+func radf3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32) {
 	const taur = -0.5
 	const taui = 0.866025403784439
 	for k := range l1 {
@@ -356,7 +359,7 @@ func radf3_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2 []float32) {
 }
 
 //go:noinline
-func radb3_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2 []float32) {
+func radb3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32) {
 	const taur = -0.5
 	const taui = 0.866025403784439
 	const taui_2 = 1.732050807568878
@@ -398,7 +401,7 @@ func radb3_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2 []float32) {
 }
 
 //go:noinline
-func radf4_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3 []float32) {
+func radf4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32) {
 	l1ido := l1 * ido
 	{
 		cc_, ch_ := cc, ch
@@ -482,7 +485,7 @@ func radf4_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3 []float32) {
 }
 
 //go:noinline
-func radb4_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3 []float32) {
+func radb4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32) {
 	l1ido := l1 * ido
 	{
 		cc_, ch_ := cc, ch
@@ -563,7 +566,7 @@ func radb4_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3 []float32) {
 }
 
 //go:noinline
-func radf5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32) {
+func radf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32) {
 	const tr11 = .309016994374947
 	const ti11 = .951056516295154
 	const tr12 = -.809016994374947
@@ -572,8 +575,8 @@ func radf5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32)
 	ch_offset := 1 + ido*6
 	cc_offset := 1 + ido*(1+l1)
 
-	cc_ref := func(a_1, a_2, a_3 int) simd.Float32s { return cc[((a_3)*l1+(a_2))*ido+a_1-cc_offset] }
-	ch_ref := func(a_1, a_2, a_3 int) *simd.Float32s { return &ch[((a_3)*5+(a_2))*ido+a_1-ch_offset] }
+	cc_ref := func(a_1, a_2, a_3 int) lane { return cc[((a_3)*l1+(a_2))*ido+a_1-cc_offset] }
+	ch_ref := func(a_1, a_2, a_3 int) *lane { return &ch[((a_3)*5+(a_2))*ido+a_1-ch_offset] }
 
 	for k := 1; k <= l1; k++ {
 		cr2 := vadd(cc_ref(1, k, 5), cc_ref(1, k, 2))
@@ -637,7 +640,7 @@ func radf5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32)
 }
 
 //go:noinline
-func radb5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32) {
+func radb5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32) {
 	const tr11 = .309016994374947
 	const ti11 = .951056516295154
 	const tr12 = -.809016994374947
@@ -646,8 +649,8 @@ func radb5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32)
 	ch_offset := 1 + ido*(1+l1)
 	cc_offset := 1 + ido*6
 
-	cc_ref := func(a_1, a_2, a_3 int) simd.Float32s { return cc[((a_3)*5+(a_2))*ido+a_1-cc_offset] }
-	ch_ref := func(a_1, a_2, a_3 int) *simd.Float32s { return &ch[((a_3)*l1+(a_2))*ido+a_1-ch_offset] }
+	cc_ref := func(a_1, a_2, a_3 int) lane { return cc[((a_3)*5+(a_2))*ido+a_1-cc_offset] }
+	ch_ref := func(a_1, a_2, a_3 int) *lane { return &ch[((a_3)*l1+(a_2))*ido+a_1-ch_offset] }
 
 	for k := 1; k <= l1; k++ {
 		ti5 := vadd(cc_ref(1, 3, k), cc_ref(1, 3, k))
@@ -713,3 +716,275 @@ func radb5_ps(ido, l1 int, cc, ch []simd.Float32s, wa1, wa2, wa3, wa4 []float32)
 		}
 	}
 }
+
+//go:noinline
+func rfftf1_ps(n int, input_readonly, work1, work2 []simd.Float32s, wa []float32, ifac []int) []simd.Float32s {
+	in := input_readonly
+	out := work2
+	if &in[0] == &work2[0] {
+		out = work1
+	}
+	nf := ifac[1]
+	l2 := n
+	iw := n - 1
+	if &in[0] == &out[0] || &work1[0] == &work2[0] {
+		panic(`fatal: in-place work or out`)
+	}
+	for k1 := 1; k1 <= nf; k1++ {
+		kh := nf - k1
+		ip := ifac[kh+2]
+		l1 := l2 / ip
+		ido := n / l2
+		iw -= (ip - 1) * ido
+		switch ip {
+		case 5:
+			ix2 := iw + ido
+			ix3 := ix2 + ido
+			ix4 := ix3 + ido
+			radf5_ps(ido, l1, in, out, wa[iw:], wa[ix2:], wa[ix3:], wa[ix4:])
+		case 4:
+			ix2 := iw + ido
+			ix3 := ix2 + ido
+			radf4_ps(ido, l1, in, out, wa[iw:], wa[ix2:], wa[ix3:])
+		case 3:
+			ix2 := iw + ido
+			radf3_ps(ido, l1, in, out, wa[iw:], wa[ix2:])
+		case 2:
+			radf2_ps(ido, l1, in, out, wa[iw:])
+		default:
+			panic(`fatal: wrong radix (ip)`)
+		}
+		l2 = l1
+		if &out[0] == &work2[0] {
+			out, in = work1, work2
+		} else {
+			out, in = work2, work1
+		}
+	}
+	if &in[0] == &input_readonly[0] {
+		panic(`fatal: dirty input`)
+	}
+	return in
+}
+
+//go:noinline
+func rfftb1_ps(n int, input_readonly, work1, work2 []simd.Float32s, wa []float32, ifac []int) []simd.Float32s {
+	in := input_readonly
+	out := work2
+	if &in[0] == &work2[0] {
+		out = work1
+	}
+	nf := ifac[1]
+	l1 := 1
+	iw := 0
+	if &in[0] == &out[0] {
+		panic(`fatal: in-place out`)
+	}
+	for k1 := 1; k1 <= nf; k1++ {
+		ip := ifac[k1+1]
+		l2 := ip * l1
+		ido := n / l2
+		iw -= (ip - 1) * ido
+		switch ip {
+		case 5:
+			ix2 := iw + ido
+			ix3 := ix2 + ido
+			ix4 := ix3 + ido
+			radb5_ps(ido, l1, in, out, wa[iw:], wa[ix2:], wa[ix3:], wa[ix4:])
+		case 4:
+			ix2 := iw + ido
+			ix3 := ix2 + ido
+			radb4_ps(ido, l1, in, out, wa[iw:], wa[ix2:], wa[ix3:])
+		case 3:
+			ix2 := iw + ido
+			radb3_ps(ido, l1, in, out, wa[iw:], wa[ix2:])
+		case 2:
+			radb2_ps(ido, l1, in, out, wa[iw:])
+		default:
+			panic(`fatal: wrong radix (ip)`)
+		}
+		l1 = l2
+		iw += (ip - 1) * ido
+
+		if &out[0] == &work2[0] {
+			out, in = work1, work2
+		} else {
+			out, in = work2, work1
+		}
+	}
+	if &in[0] == &input_readonly[0] {
+		panic(`fatal: dirty input`)
+	}
+	return in
+}
+
+/* max number of integer factors for the decomposition, +2 */
+const IfacMaxSize = 25
+
+func decompose(n int, ifac, ntryh []int) int {
+	nl := n
+	nf := 0
+	for j := 0; ntryh[j] != 0; j++ {
+		ntry := ntryh[j]
+		for nl != 1 {
+			nq := nl / ntry
+			nr := nl - ntry*nq
+			if nr == 0 {
+				if !(2+nf < IfacMaxSize) {
+					panic(`fatal: too composite n`)
+				}
+				ifac[2+nf] = ntry
+				nf++
+				nl = nq
+				if ntry == 2 && nf != 1 {
+					for i := 2; i <= nf; i++ {
+						ib := nf - i + 2
+						ifac[ib+1] = ifac[ib]
+					}
+					ifac[2] = 2
+				}
+			} else {
+				break
+			}
+		}
+	}
+	ifac[0] = n
+	ifac[1] = nf
+	return nf
+}
+
+func rffti1_ps(n int, wa []float32, ifac []int) {
+	ntryh := []int{4, 2, 3, 5, 0}
+
+	nf := decompose(n, ifac, ntryh)
+	argh := 2 * math.Pi / float32(n)
+	is := 0
+	l1 := 1
+	for k1 := 1; k1 <= nf-1; k1++ {
+		ip := ifac[k1+1]
+		ld := 0
+		l2 := l1 * ip
+		ido := n / l2
+		for range ip - 1 {
+			i := is
+			fi := 0
+			ld += l1
+			argld := float32(ld) * argh
+			for ii := 3; i <= ido; ii += 2 {
+				i += 2
+				fi += 1
+				a := float64(float32(fi) * argld)
+				wa[i-2] = float32(math.Cos(a))
+				wa[i-1] = float32(math.Sin(a))
+			}
+			is += ido
+		}
+		l1 = l2
+	}
+}
+
+func cffti1_ps(n int, wa []float32, ifac []int) {
+	ntryh := []int{5, 3, 4, 2, 0}
+
+	nf := decompose(n, ifac, ntryh)
+	argh := 2 * math.Pi / float32(n)
+	i := 1
+	l1 := 1
+	for k1 := 1; k1 <= nf; k1++ {
+		ip := ifac[k1+1]
+		ld := 0
+		l2 := l1 * ip
+		ido := n / l2
+		idot := ido + ido + 2
+		for range ip - 1 {
+			i1 := i
+			fi := 0
+			wa[i-1] = 1
+			wa[i] = 0
+			ld += l1
+			argld := float32(ld) * argh
+			for ii := 4; i <= idot; ii += 2 {
+				i += 2
+				fi += 1
+				a := float64(float32(fi) * argld)
+				wa[i-1] = float32(math.Cos(a))
+				wa[i] = float32(math.Sin(a))
+			}
+			if ip > 5 {
+				wa[i1-i] = wa[i-1]
+				wa[i1] = wa[i]
+			}
+		}
+		l1 = l2
+	}
+}
+
+func cfftf1_ps(n int, input_readonly, work1, work2 []simd.Float32s, wa []float32, ifac []int, isign int) []simd.Float32s {
+	in := input_readonly
+	out := work2
+	if &in[0] == &work2[0] {
+		out = work1
+	}
+	nf := ifac[1]
+	l1 := 1
+	iw := 0
+	if &in[0] == &out[0] || &work1[0] == &work2[0] {
+		panic(`fatal: in-place work or out`)
+	}
+	for k1 := 2; k1 <= nf+1; k1++ {
+		ip := ifac[k1]
+		l2 := ip * l1
+		ido := n / l2
+		idot := ido + ido
+		switch ip {
+		case 5:
+			ix2 := iw + idot
+			ix3 := ix2 + idot
+			ix4 := ix3 + idot
+			passf5_ps(ido, l1, in, out, wa[iw:], wa[ix2:], wa[ix3:], wa[ix4:], float32(isign))
+		case 4:
+			ix2 := iw + idot
+			ix3 := ix2 + idot
+			passf4_ps(ido, l1, in, out, wa[iw:], wa[ix2:], wa[ix3:], float32(isign))
+		case 3:
+			ix2 := iw + idot
+			passf3_ps(ido, l1, in, out, wa[iw:], wa[ix2:], float32(isign))
+		case 2:
+			passf2_ps(ido, l1, in, out, wa[iw:], float32(isign))
+		default:
+			panic(`fatal: wrong radix (ip)`)
+		}
+		l1 = l2
+		iw += (ip - 1) * idot
+
+		if &out[0] == &work2[0] {
+			out, in = work1, work2
+		} else {
+			out, in = work2, work1
+		}
+	}
+	if &in[0] == &input_readonly[0] {
+		panic(`fatal: dirty input`)
+	}
+	return in
+}
+
+type PffftSetup struct {
+	n int
+	// nb of complex simd vectors (N/4 if PFFFT_COMPLEX, N/8 if PFFFT_REAL)
+	// hold the decomposition into small integers of N
+	ncvec int
+	// N , number of factors, factors (admitted values: 2, 3, 4 ou 5)
+	ifac    [IfacMaxSize]int
+	data    []lane    // allocated room for twiddle coefs
+	e       []float32 // points into 'data' , N/4*3 elements
+	twiddle []float32 // points into 'data', N/4 elements
+}
+
+type Transform uint
+
+// func PffftNewSetup(nfft int, transform Transform) (s *PffftSetup) {
+// 	// validate N for negative values or potential int overflow
+// 	if
+
+// }
