@@ -48,9 +48,6 @@ Set algorithm quality.
 0:  Use PGHI.`)
 var poolms = flag.Int("poolms", 200, `Time of onset detection bucket in milliseconds.
 Minimum amount of time between two consecutive transient detections.`)
-var outpool = flag.Bool("outpool", false, `If true, measure pooling size in output time, not in input time.
-I.e. scale the pooling size with the stretch coefficient.
-Effective only for stretches, not shrinks, which are always scaled.`)
 var ri = flag.Int("ri", 8, `Minimum amount of time bins a trajectory must travel in total
 to be considered tonal.
 Lower values — more tonal preservation and less transient clarity.
@@ -75,8 +72,8 @@ func init() {
 		buildinfo, _ := debug.ReadBuildInfo()
 		fmt.Fprint(flag.CommandLine.Output(),
 			`Nanowarp `,
-			buildinfo.Main.Version, ` `, runtime.Version(),
-			`
+			buildinfo.Main.Version, ` (`, runtime.Version(),
+			`)
 Audio time stretching algorithm
 © 2025-2026 neputevshina
 https://github.com/neputevshina/nanowarp
@@ -124,10 +121,6 @@ Quality and behavior:
 	of the lowest fundamental in the signal.
 	Try values in range 3000–4096.
 	Default is 4000.
-  -outpool
-	If true, measure pooling size in output time, not in input time.
-	I.e. scale the pooling size with the stretch coefficient.
-	Effective only for stretches, not shrinks, which are always scaled.  
   -poolms int
 	Time of onset detection bucket in milliseconds.
 	Minimum amount of time between two consecutive transient detections. 
@@ -373,7 +366,7 @@ func main() {
 		Progress: pch,
 		Hyperparams: nanowarp.Hyperparams{
 			PickingMs:       *poolms,
-			ScalePool:       *outpool,
+			ScalePool:       false,
 			InfluenceRadius: *ifr,
 			LongRidgeLength: *ri,
 			TriplicationFix: *notriple,

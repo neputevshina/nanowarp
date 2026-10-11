@@ -73,6 +73,8 @@ type Hyperparams struct {
 	//
 	// I.e. scale the pooling size with the stretch coefficient.
 	// Effective only for stretches, not shrinks, which are always scaled.
+	//
+	// DEPRECATED: Currently does not work, might be fixed in future versions.
 	ScalePool bool
 
 	// Minimum amount of frequency bins a trajectory must travel in
@@ -89,16 +91,19 @@ type Hyperparams struct {
 	// Higher values — more transient preservation and more interrupts.
 	LongRidgeLength int `default:"8"`
 
-	// Maximum radius of influence of each detected tonal trajectory.
+	// Maximum radius of each detected tonal trajectory.
 	// Limits vertical propagation of ridges' region of influence.
 	//
-	// Region of influence a ridge is defined as a set of all linked arrow
-	// chains starting from it, that are not ridges itself, and limited by a sink
-	// (bin that have no arrows exiting from it).
-	// Phase never be reset at this number of bins around the ridge.
+	// Region of influence of a ridge is defined as a set of all linked arrow
+	// chains starting from it and limited by sinks (bins that have no arrows exiting from it)
+	// that are not ridges themselves.
+	// Phase will never be reset at this number of bins around the ridge.
+	//
+	// Optimal value is related to the width of the main lobe of selected window function.
+	// Nanowarp uses Kaiser window with α=3, main lobe radius of which (without oversampling) is 3.1641 bins.
 	//
 	// Higher values compromise transient quality over tonal quality.
-	InfluenceRadius int `default:"3"`
+	InfluenceRadius int `default:"2"`
 
 	// Behavior of limiting of local group delay.
 	// Fixes echo in time on large stretches and cleans up the sound on typical sizes.
