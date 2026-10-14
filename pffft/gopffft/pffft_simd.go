@@ -1,17 +1,25 @@
 //go:build goexperiment.simd
 
-package pffft
+package gopffft
 
 import (
+	"fmt"
 	"math"
 	"simd"
+	"unsafe"
 )
 
-type lane = simd.Float32s
+func init() {
+	if simd.VectorBitSize() != 128 {
+		panic(`gopffft currently supports only 128-bit vectors, run the program with GODEBUG=simd=+128`)
+	}
+}
+
+type reg = simd.Float32s
 
 // v4sf tmp; tmp=VMUL(ar,bi); ar=VMUL(ar,br);
 // ar=VSUB(ar,VMUL(ai,bi)); ai=VMUL(ai,br); ai=VADD(ai,tmp); }
-func vcplxmul(ar, ai, br, bi lane) (lane, lane) {
+func vcplxmul(ar, ai, br, bi reg) (reg, reg) {
 	ar = ar.Mul(br).Sub(ai.Mul(bi))
 	ai = ai.Mul(br).Add(ar.Mul(bi))
 	return ar, ai
@@ -19,38 +27,38 @@ func vcplxmul(ar, ai, br, bi lane) (lane, lane) {
 
 // v4sf tmp; tmp=VMUL(ar,bi); ar=VMUL(ar,br);
 // ar=VADD(ar,VMUL(ai,bi)); ai=VMUL(ai,br); ai=VSUB(ai,tmp);
-func vcplxmulconj(ar, ai, br, bi lane) (lane, lane) {
+func vcplxmulconj(ar, ai, br, bi reg) (reg, reg) {
 	ar = ar.Mul(br).Add(ai.Mul(bi))
 	ai = ai.Mul(br).Sub(ar.Mul(bi))
 	return ar, ai
 }
 
-func svmul(s float32, ps lane) lane {
+func svmul(s float32, ps reg) reg {
 	return simd.BroadcastFloat32s(s).Mul(ps)
 }
 
-func vadd(a, b lane) lane {
+func vadd(a, b reg) reg {
 	return a.Add(b)
 }
 
-func vsub(a, b lane) lane {
+func vsub(a, b reg) reg {
 	return a.Sub(b)
 }
 
-func vmul(a, b lane) lane {
+func vmul(a, b reg) reg {
 	return a.Mul(b)
 }
 
-func vmadd(a, b, c lane) lane {
+func vmadd(a, b, c reg) reg {
 	return a.MulAdd(b, c)
 }
 
-func ld_ps1(s float32) lane {
+func ld_ps1(s float32) reg {
 	return simd.BroadcastFloat32s(s)
 }
 
 //go:noinline
-func passf2_ps(ido, l1 int, cc, ch []lane, wa1 []float32, fsign float32) {
+func passf2_ps(ido, l1 int, cc, ch []reg, wa1 []float32, fsign float32) {
 	l1ido := l1 * ido
 	if ido <= 2 {
 		for k := 0; k < l1ido; k, ch, cc = k+ido, ch[ido:], cc[ido*2:] {
@@ -77,7 +85,7 @@ func passf2_ps(ido, l1 int, cc, ch []lane, wa1 []float32, fsign float32) {
 }
 
 //go:noinline
-func passf3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32, fsign float32) {
+func passf3_ps(ido, l1 int, cc, ch []reg, wa1, wa2 []float32, fsign float32) {
 	const taur = -0.5
 	taui := 0.866025403784439 * fsign
 	if ido <= 2 {
@@ -114,7 +122,7 @@ func passf3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32, fsign float32) {
 }
 
 //go:noinline
-func passf4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32, fsign float32) {
+func passf4_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3 []float32, fsign float32) {
 	l1ido := l1 * ido
 	if ido == 2 {
 		for k := 0; k < l1ido; k, ch, cc = k+ido, ch[ido:], cc[ido*4:] {
@@ -180,7 +188,7 @@ func passf4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32, fsign float3
 }
 
 //go:noinline
-func passf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32, fsign float32) {
+func passf5_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3, wa4 []float32, fsign float32) {
 	const tr11 = .309016994374947
 	ti11 := .951056516295154 * fsign
 	const tr12 = -.809016994374947
@@ -189,8 +197,8 @@ func passf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32, fsign f
 	if ido <= 2 {
 		panic(`fatal: passf5_ps: ido <= 2`)
 	}
-	cc_ref := func(a_1, a_2 int) lane { return cc[(a_2-1)*ido+a_1+1] }
-	ch_ref := func(a_1, a_3 int) *lane { return &ch[(a_3-1)*l1*ido+a_1+1] }
+	cc_ref := func(a_1, a_2 int) reg { return cc[(a_2-1)*ido+a_1+1] }
+	ch_ref := func(a_1, a_3 int) *reg { return &ch[(a_3-1)*l1*ido+a_1+1] }
 
 	for k := 0; k < l1; k, ch, cc = k+ido, ch[ido:], cc[ido*5:] {
 		for i := 0; i < ido-1; i += 2 {
@@ -245,7 +253,7 @@ func passf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32, fsign f
 }
 
 //go:noinline
-func radf2_ps(ido, l1 int, cc, ch []lane, wa1 []float32) {
+func radf2_ps(ido, l1 int, cc, ch []reg, wa1 []float32) {
 	l1ido := l1 * ido
 	for k := 0; k < l1ido; k += ido {
 		a, b := cc[k], cc[k+l1ido]
@@ -278,7 +286,7 @@ func radf2_ps(ido, l1 int, cc, ch []lane, wa1 []float32) {
 }
 
 //go:noinline
-func radb2_ps(ido, l1 int, cc, ch []lane, wa1 []float32) {
+func radb2_ps(ido, l1 int, cc, ch []reg, wa1 []float32) {
 	l1ido := l1 * ido
 	for k := 0; k < l1ido; k += ido {
 		a, b := cc[2*k], cc[2*(k+ido)-1]
@@ -315,7 +323,7 @@ func radb2_ps(ido, l1 int, cc, ch []lane, wa1 []float32) {
 }
 
 //go:noinline
-func radf3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32) {
+func radf3_ps(ido, l1 int, cc, ch []reg, wa1, wa2 []float32) {
 	const taur = -0.5
 	const taui = 0.866025403784439
 	for k := range l1 {
@@ -359,7 +367,7 @@ func radf3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32) {
 }
 
 //go:noinline
-func radb3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32) {
+func radb3_ps(ido, l1 int, cc, ch []reg, wa1, wa2 []float32) {
 	const taur = -0.5
 	const taui = 0.866025403784439
 	const taui_2 = 1.732050807568878
@@ -401,7 +409,7 @@ func radb3_ps(ido, l1 int, cc, ch []lane, wa1, wa2 []float32) {
 }
 
 //go:noinline
-func radf4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32) {
+func radf4_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3 []float32) {
 	l1ido := l1 * ido
 	{
 		cc_, ch_ := cc, ch
@@ -485,7 +493,7 @@ func radf4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32) {
 }
 
 //go:noinline
-func radb4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32) {
+func radb4_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3 []float32) {
 	l1ido := l1 * ido
 	{
 		cc_, ch_ := cc, ch
@@ -566,7 +574,7 @@ func radb4_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3 []float32) {
 }
 
 //go:noinline
-func radf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32) {
+func radf5_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3, wa4 []float32) {
 	const tr11 = .309016994374947
 	const ti11 = .951056516295154
 	const tr12 = -.809016994374947
@@ -575,8 +583,8 @@ func radf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32) {
 	ch_offset := 1 + ido*6
 	cc_offset := 1 + ido*(1+l1)
 
-	cc_ref := func(a_1, a_2, a_3 int) lane { return cc[((a_3)*l1+(a_2))*ido+a_1-cc_offset] }
-	ch_ref := func(a_1, a_2, a_3 int) *lane { return &ch[((a_3)*5+(a_2))*ido+a_1-ch_offset] }
+	cc_ref := func(a_1, a_2, a_3 int) reg { return cc[((a_3)*l1+(a_2))*ido+a_1-cc_offset] }
+	ch_ref := func(a_1, a_2, a_3 int) *reg { return &ch[((a_3)*5+(a_2))*ido+a_1-ch_offset] }
 
 	for k := 1; k <= l1; k++ {
 		cr2 := vadd(cc_ref(1, k, 5), cc_ref(1, k, 2))
@@ -640,7 +648,7 @@ func radf5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32) {
 }
 
 //go:noinline
-func radb5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32) {
+func radb5_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3, wa4 []float32) {
 	const tr11 = .309016994374947
 	const ti11 = .951056516295154
 	const tr12 = -.809016994374947
@@ -649,8 +657,8 @@ func radb5_ps(ido, l1 int, cc, ch []lane, wa1, wa2, wa3, wa4 []float32) {
 	ch_offset := 1 + ido*(1+l1)
 	cc_offset := 1 + ido*6
 
-	cc_ref := func(a_1, a_2, a_3 int) lane { return cc[((a_3)*5+(a_2))*ido+a_1-cc_offset] }
-	ch_ref := func(a_1, a_2, a_3 int) *lane { return &ch[((a_3)*l1+(a_2))*ido+a_1-ch_offset] }
+	cc_ref := func(a_1, a_2, a_3 int) reg { return cc[((a_3)*5+(a_2))*ido+a_1-cc_offset] }
+	ch_ref := func(a_1, a_2, a_3 int) *reg { return &ch[((a_3)*l1+(a_2))*ido+a_1-ch_offset] }
 
 	for k := 1; k <= l1; k++ {
 		ti5 := vadd(cc_ref(1, 3, k), cc_ref(1, 3, k))
@@ -982,17 +990,85 @@ func pffftNewSetup(n int, transform transform) (s *pffftSetup) {
 	/* unfortunately, the fft size must be a multiple of 16 for complex FFTs
 	   and 32 for real FFTs -- a lot of stuff would need to be rewritten to
 	   handle other cases (or maybe just switch to a scalar fft, I don't know..) */
-	if transform == transformReal {
-		if n%(2*SIMD_SZ*SIMD_SZ) != 0 {
-			panic(`pffftNewSetup: nfft must be a multiple of 32`)
-		}
+	if transform == transformReal && n%(2*SIMD_SZ*SIMD_SZ) != 0 {
+		panic(fmt.Sprint(`pffftNewSetup: nfft must be a multiple of`, 2*SIMD_SZ*SIMD_SZ))
 	}
-	if transform == transformComplex {
-		if n%(SIMD_SZ*SIMD_SZ) != 0 {
-			panic(`pffftNewSetup: nfft must be a multiple of 16`)
-		}
+	if transform == transformComplex && n%(SIMD_SZ*SIMD_SZ) != 0 {
+		panic(fmt.Sprint(`pffftNewSetup: nfft must be a multiple of`, SIMD_SZ*SIMD_SZ))
 	}
 	s.n = n
 	s.transform = transform
 	/* nb of complex simd vectors */
+	if transform == transformReal {
+		s.ncvec = n / 2 / SIMD_SZ
+	} else {
+		s.ncvec = n / SIMD_SZ
+	}
+	s.data = make([]reg, 2*s.ncvec)
+	s.e = s.data
+	// FIXME A hack, the real way is to iterate over s.e taking bites of size SIMD_SZ.
+	// Or simply to never use vectors directly, since this is technically a wrong usage.
+	e := unsafe.Slice((*float32)(unsafe.Pointer(unsafe.SliceData(s.e))), len(s.data)*SIMD_SZ)
+	s.twiddle = make([]float32, 2*n)
+
+	for k := range s.ncvec {
+		i, j := k/SIMD_SZ, k%SIMD_SZ
+		for m := range SIMD_SZ - 1 {
+			A := -2 * math.Pi * float64((m+1)*k) / float64(n)
+			// TODO Will this even work when SIMD_SZ is not 4 or 1?
+			e[(2*(i*3+m)+0)*SIMD_SZ+j] = float32(math.Cos(A))
+			e[(2*(i*3+m)+1)*SIMD_SZ+j] = float32(math.Sin(A))
+		}
+	}
+
+	if transform == transformReal {
+		rffti1_ps(n/SIMD_SZ, s.twiddle, s.ifac[:])
+	} else {
+		cffti1_ps(n/SIMD_SZ, s.twiddle, s.ifac[:])
+	}
+
+	/* check that N is decomposable with allowed prime factors */
+	m := 1
+	for k := range s.ifac[1] {
+		m *= s.ifac[2*k]
+	}
+	if m != n/SIMD_SZ {
+		s = nil
+	}
+
+	return
+}
+
+// TODO Shuffle is not yet implemented in simd and in archsimd it's only for words and
+// only for AVX.
+// func interleave2(in1, in2 reg) (out1, out2 reg) {
+
+// }
+
+// #  define INTERLEAVE2(in1, in2, out1, out2) { v4sf tmp__ = vec_mergeh(in1, in2); out2 = vec_mergel(in1, in2); out1 = tmp__; }
+// #  define UNINTERLEAVE2(in1, in2, out1, out2) {                           \
+//     vector unsigned char vperm1 =  (vector unsigned char){0,1,2,3,8,9,10,11,16,17,18,19,24,25,26,27}; \
+//     vector unsigned char vperm2 =  (vector unsigned char){4,5,6,7,12,13,14,15,20,21,22,23,28,29,30,31}; \
+//     v4sf tmp__ = vec_perm(in1, in2, vperm1); out2 = vec_perm(in1, in2, vperm2); out1 = tmp__; \
+//   }
+// #  define VTRANSPOSE4(x0,x1,x2,x3) {            \
+//     v4sf y0 = vec_mergeh(x0, x2);               \
+//     v4sf y1 = vec_mergel(x0, x2);               \
+//     v4sf y2 = vec_mergeh(x1, x3);               \
+//     v4sf y3 = vec_mergel(x1, x3);               \
+//     x0 = vec_mergeh(y0, y2);                    \
+//     x1 = vec_mergel(y0, y2);                    \
+//     x2 = vec_mergeh(y1, y3);                    \
+//     x3 = vec_mergel(y1, y3);                    \
+//   }
+// #  define VSWAPHL(a,b) vec_perm(a,b, (vector unsigned char){16,17,18,19,20,21,22,23,8,9,10,11,12,13,14,15})
+
+func reversed_copy(n int, in []reg, stride int, out []reg) {
+	// # define INTERLEAVE2(in1, in2, out1, out2) {
+	// 	v4sf tmp__ = _mm_unpacklo_ps(in1, in2);
+	// 	out2 = _mm_unpackhi_ps(in1, in2); out1 = tmp__; }
+	// # define UNINTERLEAVE2(in1, in2, out1, out2) {
+	// 	v4sf tmp__ = _mm_shuffle_ps(in1, in2, _MM_SHUFFLE(2,0,2,0));
+	// 	out2 = _mm_shuffle_ps(in1, in2, _MM_SHUFFLE(3,1,3,1)); out1 = tmp__; }
+
 }

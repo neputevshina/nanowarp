@@ -115,8 +115,10 @@ but currently sounds best on audio data with aforementioned parameters.
   - [ ] Implement a resampler.
   - [ ] Read resampled grains.
 - For “Terawarp”:
-  - TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
-    authors propose for that case is just interpolating in per-sample domain. Abuse cellular automaton view of PGHI.
+  - ~~TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
+    authors propose for that case is just interpolating in per-sample domain.~~
+    Impossible due to overlapping time-frequency grid. 
+  - Abuse cellular automaton view of PGHI.
   - TODO: Bass with Goertzel at 4000, everything else with BaseNfft = 2000. 
     Step with hop of smaller nfft at overlap 6, output bass frame for each even smaller frame.
   - TODO: NSDGT and 95% spectral rolloff: use smaller nfft for signals with higher fundamental.
@@ -152,7 +154,15 @@ but currently sounds best on audio data with aforementioned parameters.
   algorithm does phase reset on any region with Dy = 1.
 - Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
 
+## Unsolved
+- [ ] Native Go 1.27 PFFFT port
+- [ ] Effects of large LGD values
+- [ ] Calibrate LGD and CIF formulas
+- [ ] Is it possible to make -q -1 be identical to PGHI?
+- [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
+
 ## Known issues
+- Microtransient sharpness losses on non-tonal material. Pure vocals are totally smudged.
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - Very loud or noisy tracks might get mushy. Try using -q -1 if results sounds bad.
 - [Energy losses (on example of log sweep)](https://mega.nz/file/7qAWXILb#QFsFQkHeCRD8osJMlS_QbFvgPVvKC8_Eqz4VPI0lsS0) are compensated by EQing,

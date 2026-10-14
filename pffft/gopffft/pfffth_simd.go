@@ -1,6 +1,6 @@
 //go:build goexperiment.simd
 
-package pffft
+package gopffft
 
 type pffftSetup struct {
 	n int
@@ -10,9 +10,9 @@ type pffftSetup struct {
 	// N , number of factors, factors (admitted values: 2, 3, 4 ou 5)
 	ifac [IfacMaxSize]int
 	transform
-	data    []lane    // allocated room for twiddle coefs
-	e       []float32 // points into 'data' , N/4*3 elements
-	twiddle []float32 // points into 'data', N/4 elements
+	data    []reg     // allocated room for twiddle coefs
+	e       []reg     // points into 'data' , N/4*3 elements
+	twiddle []float32 // DOES NOT point into 'data', N/4 elements
 }
 
 type transform uint
