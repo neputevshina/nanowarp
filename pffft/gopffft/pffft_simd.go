@@ -17,6 +17,31 @@ func init() {
 
 type reg = simd.Float32s
 
+func getAsAligned(in []float32) []reg {
+	nvec := simd.VectorBitSize() / 32
+	if len(in)%nvec != 0 {
+		panic(`gopffft: input slice length must be divided by platform's vector size`)
+	}
+	c := uintptr(simd.VectorBitSize() / 8)
+	if uintptr(unsafe.Pointer(unsafe.SliceData(in)))&(c-1) != 0 {
+		panic(`gopffft: unaligned input`)
+	}
+	return unsafe.Slice((*reg)(unsafe.Pointer(unsafe.SliceData(in))), len(in)/nvec)
+}
+
+func degrade(in []reg) []float32 {
+	nvec := simd.VectorBitSize() / 32
+	return unsafe.Slice((*float32)(unsafe.Pointer(unsafe.SliceData(in))), len(in)*nvec)
+}
+
+func align(in []float32) []float32 {
+	nvec := simd.VectorBitSize() / 32
+	rem := uintptr(unsafe.Pointer(unsafe.SliceData(in))) % uintptr(nvec)
+	in = in[nvec-int(rem):]
+	_ = getAsAligned(in)
+	return in
+}
+
 // v4sf tmp; tmp=VMUL(ar,bi); ar=VMUL(ar,br);
 // ar=VSUB(ar,VMUL(ai,bi)); ai=VMUL(ai,br); ai=VADD(ai,tmp); }
 func vcplxmul(ar, ai, br, bi reg) (reg, reg) {
@@ -55,6 +80,76 @@ func vmadd(a, b, c reg) reg {
 
 func ld_ps1(s float32) reg {
 	return simd.BroadcastFloat32s(s)
+}
+
+// TODO Shuffle is not yet implemented in simd and in archsimd it's only for words and
+// only for AVX.
+func interleave2(in1, in2 reg) (out1, out2 reg) {
+	var x, y, out [32]float32
+	in1.Store(x[:])
+	in2.Store(y[:])
+	out[0] = x[0]
+	out[1] = y[0]
+	out[2] = x[1]
+	out[3] = y[1]
+	out[4] = x[2]
+	out[5] = y[2]
+	out[6] = x[3]
+	out[7] = y[3]
+	out1 = simd.LoadFloat32s(out[:4])
+	out2 = simd.LoadFloat32s(out[4:8])
+	return
+}
+
+// TODO
+func uninterleave2(in1, in2 reg) (out1, out2 reg) {
+	var x, y, out [32]float32
+	in1.Store(out[:])
+	in2.Store(out[4:])
+	x[0] = out[0]
+	y[0] = out[1]
+	x[1] = out[2]
+	y[1] = out[3]
+	x[2] = out[4]
+	y[2] = out[5]
+	x[3] = out[6]
+	y[3] = out[7]
+	out1 = simd.LoadFloat32s(x[:])
+	out2 = simd.LoadFloat32s(y[:])
+	return
+}
+
+// TODO
+func vtranspose4(a, b, c, d reg) (a1, b1, c1, d1 reg) {
+	var x, y [32]float32
+	a.Store(x[:])
+	b.Store(x[4:])
+	c.Store(x[8:])
+	d.Store(x[12:])
+	for i := range 4 {
+		y[i*4+0] = x[i+0*4]
+		y[i*4+1] = x[i+1*4]
+		y[i*4+2] = x[i+2*4]
+		y[i*4+3] = x[i+3*4]
+	}
+	a1.Store(y[:])
+	b1.Store(y[4:])
+	c1.Store(y[8:])
+	d1.Store(y[12:])
+	return
+}
+
+// TODO
+func vswaphl(a, b reg) (out reg) {
+	var x, y [32]float32
+	a.Store(x[:])
+	b.Store(x[4:])
+	y[0] = x[0]
+	y[1] = x[1]
+	y[2] = x[4]
+	y[3] = x[5]
+	out.Store(y[:])
+	return
 }
 
 //go:noinline
@@ -978,7 +1073,7 @@ func cfftf1_ps(n int, input_readonly, work1, work2 []simd.Float32s, wa []float32
 }
 
 func pffftNewSetup(n int, transform transform) (s *pffftSetup) {
-	SIMD_SZ := simd.VectorBitSize() / 8
+	SIMD_SZ := simd.VectorBitSize() / 32
 	// validate N for negative values or potential int overflow
 	if n < 0 {
 		return nil
@@ -1039,36 +1134,447 @@ func pffftNewSetup(n int, transform transform) (s *pffftSetup) {
 	return
 }
 
-// TODO Shuffle is not yet implemented in simd and in archsimd it's only for words and
-// only for AVX.
-// func interleave2(in1, in2 reg) (out1, out2 reg) {
-
-// }
-
-// #  define INTERLEAVE2(in1, in2, out1, out2) { v4sf tmp__ = vec_mergeh(in1, in2); out2 = vec_mergel(in1, in2); out1 = tmp__; }
-// #  define UNINTERLEAVE2(in1, in2, out1, out2) {                           \
-//     vector unsigned char vperm1 =  (vector unsigned char){0,1,2,3,8,9,10,11,16,17,18,19,24,25,26,27}; \
-//     vector unsigned char vperm2 =  (vector unsigned char){4,5,6,7,12,13,14,15,20,21,22,23,28,29,30,31}; \
-//     v4sf tmp__ = vec_perm(in1, in2, vperm1); out2 = vec_perm(in1, in2, vperm2); out1 = tmp__; \
-//   }
-// #  define VTRANSPOSE4(x0,x1,x2,x3) {            \
-//     v4sf y0 = vec_mergeh(x0, x2);               \
-//     v4sf y1 = vec_mergel(x0, x2);               \
-//     v4sf y2 = vec_mergeh(x1, x3);               \
-//     v4sf y3 = vec_mergel(x1, x3);               \
-//     x0 = vec_mergeh(y0, y2);                    \
-//     x1 = vec_mergel(y0, y2);                    \
-//     x2 = vec_mergeh(y1, y3);                    \
-//     x3 = vec_mergel(y1, y3);                    \
-//   }
-// #  define VSWAPHL(a,b) vec_perm(a,b, (vector unsigned char){16,17,18,19,20,21,22,23,8,9,10,11,12,13,14,15})
-
 func reversed_copy(n int, in []reg, stride int, out []reg) {
-	// # define INTERLEAVE2(in1, in2, out1, out2) {
-	// 	v4sf tmp__ = _mm_unpacklo_ps(in1, in2);
-	// 	out2 = _mm_unpackhi_ps(in1, in2); out1 = tmp__; }
-	// # define UNINTERLEAVE2(in1, in2, out1, out2) {
-	// 	v4sf tmp__ = _mm_shuffle_ps(in1, in2, _MM_SHUFFLE(2,0,2,0));
-	// 	out2 = _mm_shuffle_ps(in1, in2, _MM_SHUFFLE(3,1,3,1)); out1 = tmp__; }
+	forw := func() (a0, a1 reg) {
+		a0, a1 = interleave2(in[0], in[1])
+		in = in[stride:]
+		return
+	}
+	bakw := func(a0, a1 reg) {
+		out[len(out)-1] = vswaphl(a0, a1)
+		out = out[:len(out)-1]
+	}
 
+	g0, g1 := forw()
+	bakw(g0, g1)
+	for range n - 1 {
+		h0, h1 := forw()
+		bakw(g1, h0)
+		bakw(h0, h1)
+		g1 = h1
+	}
+	bakw(g1, g0)
+}
+
+func unreversed_copy(n int, in []reg, out []reg, stride int) {
+	g0, g1 := in[0], in[0]
+	in = in[1:]
+
+	adv := func(h0, h1 reg) reg {
+		g1 = vswaphl(g1, h0)
+		h0 = vswaphl(h0, h1)
+		out[0], out[1] = uninterleave2(h0, g1)
+		return h1
+	}
+
+	for range n - 1 {
+		g1 = adv(in[0], in[1])
+		in = in[2:]
+		out = out[stride:]
+	}
+	_ = adv(in[0], g0)
+}
+
+func pffft_zreorder(s *pffftSetup, in, out []float32, forward bool) {
+	SIMD_SZ := simd.VectorBitSize() / 32
+	n, ncvec := s.n, s.ncvec
+	vin, vout := getAsAligned(in), getAsAligned(out)
+	if &in[0] == &out[0] {
+		panic(`gopffft: pffft_zreorder: in and out can't alias`)
+	}
+	dk := n / 32
+
+	switch {
+	case s.transform == transformReal && forward:
+		for k := range dk {
+			vout[2*(0*dk+k)+0], vout[2*(0*dk+k)+1] = interleave2(vin[k*8+0], vin[k*8+1])
+			vout[2*(2*dk+k)+0], vout[2*(2*dk+k)+1] = interleave2(vin[k*8+4], vin[k*8+5])
+		}
+		// NOTE(neputevshina): No cast, reworked to point directly to vin and vout.
+		// n is always a multiple of SIMD_SZ.
+		reversed_copy(dk, vin[2:], 8, vout[n/2/SIMD_SZ:])
+		reversed_copy(dk, vin[6:], 8, vout[n/SIMD_SZ:])
+	case s.transform == transformReal && !forward:
+		for k := range dk {
+			vout[k*8+0], vout[k*8+1] = uninterleave2(vin[2*(0*dk+k)+0], vin[2*(0*dk+k)+1])
+			vout[k*8+4], vout[k*8+5] = uninterleave2(vin[2*(2*dk+k)+0], vin[2*(2*dk+k)+1])
+		}
+		// NOTE(neputevshina): No cast, reworked to point directly to vin and vout.
+		// n is always a multiple of SIMD_SZ.
+		unreversed_copy(dk, vin[n/4/SIMD_SZ:], vout[n/SIMD_SZ-6:], -8)
+		unreversed_copy(dk, vin[3*n/4/SIMD_SZ:], vout[n/SIMD_SZ-2:], -8)
+	case s.transform == transformComplex && forward:
+		for k := range ncvec {
+			kk := (k / 4) + (k%4)*(ncvec/4)
+			vout[kk*2], vout[kk*2+1] = interleave2(vin[k*2], vin[k*2+1])
+		}
+	case s.transform == transformComplex && !forward:
+		for k := range ncvec {
+			kk := (k / 4) + (k%4)*(ncvec/4)
+			vout[kk*2], vout[kk*2+1] = uninterleave2(vin[k*2], vin[k*2+1])
+		}
+	default:
+		panic(`fatal: unknown s.transform`)
+	}
+}
+
+func pffft_cplx_finalize(ncvec int, in, out, e []reg) {
+	SIMD_SZ := simd.VectorBitSize() / 32
+	dk := ncvec / SIMD_SZ // number of 4x4 matrix blocks
+	if &in[0] == &out[0] {
+		panic(`gopffft: pffft_cplx_finalize: in and out can't alias`)
+	}
+	for k := range dk {
+		r0, i0 := in[8*k+0], in[8*k+1]
+		r1, i1 := in[8*k+2], in[8*k+3]
+		r2, i2 := in[8*k+4], in[8*k+5]
+		r3, i3 := in[8*k+6], in[8*k+7]
+		r0, r1, r2, r3 = vtranspose4(r0, r1, r2, r3)
+		i0, i1, i2, i3 = vtranspose4(i0, i1, i2, i3)
+		r1, i1 = vcplxmul(r1, i1, e[k*6+0], e[k*6+1])
+		r2, i2 = vcplxmul(r2, i2, e[k*6+2], e[k*6+3])
+		r3, i3 = vcplxmul(r3, i3, e[k*6+4], e[k*6+5])
+
+		sr0, dr0 := vadd(r0, r2), vsub(r0, r2)
+		sr1, dr1 := vadd(r1, r3), vsub(r1, r3)
+		si0, di0 := vadd(i0, i2), vsub(i0, i2)
+		si1, di1 := vadd(i1, i3), vsub(i1, i3)
+
+		/*
+		   transformation for each column is:
+
+		   [1   1   1   1   0   0   0   0]   [r0]
+		   [1   0  -1   0   0  -1   0   1]   [r1]
+		   [1  -1   1  -1   0   0   0   0]   [r2]
+		   [1   0  -1   0   0   1   0  -1]   [r3]
+		   [0   0   0   0   1   1   1   1] * [i0]
+		   [0   1   0  -1   1   0  -1   0]   [i1]
+		   [0   0   0   0   1  -1   1  -1]   [i2]
+		   [0  -1   0   1   1   0  -1   0]   [i3]
+		*/
+
+		r0, i0 = vadd(sr0, sr1), vadd(si0, si1)
+		r1, i1 = vadd(dr0, di1), vsub(di0, dr1)
+		r2, i2 = vsub(sr0, sr1), vsub(si0, si1)
+		r3, i3 = vsub(dr0, di1), vadd(di0, dr1)
+
+		out[0], out[1], out[2], out[3] = r0, i0, r1, i1
+		out[4], out[5], out[6], out[7] = r2, i2, r3, i3
+		out = out[8:]
+	}
+}
+
+func pffft_cplx_preprocess(ncvec int, in, out, e []reg) {
+	SIMD_SZ := simd.VectorBitSize() / 32
+	dk := ncvec / SIMD_SZ // number of 4x4 matrix blocks
+	if &in[0] == &out[0] {
+		panic(`gopffft: pffft_cplx_preprocess: in and out can't alias`)
+	}
+	for k := range dk {
+		r0, i0 := in[8*k+0], in[8*k+1]
+		r1, i1 := in[8*k+2], in[8*k+3]
+		r2, i2 := in[8*k+4], in[8*k+5]
+		r3, i3 := in[8*k+6], in[8*k+7]
+
+		sr0, dr0 := vadd(r0, r2), vsub(r0, r2)
+		sr1, dr1 := vadd(r1, r3), vsub(r1, r3)
+		si0, di0 := vadd(i0, i2), vsub(i0, i2)
+		si1, di1 := vadd(i1, i3), vsub(i1, i3)
+
+		r0, i0 = vadd(sr0, sr1), vadd(si0, si1)
+		r1, i1 = vsub(dr0, di1), vadd(di0, dr1)
+		r2, i2 = vsub(sr0, sr1), vsub(si0, si1)
+		r3, i3 = vadd(dr0, di1), vsub(di0, dr1)
+
+		r1, i1 = vcplxmulconj(r1, i1, e[k*6+0], e[k*6+1])
+		r2, i2 = vcplxmulconj(r2, i2, e[k*6+2], e[k*6+3])
+		r3, i3 = vcplxmulconj(r3, i3, e[k*6+4], e[k*6+5])
+
+		r0, r1, r2, r3 = vtranspose4(r0, r1, r2, r3)
+		i0, i1, i2, i3 = vtranspose4(i0, i1, i2, i3)
+
+		out[0], out[1], out[2], out[3] = r0, i0, r1, i1
+		out[4], out[5], out[6], out[7] = r2, i2, r3, i3
+		out = out[8:]
+	}
+}
+
+func pffft_real_finalize_4x4(in0, in1 reg, in, e, out []reg) {
+	r0, i0 := in0, in1
+	r1, i1, r2, i2, r3, i3 := in[0], in[1], in[2], in[3], in[4], in[5]
+	r0, r1, r2, r3 = vtranspose4(r0, r1, r2, r3)
+	i0, i1, i2, i3 = vtranspose4(i0, i1, i2, i3)
+
+	/*
+	   transformation for each column is:
+
+	   [1   1   1   1   0   0   0   0]   [r0]
+	   [1   0  -1   0   0  -1   0   1]   [r1]
+	   [1   0  -1   0   0   1   0  -1]   [r2]
+	   [1  -1   1  -1   0   0   0   0]   [r3]
+	   [0   0   0   0   1   1   1   1] * [i0]
+	   [0  -1   0   1  -1   0   1   0]   [i1]
+	   [0  -1   0   1   1   0  -1   0]   [i2]
+	   [0   0   0   0  -1   1  -1   1]   [i3]
+	*/
+	r1, i1 = vcplxmul(r1, i1, e[0], e[1])
+	r2, i2 = vcplxmul(r2, i2, e[2], e[3])
+	r3, i3 = vcplxmul(r3, i3, e[4], e[5])
+
+	sr0, dr0 := vadd(r0, r2), vsub(r0, r2)
+	sr1, dr1 := vadd(r1, r3), vsub(r3, r1)
+	si0, di0 := vadd(i0, i2), vsub(i0, i2)
+	si1, di1 := vadd(i1, i3), vsub(i3, i1)
+
+	r0 = vadd(sr0, sr1)
+	r3 = vsub(sr0, sr1)
+	i0 = vadd(si0, si1)
+	i3 = vsub(si1, si0)
+	r1 = vadd(dr0, di1)
+	r2 = vsub(dr0, di1)
+	i1 = vsub(dr1, di0)
+	i2 = vadd(dr1, di0)
+
+	out[0] = r0
+	out[1] = i0
+	out[2] = r1
+	out[3] = i1
+	out[4] = r2
+	out[5] = i2
+	out[6] = r3
+	out[7] = i3
+}
+
+//go:noinline
+func pffft_real_finalize(ncvec int, in, out, e []reg) {
+	SIMD_SZ := simd.VectorBitSize() / 32
+	dk := ncvec / SIMD_SZ // number of 4x4 matrix blocks
+	if &in[0] == &out[0] {
+		panic(`gopffft: pffft_cplx_preprocess: in and out can't alias`)
+	}
+
+	var cr, ci [32]float32
+	save := in[0]
+	const s = float32(1 / math.Sqrt2)
+
+	in[0].Store(cr[:])
+	in[ncvec*2-1].Store(ci[:])
+	pffft_real_finalize_4x4(reg{}, reg{}, in[1:], e, out)
+
+	/*
+	   [cr0 cr1 cr2 cr3 ci0 ci1 ci2 ci3]
+
+	   [Xr(1)]  ] [1   1   1   1   0   0   0   0]
+	   [Xr(N/4) ] [0   0   0   0   1   s   0  -s]
+	   [Xr(N/2) ] [1   0  -1   0   0   0   0   0]
+	   [Xr(3N/4)] [0   0   0   0   1  -s   0   s]
+	   [Xi(1)   ] [1  -1   1  -1   0   0   0   0]
+	   [Xi(N/4) ] [0   0   0   0   0  -s  -1  -s]
+	   [Xi(N/2) ] [0  -1   0   1   0   0   0   0]
+	   [Xi(3N/4)] [0   0   0   0   0  -s   1  -s]
+	*/
+
+	out[0].StorePart([]float32{(cr[0] + cr[2]) + (cr[1] + cr[3])}) // xr0
+	out[1].StorePart([]float32{(cr[0] + cr[2]) - (cr[1] + cr[3])}) // xi0
+	out[4].StorePart([]float32{(cr[0] - cr[2])})                   // xr2
+	out[5].StorePart([]float32{(cr[3] - cr[1])})                   // xi2
+	out[2].StorePart([]float32{ci[0] + s*(ci[1]-ci[3])})           // xr1
+	out[3].StorePart([]float32{-ci[2] - s*(ci[1]+ci[3])})          // xi1
+	out[6].StorePart([]float32{ci[0] - s*(ci[1]-ci[3])})           // xr3
+	out[7].StorePart([]float32{ci[2] - s*(ci[1]+ci[3])})           // xi3
+
+	for k := 1; k < dk; k++ {
+		save_next := in[8*k+7]
+		pffft_real_finalize_4x4(save, in[8*k+0], in[8*k+1:], e[k*6:], out[k*8:])
+		save = save_next
+	}
+}
+
+func pffft_real_preprocess_4x4(in, e, out []reg, first bool) {
+	r0, i0, r1, i1, r2, i2, r3, i3 := in[0], in[1], in[2], in[3], in[4], in[5], in[6], in[7]
+	/*
+	   transformation for each column is:
+
+	   [1   1   1   1   0   0   0   0]   [r0]
+	   [1   0   0  -1   0  -1  -1   0]   [r1]
+	   [1  -1  -1   1   0   0   0   0]   [r2]
+	   [1   0   0  -1   0   1   1   0]   [r3]
+	   [0   0   0   0   1  -1   1  -1] * [i0]
+	   [0  -1   1   0   1   0   0   1]   [i1]
+	   [0   0   0   0   1   1  -1  -1]   [i2]
+	   [0   1  -1   0   1   0   0   1]   [i3]
+	*/
+	sr0, dr0 := vadd(r0, r3), vsub(r0, r3)
+	sr1, dr1 := vadd(r1, r2), vsub(r1, r2)
+	si0, di0 := vadd(i0, i3), vsub(i0, i3)
+	si1, di1 := vadd(i1, i2), vsub(i1, i2)
+
+	r0 = vadd(sr0, sr1)
+	r2 = vsub(sr0, sr1)
+	r1 = vsub(dr0, si1)
+	r3 = vadd(dr0, si1)
+	i0 = vsub(di0, di1)
+	i2 = vadd(di0, di1)
+	i1 = vsub(si0, dr1)
+	i3 = vadd(si0, dr1)
+
+	r1, i1 = vcplxmulconj(r1, i1, e[0], e[1])
+	r2, i2 = vcplxmulconj(r2, i2, e[2], e[3])
+	r3, i3 = vcplxmulconj(r3, i3, e[4], e[5])
+
+	r0, r1, r2, r3 = vtranspose4(r0, r1, r2, r3)
+	i0, i1, i2, i3 = vtranspose4(i0, i1, i2, i3)
+
+	if !first {
+		out[0] = r0
+		out[1] = i0
+		out = out[2:]
+	}
+	out[0] = r1
+	out[1] = i1
+	out[2] = r2
+	out[3] = i2
+	out[4] = r3
+	out[5] = i3
+}
+
+//go:noinline
+func pffft_real_preprocess(ncvec int, in, out, e []reg) {
+	SIMD_SZ := simd.VectorBitSize() / 32
+	dk := ncvec / SIMD_SZ // number of 4x4 matrix blocks
+	if &in[0] == &out[0] {
+		panic(`gopffft: pffft_cplx_preprocess: in and out can't alias`)
+	}
+
+	var Xr, Xi [32]float32
+	const s = float32(math.Sqrt2)
+	for k := range 4 {
+		var t [32]float32
+		in[(8*k)/SIMD_SZ].Store(t[:])
+		Xr[k] = t[0]
+		in[(8*k+4)/SIMD_SZ].Store(t[:])
+		Xi[k] = t[0]
+	}
+
+	pffft_real_preprocess_4x4(in, e, out[1:], true) // will write only 6 values
+	/*
+	   [Xr0 Xr1 Xr2 Xr3 Xi0 Xi1 Xi2 Xi3]
+
+	   [cr0] [1   0   2   0   1   0   0   0]
+	   [cr1] [1   0   0   0  -1   0  -2   0]
+	   [cr2] [1   0  -2   0   1   0   0   0]
+	   [cr3] [1   0   0   0  -1   0   2   0]
+	   [ci0] [0   2   0   2   0   0   0   0]
+	   [ci1] [0   s   0  -s   0  -s   0  -s]
+	   [ci2] [0   0   0   0   0  -2   0   2]
+	   [ci3] [0  -s   0   s   0  -s   0  -s]
+	*/
+	for k := 1; k < dk; k++ {
+		pffft_real_preprocess_4x4(in[8*k:], e[k*6:], out[-1+k*8:], false)
+	}
+	cr0 := (Xr[0] + Xi[0]) + 2*Xr[2]
+	cr1 := (Xr[0] - Xi[0]) - 2*Xi[2]
+	cr2 := (Xr[0] + Xi[0]) - 2*Xr[2]
+	cr3 := (Xr[0] - Xi[0]) + 2*Xi[2]
+	out[0].StorePart([]float32{cr0, cr1, cr2, cr3})
+	ci0 := 2 * (Xr[1] + Xr[3])
+	ci1 := s*(Xr[1]-Xr[3]) - s*(Xi[1]+Xi[3])
+	ci2 := 2 * (Xi[3] - Xi[1])
+	ci3 := -s*(Xr[1]-Xr[3]) - s*(Xi[1]+Xi[3])
+	out[2*ncvec-1].StorePart([]float32{ci0, ci1, ci2, ci3})
+}
+
+func pffft_transform_internal(s *pffftSetup, finput, foutput []float32, scratch []reg, forward bool, ordered int) (ainput, aoutput []float32) {
+	ncvec := s.ncvec
+	nf_odd := s.ifac[1] & 1
+
+	// NOTE(neputevshina): No stack allocation.
+
+	ainput = align(finput)
+	aoutput = align(foutput)
+
+	vinput := getAsAligned(ainput)
+	voutput := getAsAligned(aoutput)
+	buff := [2][]reg{voutput, scratch}
+
+	ib := nf_odd ^ ordered
+
+	if forward {
+		ib = 1 - ib
+	} else {
+		if &vinput[0] == &buff[ib][0] {
+			ib = 1 - ib // may happen when finput == foutput
+		}
+		if ordered == 1 {
+			pffft_zreorder(s, degrade(vinput), degrade(buff[ib]), false)
+			vinput = buff[ib]
+			ib = 1 - ib
+		}
+	}
+	switch {
+	case forward && s.transform == transformReal:
+		o := rfftf1_ps(ncvec*2, vinput, buff[ib], buff[1-ib], s.twiddle, s.ifac[:])
+		if &o[0] == &buff[0][0] {
+			ib = 0
+		} else {
+			ib = 1
+		}
+		pffft_real_finalize(ncvec, buff[ib], buff[1-ib], s.e)
+	case forward && s.transform == transformComplex:
+		tmp := buff[ib]
+		for k := range ncvec {
+			tmp[k*2], tmp[k*2+1] = uninterleave2(vinput[k*2], vinput[k*2+1])
+		}
+		o := cfftf1_ps(ncvec, buff[ib], buff[1-ib], buff[ib], s.twiddle, s.ifac[:], -1)
+		if &o[0] == &buff[0][0] {
+			ib = 0
+		} else {
+			ib = 1
+		}
+		pffft_cplx_finalize(ncvec, buff[ib], buff[1-ib], s.e)
+	case !forward && s.transform == transformReal:
+		pffft_real_preprocess(ncvec, vinput, buff[ib], s.e)
+		o := rfftb1_ps(ncvec*2, buff[ib], buff[0], buff[1], s.twiddle, s.ifac[:])
+		if &o[0] == &buff[0][0] {
+			ib = 0
+		} else {
+			ib = 1
+		}
+	case !forward && s.transform == transformComplex:
+		pffft_cplx_preprocess(ncvec, vinput, buff[ib], s.e)
+		o := cfftf1_ps(ncvec, buff[ib], buff[0], buff[1], s.twiddle, s.ifac[:], +1)
+		if &o[0] == &buff[0][0] {
+			ib = 0
+		} else {
+			ib = 1
+		}
+		for k := range ncvec {
+			buff[ib][k*2], buff[ib][k*2+1] = interleave2(buff[ib][k*2], buff[ib][k*2+1])
+		}
+	}
+
+	if &buff[ib][0] != &voutput[0] {
+		/* extra copy required -- this situation should only happen when finput == foutput */
+		if &finput[0] != &foutput[0] {
+			panic(`incorrect`)
+		}
+		for k := range ncvec {
+			a, b := buff[ib][2*k], buff[ib][2*k+1]
+			voutput[2*k], voutput[2*k+1] = a, b
+		}
+		ib = 1 - ib
+	}
+	if &buff[ib][0] != &voutput[0] {
+		panic(`incorrect`)
+	}
+
+	return
+}
+
+func pffft_transform(s *pffftSetup, input, output, work []float32, forward bool) (ainput, aoutput []float32) {
+	return pffft_transform_internal(s, input, output, getAsAligned(work), forward, 0)
+}
+
+func pffft_transform_ordered(s *pffftSetup, input, output, work []float32, forward bool) (ainput, aoutput []float32) {
+	return pffft_transform_internal(s, input, output, getAsAligned(work), forward, 1)
 }
