@@ -1,6 +1,6 @@
 //go:build goexperiment.simd
 
-package gopffft
+package pffft
 
 import (
 	"fmt"

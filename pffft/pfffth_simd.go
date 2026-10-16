@@ -1,6 +1,6 @@
 //go:build goexperiment.simd
 
-package gopffft
+package pffft
 
 type pffftSetup struct {
 	n int
