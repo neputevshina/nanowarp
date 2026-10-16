@@ -9,6 +9,10 @@ import (
 	"unsafe"
 )
 
+// NOTE(claude): "for _ = range" is used instead of "for range" to work
+// around a go1.27.2 compiler crash in the simd rewriter (midway/deepcopy.go:525).
+// NOTE(neputevshina): This is the only thing it did with this file.
+
 func init() {
 	if simd.VectorBitSize() != 128 {
 		panic(`gopffft currently supports only 128-bit vectors, run the program with GODEBUG=simd=+128`)
@@ -508,7 +512,7 @@ func radf4_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3 []float32) {
 	l1ido := l1 * ido
 	{
 		cc_, ch_ := cc, ch
-		for range l1ido {
+		for _ = range l1ido {
 			a0, a1 := cc[0], cc[l1ido]
 			a2, a3 := cc[2*l1ido], cc[3*l1ido]
 			tr1 := vadd(a1, a3)
@@ -592,7 +596,7 @@ func radb4_ps(ido, l1 int, cc, ch []reg, wa1, wa2, wa3 []float32) {
 	l1ido := l1 * ido
 	{
 		cc_, ch_ := cc, ch
-		for range l1ido {
+		for _ = range l1ido {
 			a, b := cc[0], cc[4*l1ido-1]
 			c, d := cc[2*l1ido], cc[2*l1ido-1]
 			tr3 := svmul(2, d)
@@ -968,7 +972,7 @@ func rffti1_ps(n int, wa []float32, ifac []int) {
 		ld := 0
 		l2 := l1 * ip
 		ido := n / l2
-		for range ip - 1 {
+		for _ = range ip - 1 {
 			i := is
 			fi := 0
 			ld += l1
@@ -999,7 +1003,7 @@ func cffti1_ps(n int, wa []float32, ifac []int) {
 		l2 := l1 * ip
 		ido := n / l2
 		idot := ido + ido + 2
-		for range ip - 1 {
+		for _ = range ip - 1 {
 			i1 := i
 			fi := 0
 			wa[i-1] = 1
@@ -1147,7 +1151,7 @@ func reversed_copy(n int, in []reg, stride int, out []reg) {
 
 	g0, g1 := forw()
 	bakw(g0, g1)
-	for range n - 1 {
+	for _ = range n - 1 {
 		h0, h1 := forw()
 		bakw(g1, h0)
 		bakw(h0, h1)
@@ -1167,7 +1171,7 @@ func unreversed_copy(n int, in []reg, out []reg, stride int) {
 		return h1
 	}
 
-	for range n - 1 {
+	for _ = range n - 1 {
 		g1 = adv(in[0], in[1])
 		in = in[2:]
 		out = out[stride:]
