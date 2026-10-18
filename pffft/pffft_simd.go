@@ -63,7 +63,10 @@ func vcplxmulconj(ar, ai, br, bi reg) (reg, reg) {
 }
 
 func svmul(s float32, ps reg) reg {
-	return simd.BroadcastFloat32s(s).Mul(ps)
+	// NOTE(neputevshina): This somehow uses AVX:
+	// return simd.BroadcastFloat32s(s).Mul(ps)
+	// Broadcasting manually since Sandy Bridge I'm on caps at SSE3.
+	return simd.LoadFloat32s([]float32{s, s, s, s}).Mul(ps)
 }
 
 func vadd(a, b reg) reg {
@@ -79,11 +82,15 @@ func vmul(a, b reg) reg {
 }
 
 func vmadd(a, b, c reg) reg {
-	return a.MulAdd(b, c)
+	return a.Mul(b).Add(c)
+	// return a.MulAdd(b, c) // Not supported on Sandy Bridge
 }
 
 func ld_ps1(s float32) reg {
-	return simd.BroadcastFloat32s(s)
+	// NOTE(neputevshina): This somehow uses AVX:
+	// return simd.BroadcastFloat32s(s)
+	// Broadcasting manually since Sandy Bridge I'm on caps at SSE3.
+	return simd.LoadFloat32s([]float32{s, s, s, s})
 }
 
 // TODO Shuffle is not yet implemented in simd and in archsimd it's only for words and
@@ -136,10 +143,10 @@ func vtranspose4(a, b, c, d reg) (a1, b1, c1, d1 reg) {
 		y[i*4+2] = x[i+2*4]
 		y[i*4+3] = x[i+3*4]
 	}
-	a1.Store(y[:])
-	b1.Store(y[4:])
-	c1.Store(y[8:])
-	d1.Store(y[12:])
+	a1 = simd.LoadFloat32s(y[:])
+	b1 = simd.LoadFloat32s(y[4:])
+	c1 = simd.LoadFloat32s(y[8:])
+	d1 = simd.LoadFloat32s(y[12:])
 	return
 }
 
@@ -152,7 +159,7 @@ func vswaphl(a, b reg) (out reg) {
 	y[1] = x[1]
 	y[2] = x[4]
 	y[3] = x[5]
-	out.Store(y[:])
+	out = simd.LoadFloat32s(y[:])
 	return
 }
 
@@ -1129,7 +1136,7 @@ func pffftNewSetup(n int, transform transform) (s *pffftSetup) {
 	/* check that N is decomposable with allowed prime factors */
 	m := 1
 	for k := range s.ifac[1] {
-		m *= s.ifac[2*k]
+		m *= s.ifac[2+k]
 	}
 	if m != n/SIMD_SZ {
 		s = nil
