@@ -264,24 +264,28 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 
 		// Limit the horizontal bin displacement by limiting the partial derivative.
 		// This suppresses the transient triplication.
-		disp := 0.0
+		disp := grainwrap(n.nbuf, real(a.Xt[w]/a.X[w]))
+		zeroout := false
+		m := float64(n.nbuf/2) / stretch
+		acausal := disp >= m
+		bothcausal := abs(disp) >= m
 		switch n.root.opts.TriplicationFix {
 		case -1:
-			disp = math.Inf(-1)
+			zeroout = false
 		case 0:
 			if stretch > 2 {
-				disp = abs(real(a.Xt[w] / a.X[w]))
+				zeroout = bothcausal
 			} else {
-				disp = math.Inf(-1)
+				zeroout = false
 			}
 		case 1:
-			disp = real(a.Xt[w] / a.X[w]) // Anti-causal displacement only.
+			zeroout = acausal // Anti-causal displacement only.
 		case 2:
-			disp = abs(real(a.Xt[w] / a.X[w])) // Both causal and anti-causal displacement.
+			zeroout = bothcausal // Both causal and anti-causal displacement.
 		default:
 			panic(`incorrect value for nanowarp.Options.TriplicationFix`)
 		}
-		if disp >= float64(n.hop)/stretch*2 {
+		if zeroout {
 			a.Y[w] = 0
 			continue
 		}

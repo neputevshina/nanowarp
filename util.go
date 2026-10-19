@@ -333,3 +333,12 @@ func smoothstep(a, b, x float64) float64 {
 	x = unmix(a, b, x)
 	return x * x * (3.0 - 2.0*x)
 }
+
+func grainwrap(nfft int, x float64) float64 {
+	nf := float64(nfft)
+	r := math.Mod(x+nf/2, nf)
+	if r < 0 {
+		r += nf
+	}
+	return r - nf/2
+}
