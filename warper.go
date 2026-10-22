@@ -214,12 +214,12 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 
-	// EXPERIMENT: Increase transient selectivity by multiplying the mags by
-	// normalized LGD.
-	for w := range a.M {
-		lgd := bitsafe(grainwrap(n.nbuf, real(a.Xt[w]/a.X[w])))
-		a.M[w] *= -lgd/float64(n.nbuf) + 0.5
-	}
+	// // EXPERIMENT: Increase transient selectivity by multiplying the mags by
+	// // normalized LGD.
+	// for w := range a.M {
+	// 	lgd := bitsafe(grainwrap(n.nbuf, real(a.Xt[w]/a.X[w])))
+	// 	a.M[w] *= -lgd/float64(n.nbuf) + 0.5
+	// }
 
 	var arrows [][2]int
 	switch n.root.opts.Quality {
