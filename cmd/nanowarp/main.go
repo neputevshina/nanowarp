@@ -64,7 +64,7 @@ Time map must be monotonic. Output index of any breakpoint can't be
 less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
-var notriple = flag.Int("triplefix", 2, `Behavior of limiting of local group delay.`)
+var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
 var nfft = flag.Int("nfft", 4000, "Base window size at 48000 Hz sample rate.")
 
 func init() {
@@ -142,7 +142,7 @@ Quality and behavior:
 	0 same as 2 but for coefficients greater than 2.
 	1 forces limiting only for anti-causal displacement.
 	2 forces limiting for all displacement.
-	Default is 2.
+	Default is 0.
 
 Utility:
   -p    Display progress bar. (default true)

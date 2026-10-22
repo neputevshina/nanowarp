@@ -204,6 +204,23 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 		}
 	}
 
+	// Calculate partial derivatives of the phase.
+	//
+	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms
+	//
+	// TODO Probably it will be more numerically stable to limit the phase accuum to
+	// 0..1 and scale back to -π..π range at the poltocar conversion.
+	// fadv must return 0..1 accordingly, simply defer π multiplication until the end.
+	enfft(a.Xd, a.Wd, a.Mid)
+	enfft(a.Xt, a.Wt, a.Mid)
+
+	// EXPERIMENT: Increase transient selectivity by multiplying the mags by
+	// normalized LGD.
+	for w := range a.M {
+		lgd := bitsafe(grainwrap(n.nbuf, real(a.Xt[w]/a.X[w])))
+		a.M[w] *= -lgd/float64(n.nbuf) + 0.5
+	}
+
 	var arrows [][2]int
 	switch n.root.opts.Quality {
 	case -1:
@@ -228,15 +245,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
-	// Calculate partial derivatives of the phase.
-	//
-	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms
-	//
-	// TODO Probably it will be more numerically stable to limit the phase accuum to
-	// 0..1 and scale back to -π..π range at the poltocar conversion.
-	// fadv must return 0..1 accordingly, simply defer π multiplication until the end.
-	enfft(a.Xd, a.Wd, a.Mid)
-	enfft(a.Xt, a.Wt, a.Mid)
 	for w := range a.X {
 		a.Fadv[w] = fadv(a.X, a.Xt, stretch, n.osamp, w)
 		a.Tadv[w] = tadv(a.X, a.Xd, float64(n.nfft)/float64(n.hop)/2, w)
@@ -262,7 +270,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 			continue
 		}
 
-		// Limit the horizontal bin displacement by limiting the partial derivative.
+		// Limit the horizontal bin displacement by limiting the LGD.
 		// This suppresses the transient triplication.
 		disp := grainwrap(n.nbuf, real(a.Xt[w]/a.X[w]))
 		zeroout := false

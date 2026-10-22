@@ -102,12 +102,15 @@ but currently sounds best on audio data with aforementioned parameters.
 ## Notes and todo
 - Idea: harmonic phase locking. Propagate phase vertically from detected ridges by harmonics. Dilated 
   traces (-if) will work perfectly for that.
-- TODO: Rewrite PFFFT to Go SIMD intrinsics. This way dysfunctional desktop platforms won't hurt 
+- TODO: Rewrite PFFFT to Go ~~SIMD intrinsics~~ assembler. This way dysfunctional desktop platforms won't hurt 
   users of dependent libraries and cmd/nanowarp.
-  - The relevant code is in pffft/, with AI-overgenerated regression tests slop.
+  - ~~The relevant code is in pffft/, with AI-overgenerated regression tests slop.
     In its current state, Go compiler is not yet ready for that kind of job, since it
     generates AVX instructions even for code that was initially written for SSE2.
-    Most likely it will be possible after 1.29.
+    Most likely it will be possible after 1.29.~~
+  - Won't work on it more since Go team are not going to support ISAs lower than AVX.
+    The next plan is to rewrite most parts (butterfly routines) of PFFFT to assembler and use
+    Cgo (or that code) as a fallback.
 - TODO: Calibrate warper's base nfft and partial derivative formulas. Again.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
