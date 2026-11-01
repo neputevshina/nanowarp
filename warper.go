@@ -221,6 +221,13 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	// 	a.M[w] *= -lgd/float64(n.nbuf) + 0.5
 	// }
 
+	// // EXPERIMENT: Use phase gradient norm for arrow detection.
+	// for w := range a.M {
+	// 	x := -lgd(a.X, a.Xt, w) / float64(n.hop)
+	// 	y := cif(a.X, a.Xd, w) * n.osamp
+	// 	a.M[w] = -math.Hypot(x, y)
+	// }
+
 	var arrows [][2]int
 	switch n.root.opts.Quality {
 	case -1:
@@ -650,4 +657,20 @@ func (n *warper) compensate(mp []float64, stretch float64, fs float64) {
 		v := mix(tanhpair(l, y), tanhpair(r, y), unmix(c[l][0], c[r][0], stretch))
 		mp[w] = 1 / v
 	}
+}
+
+func lgd(x, xt []complex128, j int) float64 {
+	if cmplx.Abs(x[j]) == 0 {
+		return 0
+	}
+	e := -real(xt[j] / x[j])
+	return e
+}
+
+func cif(x, xd []complex128, j int) float64 {
+	if cmplx.Abs(x[j]) < 1e-6 {
+		return 0
+	}
+	e := imag(xd[j]/x[j]) / math.Pi / 2
+	return e
 }

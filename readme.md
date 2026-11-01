@@ -132,6 +132,13 @@ but currently sounds best on audio data with aforementioned parameters.
     - Cross-breed with centroid to get transient-aware variable nfft.
     - Cross-breed with double window for cleanest sound.
   - TODO: zero-padded NSDGT is a very good varispeed resampler.
+- Nanowarp “B” implementation plan:
+  - Split audio by median HPSS. See `hpss` of https://github.com/neputevshina/nanowarp-lab/
+    Use horizontal size of overlap.
+  - Split percussive to clips somehow.
+  - Redistribute that clips on a time-frame grid corresponding to stretch. Generate UV of it.
+  - Resynth the non-clip audio using PVDR. Phase mix reverse tails by propagated ridge between clips. 
+    Extract PVDR harmonic from HPSS percussive by taste. Reset the phase on clips (will have UV' of 1)
 - Currently used onset detector is very good but this thing can always be improved
 - **Onset detection and phasor generation can be performed while warping**.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
@@ -168,7 +175,9 @@ but currently sounds best on audio data with aforementioned parameters.
 - [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
 
 ## Known issues
-- Microtransient sharpness losses on tonal material. Pure vocals are totally smudged.
+- Microtransient sharpness losses on tonal material. Pure vocals are totally smudged. 
+  Comically bad result on fast-tempo cymbals (e.g. TOMORA — SOMEWHERE ELSE ca. 2:50), 
+  which is true for all time-stretching algorithms not based on deep learning.
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - Very loud or noisy tracks might get mushy. Try using -q -1 if results sounds bad.
 - [Energy losses (on example of log sweep)](https://mega.nz/file/7qAWXILb#QFsFQkHeCRD8osJMlS_QbFvgPVvKC8_Eqz4VPI0lsS0) are compensated by EQing,
