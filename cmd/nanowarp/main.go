@@ -66,6 +66,7 @@ var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
 var nfft = flag.Int("nfft", 4000, "Base window size at 48000 Hz sample rate.")
+var tl = flag.Int("tl", 2, "Transient length in frames.")
 
 func init() {
 	flag.Usage = func() {
@@ -135,6 +136,13 @@ Quality and behavior:
 	Maximum radius of influence of each detected tonal trajectory.
 	Phase never be reset at this number of bins around the ridge.
 	Higher values compromise transient quality over tonal quality.
+	Default is 2.
+  -tl int
+	Length of a major transient in number of grains.
+	Limits the LGD spill at each phase reset.
+	At large values, most of the signal will be remained intact, but
+	timing issues will occur.
+	Maximum practical amount is 6, minimum practical is 2.
 	Default is 2.
   -triplefix
 	Behavior of limiting of local group delay.

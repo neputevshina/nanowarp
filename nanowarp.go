@@ -124,6 +124,14 @@ type Hyperparams struct {
 	//
 	// Try values in range 3000–4096.
 	BaseNFFT int `default:"3600"`
+
+	// Length of a major transient in number of grains.
+	// Limits the LGD spill at each phase reset.
+	// At large values, most of the signal will be remained intact, but
+	// timing issues will occur.
+	//
+	// Maximum practical amount is 6, minimum practical is 2.
+	TransientLength int `default:"2"`
 }
 
 // New creates a new time-scale modification process object.
@@ -220,7 +228,7 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Phasor, onsets []Onset, pitch *Envelope) {
-	tsa := n.warper.hop * 2
+	tsa := n.warper.hop * n.opts.TransientLength
 	for k := 0; k < len(onsets)-1; k++ {
 		a := onsets[k]
 		b := onsets[k+1]
