@@ -13,7 +13,8 @@ import (
 	"gonum.org/v1/gonum/floats"
 )
 
-const warperOverlap = 6
+// WarperOverlap is the grain overlap factor for the warping part of the algorithm.
+const WarperOverlap = 6
 
 type warper struct {
 	nfft   int     // DFT size, a composite of some small prime factors
@@ -66,8 +67,8 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 		nfft:   nfft,
 		nbins:  nfft/2 + 1,
 		nbuf:   nbuf,
-		hop:    nbuf / warperOverlap,
-		olap:   warperOverlap,
+		hop:    nbuf / WarperOverlap,
+		olap:   WarperOverlap,
 		osamp:  float64(nfft) / float64(nbuf),
 		gosamp: float64(osamp),
 		root:   nanowarp,

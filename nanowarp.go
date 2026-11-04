@@ -130,8 +130,8 @@ type Hyperparams struct {
 	// At large values, most of the signal will be remained intact, but
 	// timing issues will occur.
 	//
-	// Maximum practical amount is 6, minimum practical is 2.
-	TransientLength int `default:"2"`
+	// Maximum practical amount is [WarperOverlap], minimum practical is about third of it.
+	TransientLength int `default:"6"`
 }
 
 // New creates a new time-scale modification process object.
@@ -153,7 +153,7 @@ func new(channels int, samplerate int, opts *Options) (n *Nanowarp) {
 	n.nch = channels
 	scale := func(x float64) int {
 		e := int(math.Ceil(x * float64(samplerate) / 48000))
-		e = e + (warperOverlap-e%warperOverlap)%warperOverlap // Quantize by warper overlap.
+		e = e + (WarperOverlap-e%WarperOverlap)%WarperOverlap // Quantize by warper overlap.
 		return e
 	}
 
