@@ -131,7 +131,7 @@ type Hyperparams struct {
 	// timing issues will occur.
 	//
 	// Maximum practical amount is [WarperOverlap], minimum practical is about third of it.
-	TransientLength int `default:"6"`
+	TransientLength int `default:"4"`
 }
 
 // New creates a new time-scale modification process object.
