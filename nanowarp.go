@@ -67,7 +67,7 @@ type Progress struct {
 type Hyperparams struct {
 	// Size of transient picking filter in milliseconds.
 	// Minimum amount of time between two consecutive transient detections.
-	PickingMs int `default:"200"`
+	PickingMs int `default:"250"`
 
 	// If true, measure pooling size in output time, not in input time.
 	//
@@ -129,9 +129,11 @@ type Hyperparams struct {
 	// Limits the LGD spill at each phase reset.
 	// At large values, most of the signal will be remained intact, but
 	// timing issues will occur.
+	// Please note that this setting is competing with transient length,
+	// set it up accordingly.
 	//
 	// Maximum practical amount is [WarperOverlap], minimum practical is about third of it.
-	TransientLength int `default:"4"`
+	TransientLength int `default:"6"`
 }
 
 // New creates a new time-scale modification process object.

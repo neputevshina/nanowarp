@@ -46,7 +46,7 @@ var q = flag.Int("q", 0, `Quality:
 Set algorithm quality.
 -1: Use brute force approximation to PGHI. Less transparent, 20% faster.
 0:  Use PGHI.`)
-var poolms = flag.Int("poolms", 200, `Time of onset detection bucket in milliseconds.
+var poolms = flag.Int("poolms", 250, `Time of onset detection bucket in milliseconds.
 Minimum amount of time between two consecutive transient detections.`)
 var ri = flag.Int("ri", 8, `Minimum amount of time bins a trajectory must travel in total
 to be considered tonal.
@@ -66,7 +66,7 @@ var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
 var nfft = flag.Int("nfft", 4000, "Base window size at 48000 Hz sample rate.")
-var tl = flag.Int("tl", 4, "Transient length in frames.")
+var tl = flag.Int("tl", 6, "Transient length in frames.")
 
 func init() {
 	flag.Usage = func() {
@@ -125,7 +125,7 @@ Quality and behavior:
   -poolms int
 	Time of onset detection bucket in milliseconds.
 	Minimum amount of time between two consecutive transient detections. 
-	Default is 200.
+	Default is 250.
   -ri int
 	Minimum amount of time bins a trajectory must travel in total
 	to be considered tonal.
@@ -143,7 +143,8 @@ Quality and behavior:
 	At large values, most of the signal will be remained intact, but
 	timing issues will occur.
 	Maximum practical amount is 6 (nanowarp.WarperOverlap), minimum practical is 2.
-	Default is 4.
+	Please note that this setting is competing with transient length, set it up accordingly.
+	Default is 6.
   -triplefix
 	Behavior of limiting of local group delay.
 	-1 fully disables it.
@@ -379,6 +380,7 @@ func main() {
 			LongRidgeLength: *ri,
 			TriplicationFix: *notriple,
 			BaseNFFT:        *nfft,
+			TransientLength: *tl,
 		},
 	}
 	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)
