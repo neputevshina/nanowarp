@@ -252,6 +252,9 @@ func (n *Nanowarp) bendPhasor(old, new *Phasor, onsets []Onset, pitch *Envelope)
 		i := onsets[k].I
 		r := float64(tsa / 2)
 		j, _ := old.Sample(i)
+		if old.Dx(i) < 1 {
+			r = max(r*old.Dx(i), float64(n.warper.hop))
+		}
 		sr := r * twelveedo(pitch.Sample(j)) // Scale the resampled speed
 		a, b := new.Between(i-r), new.Between(i+r)
 		new.Mutate(func(f []Phasorpoint) []Phasorpoint {
