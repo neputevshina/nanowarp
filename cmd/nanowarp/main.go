@@ -46,7 +46,7 @@ var q = flag.Int("q", 0, `Quality:
 Set algorithm quality.
 -1: Use brute force approximation to PGHI. Less transparent, 20% faster.
 0:  Use PGHI.`)
-var poolms = flag.Int("poolms", 250, `Time of onset detection bucket in milliseconds.
+var poolms = flag.Int("poolms", 200, `Time of onset detection bucket in milliseconds.
 Minimum amount of time between two consecutive transient detections.`)
 var ri = flag.Int("ri", 8, `Minimum amount of time bins a trajectory must travel in total
 to be considered tonal.
@@ -65,7 +65,7 @@ less than that of any previous breakpoint.`)
 var flac = flag.String("flac", "", `Not implemented. Output FLAC encoded file.`)
 var experiment = flag.Int("experiment", 0, "DON'T USE: run a `number`ed experiment instead of nanowarp.")
 var notriple = flag.Int("triplefix", 0, `Behavior of limiting of local group delay.`)
-var nfft = flag.Int("nfft", 4000, "Base window size at 48000 Hz sample rate.")
+var nfft = flag.Int("nfft", 3600, "Base window size at 48000 Hz sample rate.")
 var tl = flag.Int("tl", 6, "Transient length in frames.")
 
 func init() {
@@ -121,11 +121,11 @@ Quality and behavior:
 	The correct value tends to correspond to half of the frequency
 	of the lowest fundamental in the signal.
 	Try values in range 3000–4096.
-	Default is 4000.
+	Default is 3600.
   -poolms int
 	Time of onset detection bucket in milliseconds.
 	Minimum amount of time between two consecutive transient detections. 
-	Default is 250.
+	Default is 200.
   -ri int
 	Minimum amount of time bins a trajectory must travel in total
 	to be considered tonal.
@@ -148,7 +148,7 @@ Quality and behavior:
   -triplefix
 	Behavior of limiting of local group delay.
 	-1 fully disables it.
-	0 same as 2 but for coefficients greater than 2.
+	0 same as 2 but for coefficients greater than 4.
 	1 forces limiting only for anti-causal displacement.
 	2 forces limiting for all displacement.
 	Default is 0.

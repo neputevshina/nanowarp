@@ -289,7 +289,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 		case -1:
 			zeroout = false
 		case 0:
-			if stretch > 2 {
+			if stretch >= 4 {
 				zeroout = bothcausal
 			} else {
 				zeroout = false
@@ -310,7 +310,6 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 		// if not resetting.
 		a.Y[w] = cmplx.Rect(a.Mp[w], a.Ph[w])
 	}
-
 	copy(a.P, a.M)
 	copy(a.Past, a.Ph)
 

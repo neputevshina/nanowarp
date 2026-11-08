@@ -67,7 +67,7 @@ type Progress struct {
 type Hyperparams struct {
 	// Size of transient picking filter in milliseconds.
 	// Minimum amount of time between two consecutive transient detections.
-	PickingMs int `default:"250"`
+	PickingMs int `default:"200"`
 
 	// If true, measure pooling size in output time, not in input time.
 	//
@@ -110,7 +110,7 @@ type Hyperparams struct {
 	// Will make the sound thinner, but for some material this is preferrable.
 	//
 	// -1 fully disables it.
-	// 0 same as 2 but for coefficients greater than 2.
+	// 0 same as 2 but for coefficients greater than 4.
 	// 1 forces limiting only for anti-causal displacement.
 	// 2 forces limiting for all displacement.
 	TriplicationFix int
