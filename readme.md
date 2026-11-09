@@ -103,7 +103,7 @@ but currently sounds best on audio data with aforementioned parameters.
 - [ ] Parallel detection and warping.
 - [ ] PFFFT with pkg.go.dev/simd and assembler SSE3 fallback. Remove all Cgo code.
 - [ ] Custom resampler.
-
+-----
 - Idea: harmonic phase locking. Propagate phase vertically from detected ridges by harmonics. Dilated 
   traces (-if) will work perfectly for that.
 - TODO: Rewrite PFFFT to Go ~~SIMD intrinsics~~ assembler. This way dysfunctional desktop platforms won't hurt 

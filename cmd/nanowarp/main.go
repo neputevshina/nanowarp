@@ -346,22 +346,21 @@ func main() {
 		panic(err)
 	}
 
-	// Copy all sections from original to the output.
-	for _, hd := range wsr.Headermap {
-		if string(hd.FourCC[:]) == `fmt ` || string(hd.FourCC[:]) == `data` {
-			continue
-		}
-		_, err := file.Seek(hd.Seek, io.SeekStart)
-		if err != nil {
-			panic(err)
-		}
-		err = wsw.WriteRiffChunk(hd.FourCC, io.LimitReader(file, int64(hd.Size)))
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	wsr.Rewind()
+	// // Copy all sections from original to the output.
+	// for _, hd := range wsr.Headermap {
+	// 	if string(hd.FourCC[:]) == `fmt ` || string(hd.FourCC[:]) == `data` {
+	// 		continue
+	// 	}
+	// 	_, err := file.Seek(hd.Seek, io.SeekStart)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	err = wsw.WriteRiffChunk(hd.FourCC, io.LimitReader(file, int64(hd.Size)))
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// }
+	// wsr.Rewind()
 
 	// Warping.
 	var pch chan nanowarp.Progress
