@@ -214,7 +214,7 @@ func main() {
 
 			ex := path.Join(os.TempDir(), path.Base(s2)) + `.wav`
 
-			cmd := exec.Command(`ffmpeg`, `-hide_banner`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
+			cmd := exec.Command(`ffmpeg`, `-v`, `warning`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
 			cmd.Stderr = os.Stderr
 			cmd.Stdout = os.Stdout
 			err = cmd.Run()
