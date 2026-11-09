@@ -100,6 +100,10 @@ but currently sounds best on audio data with aforementioned parameters.
 [Listen here](https://mega.nz/folder/ayZwxaAA#pcw2-oE-lwXRmPC6g4fg6w).
 
 ## Notes and todo
+- [ ] Parallel detection and warping.
+- [ ] PFFFT with pkg.go.dev/simd and assembler SSE3 fallback. Remove all Cgo code.
+- [ ] Custom resampler.
+
 - Idea: harmonic phase locking. Propagate phase vertically from detected ridges by harmonics. Dilated 
   traces (-if) will work perfectly for that.
 - TODO: Rewrite PFFFT to Go ~~SIMD intrinsics~~ assembler. This way dysfunctional desktop platforms won't hurt 
@@ -115,12 +119,6 @@ but currently sounds best on audio data with aforementioned parameters.
 - TODO: Input NaN detection and removal.
 - TODO: Extract dspio/wavio to an independent package.
   - Same with pffft bindings.
-- Stupid resampling, the plan:
-  - [x] ~~Add ZOH mode to Curve.~~ Split envelope and phasor curves.
-  - [x] Add new curve argument for pitch.
-  - [x] Scale the 1 at transients by pitch scale.
-  - [ ] Implement a resampler.
-  - [ ] Read resampled grains.
 - For “Terawarp”:
   - ~~TODO: Abuse [sliCQ](https://arxiv.org/pdf/1210.0084). Invent PGHI for graphs, as what original 
     authors propose for that case is just interpolating in per-sample domain.~~

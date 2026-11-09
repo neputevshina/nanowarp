@@ -324,7 +324,7 @@ func main() {
 	}
 
 	// Open the temporary output and delete it if interrupted.
-	outfile, err := os.CreateTemp(path.Dir(*foutput), "nanowarp_*.wav")
+	outfile, err := os.CreateTemp(path.Dir(*foutput), "~nanowarp_*.wav.part")
 	untmp := func() {
 		_ = outfile.Close()
 		_ = os.Remove(outfile.Name())
