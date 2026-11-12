@@ -183,7 +183,7 @@ func (r *Decoder) NchRead() int {
 // SignalRead reads a non-overlapping multichannel grain of size len(buf[0]) from the input.
 func (r *Decoder) SignalRead(prr error, buf [][]float64) (n int, err error) {
 	blen := len(buf[0]) * int(r.fmtchunk.NBlockAlign)
-	if len(r.readbuf) < blen {
+	if cap(r.readbuf) < blen {
 		r.readbuf = make([]byte, blen)
 	}
 	r.readbuf = r.readbuf[:blen]
