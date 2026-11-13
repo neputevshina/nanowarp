@@ -100,7 +100,7 @@ func warperNew(nbuf, osamp, nch int, nanowarp *Nanowarp) (n *warper) {
 	return
 }
 
-func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *Phasor, pitch *Envelope) error {
+func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, speed *Phasor, pitch *Envelope) error {
 	nch := in.NchRead()
 	get := func() [][]float64 { return make2[float64](nch, n.nbuf) }
 	progress := n.root.opts.Progress
@@ -113,7 +113,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *P
 	if progress != nil {
 		progress <- Progress{
 			Current: 0,
-			End:     phasor.end.J,
+			End:     scan.end.J,
 			Process: `Warping`}
 		defer func() {
 			close(progress)
@@ -121,13 +121,14 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *P
 	}
 	var err, srr error
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
-		i := int(phasor.ReverseSample(float64(j)))
-		c := 1 / phasor.Dy(float64(j)) // Stretch, inverse of scan speed, which Dy is.
+		i := int(scan.ReverseSample(float64(j)))
+		c := 1 / scan.Dy(float64(j))   // Stretch, inverse of scan speed, which Dy is.
+		cn := 1 / speed.Dy(float64(j)) // Nominal speed of non-bent phasor.
 
 		if progress != nil && j/fivesec > tsc {
 			progress <- Progress{
 				Current:      float64(j),
-				End:          phasor.end.J,
+				End:          scan.end.J,
 				Process:      `Warping`,
 				HarshFrames:  n.stats.HarshFrames,
 				SmoothFrames: n.stats.SmoothFrames,
@@ -141,7 +142,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *P
 		}
 
 		resets := n.root.opts.Resets
-		normal, diff, _ := n.advance(lead, c, resets >= -1 && phasor.reverseReset(float64(j)), resets == -1)
+		normal, diff, _ := n.advance(lead, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)
 		n.synthesize(grain, normal, diff)
 
 		if n.root.opts.Onsets && c != 1 {
@@ -157,8 +158,8 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *P
 		if srr == io.EOF { // Final frame
 			if progress != nil {
 				progress <- Progress{
-					Current:      phasor.end.J,
-					End:          phasor.end.J,
+					Current:      scan.end.J,
+					End:          scan.end.J,
 					Process:      `Warping`,
 					HarshFrames:  n.stats.HarshFrames,
 					SmoothFrames: n.stats.SmoothFrames}
@@ -170,7 +171,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, phasor *P
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
+func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, smoothreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
 	hp := n.root.opts.Hyperparams
 	nch := len(ingrain)
@@ -266,7 +267,7 @@ func (n *warper) advance(ingrain [][]float64, stretch float64, reset, smoothrese
 	}
 	n.prevstretch = stretch
 
-	c := float64(hp.LongRidgeLength) * stretch
+	c := float64(hp.LongRidgeLength) * snominal
 	for w := range a.Y {
 		// Reset if speed is 1, bypass short ridges.
 		if reset && !smoothreset && trace[w] <= c {

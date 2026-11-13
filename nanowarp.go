@@ -172,7 +172,8 @@ type Lengther interface {
 }
 
 // Process pefrorms the time-scale modification of r and writes the result to w.
-func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor *Phasor, pitch *Envelope) {
+func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, nominal *Phasor, pitch *Envelope) {
+	phasor := nominal
 	if n.opts.Resets > -2 {
 		po, pi := dspio.GoPipe(2)
 		wg := sync.WaitGroup{}
@@ -226,7 +227,7 @@ func (n *Nanowarp) Process(r dspio.GrainReadSeeker, w dspio.SignalWriter, phasor
 	}
 
 	grw := dspio.NewRegularToOfflineGrainWriter(n.warper.nbuf, n.warper.hop, w)
-	n.warper.process(r, grw, phasor, pitch)
+	n.warper.process(r, grw, phasor, nominal, pitch)
 }
 
 func (n *Nanowarp) bendPhasor(old, new *Phasor, onsets []Onset, pitch *Envelope) {
