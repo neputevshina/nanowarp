@@ -173,8 +173,11 @@ but currently sounds best on audio data with aforementioned parameters.
 - [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
 
 ## Known issues
+- Repeating transients on speedups. Try speeding up by 1 semitone *Crystal Castles — Crimewave* 
+  and listen to sine bloops closely.
+- Tempo swinging due to large transient bypass size. Try *Boards of Canada — Roygbiv*.
 - Microtransient sharpness losses on tonal material. Pure vocals are totally smudged. 
-  Comically bad result on fast-tempo cymbals (e.g. TOMORA — SOMEWHERE ELSE ca. 2:50), 
+  Comically bad result on fast-tempo cymbals (e.g. *TOMORA — SOMEWHERE ELSE* ca. 2:50), 
   which is true for all time-stretching algorithms not based on deep learning.
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
 - Very loud or noisy tracks might get mushy. Try using -q -1 if results sounds bad.
