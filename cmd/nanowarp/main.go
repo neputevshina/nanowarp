@@ -131,7 +131,7 @@ Quality and behavior:
 	to be considered tonal.
 	Lower values — more tonal preservation and less transient clarity.
 	Higher values — more transient preservation and more interrupts.
-	Default is 5.
+	Default is 8.
   -if int
 	Maximum radius of influence of each detected tonal trajectory.
 	Phase never be reset at this number of bins around the ridge.
