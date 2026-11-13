@@ -173,9 +173,9 @@ but currently sounds best on audio data with aforementioned parameters.
 - [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
 
 ## Known issues
-- Repeating transients on speedups. Try speeding up by 1 semitone *Crystal Castles — Crimewave* 
+- Repeating transients on speedups. Try speeding up *Crystal Castles — Crimewave* by 1 semitone
   and listen to sine bloops closely.
-- Tempo swinging due to large transient bypass size. Try *Boards of Canada — Roygbiv*.
+- Tempo swinging due to large transient bypass size. Try *monica.com — frog* at the end.
 - Microtransient sharpness losses on tonal material. Pure vocals are totally smudged. 
   Comically bad result on fast-tempo cymbals (e.g. *TOMORA — SOMEWHERE ELSE* ca. 2:50), 
   which is true for all time-stretching algorithms not based on deep learning.
