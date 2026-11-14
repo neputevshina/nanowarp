@@ -238,11 +238,11 @@ func (n *Nanowarp) bendPhasor(old, new *Phasor, onsets []Onset, pitch *Envelope)
 		j, _ := old.Sample(b.I)
 		sa := old.Dx(j)
 		tsa := float64(tsa)
-		if sa < 1 {
-			hop := float64(n.warper.hop)
-			x, _ := math.Modf(tsa * sa / hop)
-			tsa = max(x, 1) * hop
-		}
+		// if sa < 1 {
+		// 	hop := float64(n.warper.hop)
+		// 	x, _ := math.Modf(tsa * sa / hop)
+		// 	tsa = max(x, 1) * hop
+		// }
 		if b.I-a.I < tsa/sa {
 			// Leave only louder one
 			if a.Power > b.Power {
@@ -259,11 +259,11 @@ func (n *Nanowarp) bendPhasor(old, new *Phasor, onsets []Onset, pitch *Envelope)
 		i := onsets[k].I
 		r := float64(tsa / 2)
 		j, _ := old.Sample(i)
-		if old.Dx(i) < 1 {
-			hop := float64(n.warper.hop)
-			x, _ := math.Modf(r * old.Dx(i) / hop)
-			r = max(x, 1) * hop
-		}
+		// if old.Dx(i) < 1 {
+		// 	hop := float64(n.warper.hop)
+		// 	x, _ := math.Modf(r * old.Dx(i) / hop)
+		// 	r = max(x, 1) * hop
+		// }
 		sr := r * twelveedo(pitch.Sample(j)) // Scale the resampled speed
 		a, b := new.Between(i-r), new.Between(i+r)
 		new.Mutate(func(f []Phasorpoint) []Phasorpoint {
