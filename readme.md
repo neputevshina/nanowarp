@@ -173,6 +173,7 @@ but currently sounds best on audio data with aforementioned parameters.
 - [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
 
 ## Known issues
+- It really hates detecting transients in guitars. Bass guitars too. Expect smudged attacks sometimes.
 - Repeating transients on speedups. Try speeding up *Crystal Castles — Crimewave* by 1 semitone
   and listen to sine bloops closely.
 - Tempo swinging due to large transient bypass size. Try *monica.com — frog* at the end.

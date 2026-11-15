@@ -267,7 +267,7 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 	}
 	n.prevstretch = stretch
 
-	c := math.Floor(float64(hp.LongRidgeLength) * stretch)
+	c := float64(hp.LongRidgeLength) * max(1, stretch)
 	for w := range a.Y {
 		// Reset if speed is 1, bypass short ridges.
 		if reset && !smoothreset && trace[w] <= c {
