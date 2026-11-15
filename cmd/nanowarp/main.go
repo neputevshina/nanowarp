@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -346,23 +347,6 @@ func main() {
 		panic(err)
 	}
 
-	// // Copy all sections from original to the output.
-	// for _, hd := range wsr.Headermap {
-	// 	if string(hd.FourCC[:]) == `fmt ` || string(hd.FourCC[:]) == `data` {
-	// 		continue
-	// 	}
-	// 	_, err := file.Seek(hd.Seek, io.SeekStart)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	err = wsw.WriteRiffChunk(hd.FourCC, io.LimitReader(file, int64(hd.Size)))
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// }
-	// wsr.Rewind()
-
-	// Warping.
 	var pch chan nanowarp.Progress
 	if *progress {
 		pch = make(chan nanowarp.Progress)
@@ -382,6 +366,24 @@ func main() {
 			TransientLength: *tl,
 		},
 	}
+
+	// Write process information to output.
+	buildinfo, _ := debug.ReadBuildInfo()
+	isft := fmt.Sprint(`nanowarp `, buildinfo.Main.Version)
+	bs, err := json.Marshal(opts)
+	if err != nil {
+		panic(err)
+	}
+	err = wsw.WriteInfo(map[[4]byte][]string{
+		{'I', 'S', 'F', 'T'}: {isft},
+		{'I', 'C', 'M', 'T'}: {string(bs)},
+	})
+	if err != nil {
+		panic(err)
+	}
+	// wsr.Rewind()
+
+	// Warping.
 	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)
 
 	var exit chan struct{}

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"slices"
+	"strings"
 	"unsafe"
 
 	"github.com/neputevshina/nanowarp/dspio"
@@ -147,8 +148,6 @@ func (e *Encoder) WriteRiffChunk(fourcc [4]byte, src io.Reader) error {
 	return err
 }
 
-// TODO
-//
 // WriteInfo writes LIST INFO section, storing the information about music
 // inside the file.
 // Despite it accepting a map from FourCC to multiple sections, it writes only
@@ -160,7 +159,43 @@ func (e *Encoder) WriteRiffChunk(fourcc [4]byte, src io.Reader) error {
 // If total number of bytes written is greater than 4 GiB,
 // WriteInfo returns [ErrOverflow].
 func (e *Encoder) WriteInfo(data map[[4]byte][]string) error {
-	panic(`unimplemented`)
+	if e.dataseek != 0 {
+		panic(`can't write RIFF chunk after sample data has started being written`)
+	}
+	n, err := e.wr.Write([]byte("LIST"))
+	if err != nil {
+		return err
+	} else if n != 4 {
+		return io.ErrShortWrite
+	}
+	listseek, err := e.wr.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	n, err = e.wr.Write([]byte("\x00\x00\x00\x00INFO"))
+	for tag, d := range data {
+		err = e.WriteRiffChunk(tag, strings.NewReader(strings.Join(d, "\n")))
+	}
+	total, err := e.wr.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	_, err = e.wr.Seek(listseek, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	if total-listseek > 1<<32 {
+		return ErrOverflow
+	}
+	err = binary.Write(e.wr, binary.LittleEndian, uint32(total-listseek-4))
+	if err != nil {
+		return err
+	}
+	_, err = e.wr.Seek(total, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 var _ dspio.SignalWriter = &Encoder{}

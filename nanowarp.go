@@ -48,7 +48,7 @@ type Options struct {
 	// pair for every 5 seconds of output and at the start and end of processing.
 	//
 	// Nanowarp will close the channel after the end of processing.
-	Progress chan<- Progress
+	Progress chan<- Progress `json:"-"`
 
 	Hyperparams
 }
