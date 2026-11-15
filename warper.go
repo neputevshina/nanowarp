@@ -466,38 +466,39 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 	}
 	arrows = arrows[:0]
 
-	// Draw arrows from top to bottom, adding each from direction of largest neighbor.
-	for w := n.nbins - 1; w >= 1; w-- {
+	// Draw arrows from bottom to top, adding each from direction of the largest neighbor.
+	// for w := n.nbins - 1; w >= 1; w-- { // Top to bottom, less similar to PGHI.
+	for w := 1; w <= n.nbins-1; w++ {
 		d := 0
 		top := 0.
 		if M[w] >= top {
 			d = right
 			top = M[w]
 		}
-		if w > 0 && F[w-1] > top {
-			d = up
-			top = F[w-1]
-		}
-		if w < n.nbins-1 && F[w+1] > top && n.arm[w+1] {
+		if w < n.nbins-1 && F[w+1] > top {
 			d = down
+			top = F[w+1]
+		}
+		if w > 0 && F[w-1] > top && n.arm[w-1] {
+			d = up
 		}
 
 		switch d {
 		case right:
 			arrows = append(arrows, [2]int{w, right})
 			ridges[w] |= right << 3
-		case down:
-			arrows = append(arrows, [2]int{w + 1, down})
-			ridges[w+1] |= down
 		case up:
 			arrows = append(arrows, [2]int{w - 1, up})
 			ridges[w-1] |= up
+		case down:
+			arrows = append(arrows, [2]int{w + 1, down})
+			ridges[w+1] |= down
 			// Make sure we don't add arrows pointing back.
 			n.arm[w] = false
 		}
 	}
 
-	// Repair ordering: start from rights, then do downs, then do ups reversed.
+	// Repair ordering: start from rights, then do ups, then do downs reversed.
 	do := func(arrows [][2]int, what, save int) int {
 		arrows = arrows[save:]
 		save = 0
@@ -512,8 +513,8 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 
 	save := 0
 	save += do(arrows, right, save)
-	save += do(arrows, down, save)
-	do(arrows, up, save)
+	save += do(arrows, up, save)
+	do(arrows, down, save)
 	slices.Reverse(arrows[save:])
 
 	return arrows
