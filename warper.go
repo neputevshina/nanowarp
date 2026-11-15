@@ -252,15 +252,6 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
 	}
 
-	// { // Debug
-	// 	oscope.Enable = true
-	// 	ue := make([]float64, n.nbins)
-	// 	for w := range n.nbins {
-	// 		ue[w] = float64(bits.OnesCount(n.ridges[w] & (ridgemask << 3)))
-	// 	}
-	// 	oscope.Oscope(ue, oscope.Name(`ridgemap`))
-	// }
-
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	for w := range a.X {
@@ -305,9 +296,9 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 				zeroout = false
 			}
 		case 1:
-			zeroout = acausal
+			zeroout = acausal // Anti-causal displacement only.
 		case 2:
-			zeroout = bothcausal
+			zeroout = bothcausal // Both causal and anti-causal displacement.
 		default:
 			panic(`incorrect value for nanowarp.Options.TriplicationFix`)
 		}
@@ -475,33 +466,32 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 	}
 	arrows = arrows[:0]
 
-	// Draw arrows from bottom to top, adding each from direction of the largest neighbor.
-	// for w := n.nbins - 1; w >= 1; w-- { // Top to bottom, less similar to PGHI.
-	for w := 1; w <= n.nbins-1; w++ {
+	// Draw arrows from top to bottom, adding each from direction of largest neighbor.
+	for w := n.nbins - 1; w >= 1; w-- {
 		d := 0
 		top := 0.
 		if M[w] >= top {
 			d = right
 			top = M[w]
 		}
-		if w < n.nbins-1 && F[w+1] > top {
-			d = down
-			top = F[w+1]
-		}
-		if w > 0 && F[w-1] > top && n.arm[w-1] {
+		if w > 0 && F[w-1] > top {
 			d = up
+			top = F[w-1]
+		}
+		if w < n.nbins-1 && F[w+1] > top && n.arm[w+1] {
+			d = down
 		}
 
 		switch d {
 		case right:
 			arrows = append(arrows, [2]int{w, right})
 			ridges[w] |= right << 3
-		case up:
-			arrows = append(arrows, [2]int{w - 1, up})
-			ridges[w-1] |= up
 		case down:
 			arrows = append(arrows, [2]int{w + 1, down})
 			ridges[w+1] |= down
+		case up:
+			arrows = append(arrows, [2]int{w - 1, up})
+			ridges[w-1] |= up
 			// Make sure we don't add arrows pointing back.
 			n.arm[w] = false
 		}
