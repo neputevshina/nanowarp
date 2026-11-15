@@ -484,24 +484,24 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 			d = right
 			top = M[w]
 		}
-		if w > 0 && F[w-1] > top {
-			d = up
-			top = F[w-1]
-		}
-		if w < n.nbins-1 && F[w+1] > top && n.arm[w+1] {
+		if w < n.nbins-1 && F[w+1] > top {
 			d = down
+			top = F[w+1]
+		}
+		if w > 0 && F[w-1] > top && n.arm[w-1] {
+			d = up
 		}
 
 		switch d {
 		case right:
 			arrows = append(arrows, [2]int{w, right})
 			ridges[w] |= right << 3
-		case down:
-			arrows = append(arrows, [2]int{w + 1, down})
-			ridges[w+1] |= down
 		case up:
 			arrows = append(arrows, [2]int{w - 1, up})
 			ridges[w-1] |= up
+		case down:
+			arrows = append(arrows, [2]int{w + 1, down})
+			ridges[w+1] |= down
 			// Make sure we don't add arrows pointing back.
 			n.arm[w] = false
 		}
