@@ -252,6 +252,15 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
 	}
 
+	// { // Debug
+	// 	oscope.Enable = true
+	// 	ue := make([]float64, n.nbins)
+	// 	for w := range n.nbins {
+	// 		ue[w] = float64(bits.OnesCount(n.ridges[w] & (ridgemask << 3)))
+	// 	}
+	// 	oscope.Oscope(ue, oscope.Name(`ridgemap`))
+	// }
+
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
 	for w := range a.X {
@@ -296,9 +305,9 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 				zeroout = false
 			}
 		case 1:
-			zeroout = acausal // Anti-causal displacement only.
+			zeroout = acausal
 		case 2:
-			zeroout = bothcausal // Both causal and anti-causal displacement.
+			zeroout = bothcausal
 		default:
 			panic(`incorrect value for nanowarp.Options.TriplicationFix`)
 		}
@@ -466,8 +475,9 @@ func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint
 	}
 	arrows = arrows[:0]
 
-	// Draw arrows from top to bottom, adding each from direction of largest neighbor.
-	for w := n.nbins - 1; w >= 1; w-- {
+	// Draw arrows from bottom to top, adding each from direction of the largest neighbor.
+	// for w := n.nbins - 1; w >= 1; w-- { // Top to bottom, less similar to PGHI.
+	for w := 1; w <= n.nbins-1; w++ {
 		d := 0
 		top := 0.
 		if M[w] >= top {

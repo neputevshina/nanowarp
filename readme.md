@@ -84,7 +84,7 @@ respective side channels after stretching back[4].
 
 Transient triplication, characteristic to all PVDRs, is mitigated by removing all bins where 
 absolute LGD[2], or horizontal bin displacement ($\lvert{{d\varphi}\over{d\omega}}\rvert$) is greater than 
-half analysis hop size. This mechanism is engaged only for stretch coefficients greater than 2.
+half analysis hop size. This mechanism is engaged only for stretch coefficients greater than 4.
 
 The algorithm does not depend on input signal level (there are no absolute thresholds) 
 and does not use any type of psychoacoustics methods (e.g. masking) except onset detection.
