@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -191,52 +192,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	file, err := os.Open(*finput)
-	if err != nil {
-		panic(err)
-	}
-
-	wsr, err := wavio.NewDecoder(file)
-	if err != nil {
-		// Try to call ffmpeg, we've probably got an MP3.
-		if err == wavio.ErrNotAWav {
-			_ = file.Close()
-
-			_, err = exec.LookPath(`ffmpeg`)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, `can process only WAV files without ffmpeg`)
-				os.Exit(1)
-			}
-
-			s2, err := filepath.Abs(*finput)
-			if err != nil {
-				panic(err)
-			}
-
-			ex := path.Join(os.TempDir(), path.Base(s2)) + `.wav`
-
-			cmd := exec.Command(`ffmpeg`, `-v`, `warning`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
-			cmd.Stderr = os.Stderr
-			cmd.Stdout = os.Stdout
-			err = cmd.Run()
-			if err != nil {
-				if _, ok := err.(*exec.ExitError); ok {
-					os.Exit(1)
-				} else {
-					panic(err)
-				}
-			}
-
-			file, err = os.Open(ex)
-			if err != nil {
-				panic(err)
-			}
-			wsr, err = wavio.NewDecoder(file)
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
+	wsr, file := INeedAWav(*finput)
 
 	generateOutSuffix := func() string {
 		pitchSuffix := ""
@@ -432,3 +388,67 @@ type withlength struct {
 }
 
 func (w *withlength) Length() int { return w.Properties().Samples }
+
+func INeedAWav(fp string) (wavr *wavio.Decoder, file *os.File) {
+	var err error
+	file, err = os.Open(fp)
+	if err != nil {
+		panic(err)
+	}
+
+	wavr, err = wavio.NewDecoder(file)
+	if err != nil {
+		// Try to call ffmpeg, we've probably got an MP3.
+		if err == wavio.ErrNotAWav {
+			_ = file.Close()
+
+			_, err = exec.LookPath(`ffmpeg`)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, `can process only WAV files without ffmpeg`)
+				os.Exit(1)
+			}
+
+			s2, err := filepath.Abs(fp)
+			if err != nil {
+				panic(err)
+			}
+
+			ex := path.Join(os.TempDir(), path.Base(s2)) + `.wav`
+			_, xerr := os.Stat(ex)
+			if !errors.Is(xerr, os.ErrNotExist) {
+				// Already converted
+				file, err = os.Open(ex)
+				if err != nil {
+					panic(err)
+				}
+				wavr, err = wavio.NewDecoder(file)
+				if err == nil {
+					return
+				}
+				// Broken, reconvert
+			}
+
+			cmd := exec.Command(`ffmpeg`, `-v`, `warning`, `-y`, `-i`, s2, `-acodec`, `pcm_f32le`, ex)
+			cmd.Stderr = os.Stderr
+			cmd.Stdout = os.Stdout
+			err = cmd.Run()
+			if err != nil {
+				if _, ok := err.(*exec.ExitError); ok {
+					os.Exit(1)
+				} else {
+					panic(err)
+				}
+			}
+
+			file, err = os.Open(ex)
+			if err != nil {
+				panic(err)
+			}
+			wavr, err = wavio.NewDecoder(file)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	return
+}
