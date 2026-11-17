@@ -175,7 +175,8 @@ but currently sounds best on audio data with aforementioned parameters.
 ## Known issues
 - It really hates detecting transients in guitars. Bass guitars too. Expect smudged attacks sometimes.
 - Repeating transients on speedups. Try speeding up *Crystal Castles — Crimewave* by 1 semitone
-  and listen to sine bloops closely.
+  and listen to sine bloops closely. Most likely can be fixed by fixing the 1-frame lag of 
+  ridge detection phase accumulator bypass, see warper.go.
 - Tempo swinging due to large transient bypass size. Try *monica.com — frog* at the end.
 - Microtransient sharpness losses on tonal material. Pure vocals are totally smudged. 
   Comically bad result on fast-tempo cymbals (e.g. *TOMORA — SOMEWHERE ELSE* ca. 2:50), 

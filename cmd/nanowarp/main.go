@@ -381,9 +381,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// wsr.Rewind()
 
 	// Warping.
+	wsr.Rewind()
 	tsm := nanowarp.New(props.Samplerate, props.Nch, opts)
 
 	var exit chan struct{}
