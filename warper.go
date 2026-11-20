@@ -50,7 +50,7 @@ type warper struct {
 
 type wbufs struct {
 	S, Mid           []float64      // Scratch buffers
-	M, P             []float64      `size:"nbins"` // Magnitudes: current and previous
+	F, M, P          []float64      `size:"nbins"` // Magnitudes: future, current and previous
 	Ph               []float64      `size:"nbins"` // Current phase
 	Past             []float64      // Phase accumulator
 	Fadv, Tadv       []float64      // Partial derivatives of phase
@@ -106,6 +106,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 	progress := n.root.opts.Progress
 
 	lead := get()
+	future := get()
 	grain := get()
 
 	fivesec := n.root.fs * 5
@@ -119,9 +120,10 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 			close(progress)
 		}()
 	}
-	var err, srr error
+	var err error
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
 		i := int(scan.ReverseSample(float64(j)))
+		ni := int(scan.ReverseSample(float64(j + n.hop)))
 		c := 1 / scan.Dy(float64(j))   // Stretch, inverse of scan speed, which Dy is.
 		cn := 1 / speed.Dy(float64(j)) // Nominal speed of non-bent phasor.
 
@@ -136,13 +138,20 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 			tsc = j / fivesec
 		}
 
-		lead, srr = in.GrainSeek(nil, int64(i-n.nbuf/2), n.nbuf)
+		sl, srr := in.GrainSeek(nil, int64(i-n.nbuf/2), n.nbuf)
 		if srr != nil && srr != io.EOF {
 			return srr
 		}
+		copy(lead, sl)
+
+		sl, srr = in.GrainSeek(nil, int64(ni-n.nbuf/2), n.nbuf)
+		if srr != nil && srr != io.EOF {
+			return srr
+		}
+		copy(future, sl)
 
 		resets := n.root.opts.Resets
-		normal, diff, _ := n.advance(lead, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)
+		normal, diff, _ := n.advance(lead, future, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)
 		n.synthesize(grain, normal, diff)
 
 		if n.root.opts.Onsets && c != 1 {
@@ -171,7 +180,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 }
 
 // advance constructs the next frame of the output.
-func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, smoothreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
+func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float64, reset, smoothreset bool) (normal []complex128, diff [][]complex128, mag []float64) {
 	a := &n.a
 	hp := n.root.opts.Hyperparams
 	nch := len(ingrain)
@@ -181,6 +190,16 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 		mul(a.S, w)
 		n.fft.Coefficients(x, a.S)
 	}
+
+	clear(a.Mid)
+	for ch := range nextgrain {
+		add(a.Mid, nextgrain[ch])
+		enfft(a.C[ch], a.W, nextgrain[ch])
+		copy(a.Co[ch], a.C[ch])
+	}
+	enfft(a.X, a.W, a.Mid)
+
+	cmplxs.Abs(a.F, a.X)
 
 	clear(a.Mid)
 	for ch := range ingrain {
@@ -230,26 +249,15 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 	// 	a.M[w] = -math.Hypot(x, y)
 	// }
 
+	// Obtain PGHI with lookahead... (1)
 	var arrows [][2]int
 	switch n.root.opts.Quality {
 	case -1:
-		arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
-	case 0:
-		fallthrough // TODO In a search of better noisiness measure.
-		// // Calculate spectral kurtosis, use PGHI for less flat frames only.
-		// what := a.M[:n.nbins]
-		// centroid := spectralcentroid(what)
-		// spread := spectralspread(what, centroid)
-		// kurtosis := spectralkurtosis(what, centroid, spread)
-		// if kurtosis < 3 {
-		// 	arrows = n.bruteforcearrows(a.P, a.M, n.parrows, n.ridges)
-		// 	n.stats.HarshFrames++
-		// } else {
-		// 	arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
-		// 	n.stats.SmoothFrames++
-		// }
-	case 1:
-		arrows = n.pghiarrows(a.P, a.M, n.parrows, n.ridges)
+		arrows = n.bruteforcearrows(a.M, a.F, n.arrows, n.ridges)
+	default:
+		// Once there was a switch to bruteforcearrows based on kurtosis.
+		// See commit f65b5b7f45eb58cdb8d4618b6ba97026d0ee3876 and before.
+		arrows = n.pghiarrows(a.M, a.F, n.arrows, n.ridges)
 	}
 
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
@@ -259,7 +267,10 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 		a.Tadv[w] = tadv(a.X, a.Xd, float64(n.nfft)/float64(n.hop)/2, w)
 	}
 
-	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
+	// ...but integrate using previous. (1)
+	n.pghiintegrate(n.parrows, a.Fadv, a.Tadv, a.Ph, a.Past)
+	n.parrows = n.parrows[:len(arrows)]
+	copy(n.parrows, arrows)
 
 	// Generate compensation EQ.
 	if stretch != n.prevstretch {
@@ -312,6 +323,7 @@ func (n *warper) advance(ingrain [][]float64, stretch, snominal float64, reset, 
 		a.Y[w] = cmplx.Rect(a.Mp[w], a.Ph[w])
 	}
 	copy(a.P, a.M)
+	copy(a.M, a.F)
 	copy(a.Past, a.Ph)
 
 	return a.Y, a.C, a.M
