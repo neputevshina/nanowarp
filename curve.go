@@ -164,7 +164,7 @@ func (c *Phasor) Between(i float64) (a int) {
 		c.ai = 0
 	}
 	for ; c.ai < len(c.elems); c.ai++ {
-		if c.elems[c.ai+1].J > i {
+		if c.elems[c.ai+1].I > i {
 			c.li = i
 			return c.ai
 		}
