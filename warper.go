@@ -139,17 +139,10 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 		}
 
 		srr := in.GrainSeek(nil, int64(i-n.nbuf/2), lead)
-		// _ = ni
-		// _ = future
 		srr = in.GrainSeek(srr, int64(ni-n.nbuf/2), future)
 		if srr != nil && srr != io.EOF {
 			return srr
 		}
-
-		// waveform.Dump(lead[0])
-		// if j > 200000 {
-		// 	os.Exit(1)
-		// }
 
 		resets := n.root.opts.Resets
 		normal, diff, _ := n.advance(lead, nil, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)
@@ -251,6 +244,7 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 	var arrows [][2]int
 	switch n.root.opts.Quality {
 	case -1:
+		// arrows = n.bruteforcearrows(a.M, a.F, n.arrows, n.ridges)
 		arrows = n.bruteforcearrows(a.P, a.M, n.arrows, n.ridges)
 	default:
 		// Once there was a switch to bruteforcearrows based on kurtosis.
