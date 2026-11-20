@@ -138,17 +138,11 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 			tsc = j / fivesec
 		}
 
-		sl, srr := in.GrainSeek(nil, int64(i-n.nbuf/2), n.nbuf)
+		srr := in.GrainSeek(nil, int64(i-n.nbuf/2), lead)
+		// srr = in.GrainSeek(srr, int64(ni-n.nbuf/2), future)
 		if srr != nil && srr != io.EOF {
 			return srr
 		}
-		copy(lead, sl)
-
-		sl, srr = in.GrainSeek(nil, int64(ni-n.nbuf/2), n.nbuf)
-		if srr != nil && srr != io.EOF {
-			return srr
-		}
-		copy(future, sl)
 
 		resets := n.root.opts.Resets
 		normal, diff, _ := n.advance(lead, future, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)
@@ -191,15 +185,12 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 		n.fft.Coefficients(x, a.S)
 	}
 
-	clear(a.Mid)
-	for ch := range nextgrain {
-		add(a.Mid, nextgrain[ch])
-		enfft(a.C[ch], a.W, nextgrain[ch])
-		copy(a.Co[ch], a.C[ch])
-	}
-	enfft(a.X, a.W, a.Mid)
-
-	cmplxs.Abs(a.F, a.X)
+	// clear(a.Mid)
+	// for ch := range nextgrain {
+	// 	add(a.Mid, nextgrain[ch])
+	// }
+	// enfft(a.X, a.W, a.Mid)
+	// cmplxs.Abs(a.F, a.X)
 
 	clear(a.Mid)
 	for ch := range ingrain {
@@ -253,11 +244,12 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 	var arrows [][2]int
 	switch n.root.opts.Quality {
 	case -1:
-		arrows = n.bruteforcearrows(a.M, a.F, n.arrows, n.ridges)
+		arrows = n.bruteforcearrows(a.P, a.M, n.arrows, n.ridges)
 	default:
 		// Once there was a switch to bruteforcearrows based on kurtosis.
 		// See commit f65b5b7f45eb58cdb8d4618b6ba97026d0ee3876 and before.
-		arrows = n.pghiarrows(a.M, a.F, n.arrows, n.ridges)
+		arrows = n.pghiarrows(a.P, a.M, n.arrows, n.ridges)
+		// arrows = n.pghiarrows(a.M, a.F, n.arrows, n.ridges)
 	}
 
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
@@ -268,9 +260,10 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 	}
 
 	// ...but integrate using previous. (1)
-	n.pghiintegrate(n.parrows, a.Fadv, a.Tadv, a.Ph, a.Past)
-	n.parrows = n.parrows[:len(arrows)]
-	copy(n.parrows, arrows)
+	n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
+	// n.pghiintegrate(n.parrows, a.Fadv, a.Tadv, a.Ph, a.Past)
+	// n.parrows = n.parrows[:len(arrows)]
+	// copy(n.parrows, arrows)
 
 	// Generate compensation EQ.
 	if stretch != n.prevstretch {
@@ -323,7 +316,6 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 		a.Y[w] = cmplx.Rect(a.Mp[w], a.Ph[w])
 	}
 	copy(a.P, a.M)
-	copy(a.M, a.F)
 	copy(a.Past, a.Ph)
 
 	return a.Y, a.C, a.M

@@ -216,20 +216,20 @@ func (r *Decoder) SignalRead(prr error, buf [][]float64) (n int, err error) {
 
 var _ dspio.GrainSeeker = &Decoder{}
 
-// GrainSeek reads a grain of size from file at specified offset in samples.
+// GrainSeek reads a grain of given size from file at specified offset in samples.
 //
-// If size is 0, GrainSeek sets the seek position in a file so sample with index 0 of next SignalRead
+// If len(buf) is 0, GrainSeek sets the seek position in a file so sample with index 0 of next SignalRead
 // will be at offset.
 //
 // TODO: Internal buffering.
-// TODO: Copy from experimental branch.
-func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, error) {
+func (r *Decoder) GrainSeek(prr error, offset int64, buf [][]float64) error {
+	size := len(buf[0])
 	for ch := range r.seekbuf {
 		r.seekbuf[ch] = slices.Grow(r.seekbuf[ch][:0], size)[:size]
 	}
 	byteseek := max(0, offset) * int64(r.fmtchunk.NBlockAlign)
 	if byteseek > int64(r.data.Size)+int64(size) {
-		return nil, io.EOF
+		return io.EOF
 	}
 	_, err := r.rs.Seek(r.data.Seek+byteseek, io.SeekStart)
 	for ch := range r.knife {
@@ -237,12 +237,15 @@ func (r *Decoder) GrainSeek(prr error, offset int64, size int) ([][]float64, err
 	}
 	_, err = r.SignalRead(err, r.knife)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for ch := range r.knife {
 		r.knife[ch] = r.knife[ch][:max(0, min(int64(len(r.knife[0])), int64(r.Properties().Samples)-offset))]
 	}
-	return r.knife, err
+	for ch := range r.knife {
+		copy(buf[ch], r.knife[ch])
+	}
+	return err
 }
 
 func decodeCompanded(r *Decoder, bbuf []byte, buf [][]float64, ulaw bool) {
