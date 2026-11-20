@@ -143,6 +143,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 		if srr != nil && srr != io.EOF {
 			return srr
 		}
+		_ = future
 
 		resets := n.root.opts.Resets
 		normal, diff, _ := n.advance(lead, nil, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)

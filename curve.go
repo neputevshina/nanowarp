@@ -77,9 +77,10 @@ func Bp(j, value float64) Breakpoint { return Breakpoint{J: j, V: value} }
 //
 // Currently, Nanowarp does not support variable stretching using non-monotonic curves (can't reverse while stretching).
 type Phasor struct {
-	elems       []Phasorpoint
-	last, rlast int
-	start, end  Phasorpoint
+	elems      []Phasorpoint
+	ai, aj     int
+	li, lj     float64
+	start, end Phasorpoint
 }
 
 // NewPhasor creates a new [Phasor] from individual breakpoints.
@@ -159,19 +160,13 @@ func (c *Phasor) ReverseSample(j float64) (i float64) {
 // Between returns an integer index of an internal slice of Breakpoints such as
 // sl[a].I < i < sl[a+1].I.
 func (c *Phasor) Between(i float64) (a int) {
-	if c.elems[c.last].I < i {
-		c.last = 0
+	if i < c.li {
+		c.ai = 0
 	}
-	if i >= c.end.I {
-		return len(c.elems)
-	}
-	if i < c.start.I {
-		return -1
-	}
-	for f := c.last; f < len(c.elems); f++ {
-		if c.elems[f+1].I > i {
-			c.last = f
-			return f
+	for ; c.ai < len(c.elems); c.ai++ {
+		if c.elems[c.ai+1].J > i {
+			c.li = i
+			return c.ai
 		}
 	}
 	panic(`unreachable`)
@@ -180,19 +175,13 @@ func (c *Phasor) Between(i float64) (a int) {
 // ReverseBetween returns an integer index of an internal slice of Breakpoints such as
 // sl[a].J < j < sl[a+1].J.
 func (c *Phasor) ReverseBetween(j float64) (a int) {
-	if c.elems[c.rlast].I < j {
-		c.rlast = 0
+	if j < c.lj {
+		c.aj = 0
 	}
-	if j >= c.end.J {
-		return len(c.elems)
-	}
-	if j < c.start.J {
-		return -1
-	}
-	for f := c.last; f < len(c.elems); f++ {
-		if c.elems[f+1].J > j {
-			c.last = f
-			return f
+	for ; c.aj < len(c.elems); c.aj++ {
+		if c.elems[c.aj+1].J > j {
+			c.lj = j
+			return c.aj
 		}
 	}
 	panic(`unreachable`)
@@ -208,8 +197,8 @@ func (c *Phasor) Mutate(f func([]Phasorpoint) []Phasorpoint) {
 func (c *Phasor) mutate() {
 	c.start = c.elems[0]
 	c.end = c.elems[len(c.elems)-1]
-	c.last = 0
-	c.rlast = 0
+	c.ai = 0
+	c.aj = 0
 }
 
 // Clone returns the copy of a Curve.
