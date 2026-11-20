@@ -3,7 +3,6 @@ package wavio
 import (
 	"encoding/binary"
 	"io"
-	"slices"
 
 	"github.com/neputevshina/nanowarp/dspio"
 	"golang.org/x/exp/constraints"
@@ -224,26 +223,20 @@ var _ dspio.GrainSeeker = &Decoder{}
 // TODO: Internal buffering.
 func (r *Decoder) GrainSeek(prr error, offset int64, buf [][]float64) error {
 	size := len(buf[0])
-	for ch := range r.seekbuf {
-		r.seekbuf[ch] = slices.Grow(r.seekbuf[ch][:0], size)[:size]
-	}
 	byteseek := max(0, offset) * int64(r.fmtchunk.NBlockAlign)
 	if byteseek > int64(r.data.Size)+int64(size) {
 		return io.EOF
 	}
 	_, err := r.rs.Seek(r.data.Seek+byteseek, io.SeekStart)
-	for ch := range r.knife {
-		r.knife[ch] = r.seekbuf[ch][max(0, -offset):]
-	}
-	_, err = r.SignalRead(err, r.knife)
 	if err != nil {
 		return err
 	}
-	for ch := range r.knife {
-		r.knife[ch] = r.knife[ch][:max(0, min(int64(len(r.knife[0])), int64(r.Properties().Samples)-offset))]
+	n, err := r.SignalRead(err, buf)
+	if err != nil {
+		return err
 	}
-	for ch := range r.knife {
-		copy(buf[ch], r.knife[ch])
+	for ch := range buf {
+		clear(buf[ch][n:])
 	}
 	return err
 }

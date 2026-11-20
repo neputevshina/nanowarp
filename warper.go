@@ -123,7 +123,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 	var err error
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
 		i := int(scan.ReverseSample(float64(j)))
-		// ni := int(scan.ReverseSample(float64(j + n.hop)))
+		ni := int(scan.ReverseSample(float64(j + n.hop)))
 		c := 1 / scan.Dy(float64(j))   // Stretch, inverse of scan speed, which Dy is.
 		cn := 1 / speed.Dy(float64(j)) // Nominal speed of non-bent phasor.
 
@@ -139,13 +139,20 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 		}
 
 		srr := in.GrainSeek(nil, int64(i-n.nbuf/2), lead)
-		// srr = in.GrainSeek(srr, int64(ni-n.nbuf/2), future)
+		// _ = ni
+		// _ = future
+		srr = in.GrainSeek(srr, int64(ni-n.nbuf/2), future)
 		if srr != nil && srr != io.EOF {
 			return srr
 		}
 
+		// waveform.Dump(lead[0])
+		// if j > 200000 {
+		// 	os.Exit(1)
+		// }
+
 		resets := n.root.opts.Resets
-		normal, diff, _ := n.advance(lead, future, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)
+		normal, diff, _ := n.advance(lead, nil, c, cn, resets >= -1 && scan.reverseReset(float64(j)), resets == -1)
 		n.synthesize(grain, normal, diff)
 
 		if n.root.opts.Onsets && c != 1 {
