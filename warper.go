@@ -123,7 +123,7 @@ func (n *warper) process(in dspio.GrainSeeker, out *dspio.GrainWriter, scan, spe
 	var err error
 	for j := -n.nbuf / 2; err == nil; j += n.hop {
 		i := int(scan.ReverseSample(float64(j)))
-		ni := int(scan.ReverseSample(float64(j + n.hop)))
+		// ni := int(scan.ReverseSample(float64(j + n.hop)))
 		c := 1 / scan.Dy(float64(j))   // Stretch, inverse of scan speed, which Dy is.
 		cn := 1 / speed.Dy(float64(j)) // Nominal speed of non-bent phasor.
 
