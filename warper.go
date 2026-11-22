@@ -226,30 +226,14 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 
-	// // EXPERIMENT: Increase transient selectivity by multiplying the mags by
-	// // normalized LGD.
-	// for w := range a.M {
-	// 	lgd := bitsafe(grainwrap(n.nbuf, real(a.Xt[w]/a.X[w])))
-	// 	a.M[w] *= -lgd/float64(n.nbuf) + 0.5
-	// }
-
-	// // EXPERIMENT: Use phase gradient norm for arrow detection.
-	// for w := range a.M {
-	// 	x := -lgd(a.X, a.Xt, w) / float64(n.hop)
-	// 	y := cif(a.X, a.Xd, w) * n.osamp
-	// 	a.M[w] = -math.Hypot(x, y)
-	// }
-
 	// Obtain PGHI with lookahead... (1)
 	var arrows [][2]int
 	switch n.root.opts.Quality {
 	case -1:
 		arrows = n.bruteforcearrows(a.M, a.F, n.arrows, n.ridges)
-		// arrows = n.bruteforcearrows(a.P, a.M, n.arrows, n.ridges)
 	default:
 		// Once there was a switch to bruteforcearrows based on kurtosis.
 		// See commit f65b5b7f45eb58cdb8d4618b6ba97026d0ee3876 and before.
-		// arrows = n.pghiarrows(a.P, a.M, n.arrows, n.ridges)
 		arrows = n.pghiarrows(a.M, a.F, n.arrows, n.ridges)
 	}
 
@@ -261,7 +245,6 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 	}
 
 	// ...but integrate using previous. (1)
-	// n.pghiintegrate(arrows, a.Fadv, a.Tadv, a.Ph, a.Past)
 	n.pghiintegrate(n.parrows, a.Fadv, a.Tadv, a.Ph, a.Past)
 	n.parrows = n.parrows[:len(arrows)]
 	copy(n.parrows, arrows)
@@ -415,8 +398,6 @@ func (n *warper) pghiarrows(M, F []float64, arrows [][2]int, ridges []uint) [][2
 	fill(n.arm, true)
 	for w := range M {
 		n.heap[w] = heaptriple{M[w], w, -1, 0}
-		// Note that trajectories are calculated with a one frame lag.
-		// Still good for our purposes.
 		ridges[w] <<= 3
 	}
 	heapInit(&n.heap)
@@ -465,8 +446,6 @@ func (n *warper) pghiarrows(M, F []float64, arrows [][2]int, ridges []uint) [][2
 func (n *warper) bruteforcearrows(M, F []float64, arrows [][2]int, ridges []uint) [][2]int {
 	fill(n.arm, true)
 	for w := range M {
-		// Note that trajectories are calculated with a one frame lag.
-		// Still good for our purposes.
 		ridges[w] <<= 3
 	}
 	arrows = arrows[:0]

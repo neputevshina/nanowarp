@@ -199,6 +199,9 @@ Everything else was written without use of AI, if not explicitly stated otherwis
 
 LLM-generated code is marked with `// SLOP` comments.
 
+## Thanks
+[MaxLunar](http://github.com/maxlunar) for sponsoring this project!
+
 ## References
 1. [Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.](https://ltfat.org/notes/ltfatnote050.pdf)
 
