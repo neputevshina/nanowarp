@@ -62,7 +62,7 @@ to get the list of available options.
 
 ## Implementation
 
-Nanowarp is a phase gradient heap integration (PGHI) phase vocoder (aka PVDR)[1] where partial derivatives 
+Nanowarp is a “phase vocoder done right”[1] type of algorithm where partial derivatives 
 of phase are obtained through time-frequency reassignment[2]. This way accurate phase-time 
 advance can be obtained using only one windowed grain instead of two for simplicity.
 
@@ -103,6 +103,7 @@ but currently sounds best on audio data with aforementioned parameters.
 - [ ] Parallel detection and warping.
 - [ ] PFFFT with pkg.go.dev/simd and assembler SSE3 fallback. Remove all Cgo code.
 - [ ] Custom resampler.
+- [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
 -----
 - Idea: harmonic phase locking. Propagate phase vertically from detected ridges by harmonics. Dilated 
   traces (-if) will work perfectly for that.
@@ -112,7 +113,7 @@ but currently sounds best on audio data with aforementioned parameters.
     In its current state, Go compiler is not yet ready for that kind of job, since it
     generates AVX instructions even for code that was initially written for SSE2.
     Most likely it will be possible after 1.29.~~
-  - Won't work on it more since Go team are not going to support ISAs lower than AVX.
+  - Won't get SSE support since Go team are not going to support ISAs lower than AVX.
     The next plan is to rewrite most parts (butterfly routines) of PFFFT to assembler and use
     Cgo (or that code) as a fallback.
 - TODO: Calibrate warper's base nfft and partial derivative formulas. Again.
@@ -137,23 +138,12 @@ but currently sounds best on audio data with aforementioned parameters.
   - Redistribute that clips on a time-frame grid corresponding to stretch. Generate UV of it.
   - Resynth the non-clip audio using PVDR. Phase mix reverse tails by propagated ridge between clips. 
     Extract PVDR harmonic from HPSS percussive by taste. Reset the phase on clips (will have UV' of 1)
-- Currently used onset detector is very good but this thing can always be improved
-- **Onset detection and phasor generation can be performed while warping**.
+- Currently used onset detector is very good but this thing can always be improved. Please fix guitars.
 - Hypothesis: OfflineGrainReader and OfflineToOfflineGrainWriter to be removed. 
   Plain GrainReader and RegularToOfflineGrainWriter can be paired.
 - We need a regression testing GitHub CI.
 - Resamplers: https://codeberg.org/BillyDM/awesome-audio-dsp/src/branch/main/content/deip.pdf
-- Formant shifting must be implemented after streaming.
-- Momentary phase resets 
-  - Are ineffective. At least if resetting at each transient ridge for the current frame.
-  - Analysis lookahead will help in correct ridge detection.
-  - Phase could be reset on PGHI-detected transients.
-  - Phase could be reset at the start of each PGHI-detected tonal trajectory 
-    (when trace\[w\] == 1).
-  - We may limit amount of reset-continued ridges to, say, loudest 10-20 using 
-    existing arrow data.
-  - Idea similar to [Roebel 2003](https://hal.science/hal-01161124/document).
-- Differentiation of major (full) and minor (with continued partials) phase resets.
+- Formant shifting must be implemented after streaming and pitch shifting.
 - Discrete partial phase derivatives may perform better than reassignment.
 - cmd/nanowarp: FLAC output (https://github.com/mewkiz/flac)
   - Use a clone of FabFilter Pro-L 2 “Modern” mode by [Tokyo Dawn Labs](https://t.me/tokyodawnlabsru/547) for limiting.
@@ -162,23 +152,20 @@ but currently sounds best on audio data with aforementioned parameters.
   - Take 64-bit dither from one of Airwindows plugins. Acknowledge Chris properly.
 - cmd/nanowarp: allow cuts in timemap, force phase reset on each cut.
 - cmd/nanowarp: Ableton Live Clip (.asd) to timemap converter.
-- cmd/nanowarp: allow external onset detectors. Already possible with right timemap, 
-  algorithm does phase reset on any region with Dy = 1.
-- Phase ramp monotonicity is not needed. We never use `(*Curve).Sample`.
-
-## Unsolved
+- cmd/nanowarp: allow external onset detectors. ~~Already possible with right timemap, 
+  algorithm does phase reset on any region with Dy = 1.~~ Nowadays it is not true.
+### Unsolved
 - [ ] Effects of large LGD values
 - [ ] Calibrate LGD and CIF formulas
 - [ ] Is it possible to make -q -1 be identical to PGHI?
-- [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
 
 ## Known issues
 - It really hates detecting transients in guitars. Bass guitars too. Expect smudged attacks sometimes.
 - Repeating transients on speedups. Try speeding up *Crystal Castles — Crimewave* by 1 semitone
-  and listen to sine bloops closely. Most likely can be fixed by fixing the 1-frame lag of 
-  ridge detection phase accumulator bypass, see warper.go.
-- Tempo swinging due to large transient bypass size. Try *monica.com — frog* at the end.
-- Microtransient sharpness losses on tonal material. Pure vocals are totally smudged. 
+  and listen to sine bloops closely. ~~Most likely can be fixed by fixing the 1-frame lag of 
+  ridge detection phase accumulator bypass, see warper.go.~~ Now it's better.
+- On default -tl: tempo swinging due to large transient bypass size. Try *monica.com — frog* at the end.
+- On small -tl: microtransient sharpness losses on tonal material. Pure vocals are totally smudged. 
   Comically bad result on fast-tempo cymbals (e.g. *TOMORA — SOMEWHERE ELSE* ca. 2:50), 
   which is true for all time-stretching algorithms not based on deep learning.
 - BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
