@@ -145,7 +145,7 @@ Quality and behavior:
 	At large values, most of the signal will be remained intact, but
 	timing issues will occur.
 	Maximum practical amount is 6 (nanowarp.WarperOverlap), minimum practical is 2.
-	Please note that this setting is competing with transient length, set it up accordingly.
+	Please note that this setting is competing with -poolms, set it up accordingly.
 	Default is 6.
   -triplefix
 	Behavior of limiting of local group delay.

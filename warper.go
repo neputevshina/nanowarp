@@ -30,14 +30,13 @@ type warper struct {
 	fft *pffft.PFFFT
 
 	// PGHI-related
-	arm      []bool    // Done mask
-	heap     hp        // Heap
-	arrows   [][2]int  // Integration directions for next frame
-	parrows  [][2]int  // Current integration directions
-	trace    []float64 // Ridge accumulator
-	ftrace   []float64 // Filtered trace
-	ridges   []uint    // Extracted ridges
-	resetnow []bool    // Forced per-bin resets
+	arm     []bool    // Done mask
+	heap    hp        // Heap
+	arrows  [][2]int  // Integration directions for next frame
+	parrows [][2]int  // Current integration directions
+	trace   []float64 // Ridge accumulator
+	ftrace  []float64 // Filtered trace
+	ridges  []uint    // Extracted ridges
 
 	prevstretch float64 // Previous frame stretch, see [wbufs.Mp]
 
@@ -216,13 +215,7 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 		}
 	}
 
-	// Calculate partial derivatives of the phase.
-	//
-	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms
-	//
-	// TODO Probably it will be more numerically stable to limit the phase accuum to
-	// 0..1 and scale back to -π..π range at the poltocar conversion.
-	// fadv must return 0..1 accordingly, simply defer π multiplication until the end.
+	// Calculate modified window spectra.
 	enfft(a.Xd, a.Wd, a.Mid)
 	enfft(a.Xt, a.Wt, a.Mid)
 
@@ -239,6 +232,13 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 
 	trace := n.trackridges(n.ftrace, n.trace, n.ridges, hp.HighRidgeHeight, hp.InfluenceRadius)
 
+	// Calculate partial derivatives of the phase.
+	//
+	// See Flandrin, P. et al. (2002). Time-frequency reassignment: from principles to algorithms
+	//
+	// TODO Probably it will be more numerically stable to limit the phase accuum to
+	// 0..1 and scale back to -π..π range at the poltocar conversion.
+	// fadv must return 0..1 accordingly, simply defer π multiplication until the end.
 	for w := range a.X {
 		a.Fadv[w] = fadv(a.X, a.Xt, stretch, n.osamp, w)
 		a.Tadv[w] = tadv(a.X, a.Xd, float64(n.nfft)/float64(n.hop)/2, w)
@@ -268,7 +268,7 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 		}
 
 		// Limit the horizontal bin displacement by limiting the LGD.
-		// This suppresses the transient triplication.
+		// This suppresses the transient triplication at large coefficients.
 		disp := grainwrap(n.nbuf, real(a.Xt[w]/a.X[w]))
 		zeroout := false
 		m := float64(n.nbuf/2) / stretch
@@ -284,9 +284,9 @@ func (n *warper) advance(ingrain, nextgrain [][]float64, stretch, snominal float
 				zeroout = false
 			}
 		case 1:
-			zeroout = acausal // Anti-causal displacement only.
+			zeroout = acausal
 		case 2:
-			zeroout = bothcausal // Both causal and anti-causal displacement.
+			zeroout = bothcausal
 		default:
 			panic(`incorrect value for nanowarp.Options.TriplicationFix`)
 		}
@@ -389,7 +389,7 @@ func (n *warper) trackridges(out, trace []float64, ridges []uint, HighRidgeHeigh
 }
 
 // pghiarrows calculates integration directions from a pair of magnitude
-// buffers using priority queue.
+// buffers using a priority queue.
 //
 // See Průša, Z., & Holighaus, N. (2017). Phase vocoder done right.
 // (https://arxiv.org/pdf/2202.07382)
@@ -602,12 +602,14 @@ func tanhterp(x0, y0, x1, y1, skew, x float64) float64 {
 	return (y1-y0)*tanhstep(skew, unmix(x0, x1, x)) + y0
 }
 
-// compensate generates an stretch-adaptive EQ table for compensation the
+// compensate generates a stretch-adaptive EQ table for compensation the
 // spectral energy losses of imperfect phase reconstruction.
 //
 // The method was calibrated on log scale sweeps from 20 to 20000 Hz.
 // Ascending and descending sweeps recieve the same magnitude response.
-// From experiments, clean tones (pure sines) of any frequency are not attenuated.
+// From experiments, pure tones (sines) of any frequency are not attenuated
+// so with this compensation they will get louder than they should be.
+// This compromise is acceptable, since one probably wouldn't stretch pure tones.
 func (n *warper) compensate(mp []float64, stretch float64, fs float64) {
 	bin := func(hz float64) float64 {
 		return hztobin(hz, (len(mp)-1)*2, fs)

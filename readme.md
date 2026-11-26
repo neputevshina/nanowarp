@@ -104,6 +104,7 @@ but currently sounds best on audio data with aforementioned parameters.
 - [ ] PFFFT with pkg.go.dev/simd and assembler SSE3 fallback. Remove all Cgo code.
 - [ ] Custom resampler.
 - [ ] AIFF support in dspio/wavio. Difference with WAV is only in byte order and some headers.
+- [ ] Save and reuse lookahead FFT result to conserve resources.
 -----
 - Idea: harmonic phase locking. Propagate phase vertically from detected ridges by harmonics. Dilated 
   traces (-if) will work perfectly for that.

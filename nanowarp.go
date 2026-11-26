@@ -129,7 +129,7 @@ type Hyperparams struct {
 	// Limits the LGD spill at each phase reset.
 	// At large values, most of the signal will be remained intact, but
 	// timing issues will occur.
-	// Please note that this setting is competing with transient length,
+	// Please note that this setting is competing with PickingMs,
 	// set it up accordingly.
 	//
 	// Maximum practical amount is [WarperOverlap], minimum practical is about third of it.
