@@ -162,17 +162,15 @@ but currently sounds best on audio data with aforementioned parameters.
 
 ## Known issues
 - It really hates detecting transients in guitars. Bass guitars too. Expect smudged attacks sometimes.
-- Repeating transients on speedups. Try speeding up *Crystal Castles — Crimewave* by 1 semitone
-  and listen to sine bloops closely. ~~Most likely can be fixed by fixing the 1-frame lag of 
-  ridge detection phase accumulator bypass, see warper.go.~~ Now it's better.
+- Interruptions on speedups. Most noticeable on full songs without drums and long vocals, like *Макsим — Отпускаю*.
 - On default -tl: tempo swinging due to large transient bypass size. Try *monica.com — frog* at the end.
 - On small -tl: microtransient sharpness losses on tonal material. Pure vocals are totally smudged. 
   Comically bad result on fast-tempo cymbals (e.g. *TOMORA — SOMEWHERE ELSE* ca. 2:50), 
-  which is true for all time-stretching algorithms not based on deep learning.
-- BUG Writing is quantized by 1024-sample blocks. Expect loss of data at the end of file.
+  which is true for almost all time-stretching algorithms.
 - Very loud or noisy tracks might get mushy. Try using -q -1 if results sounds bad.
 - [Energy losses (on example of log sweep)](https://mega.nz/file/7qAWXILb#QFsFQkHeCRD8osJMlS_QbFvgPVvKC8_Eqz4VPI0lsS0) are compensated by EQing,
   pure tones will recieve an unwanted gain increase (≈2 dB @ 2x, increases with stretch factor).
+  Speedups are not compensated.
 - No pitch modification. Requires a good resampler library,  e.g. r8brain. 
   Either port it or use through cgo.
 
